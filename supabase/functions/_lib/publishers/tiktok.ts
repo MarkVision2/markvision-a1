@@ -124,7 +124,8 @@ export async function publishTikTok(req: PublishRequest): Promise<PublishOutcome
     }
     if (data.status === "FAILED") {
       const c = classifyTikTokError(data.fail_reason, data.fail_reason);
-      return { status: "failed", kind: c.kind === "fatal" && /download|url|file/i.test(c.code) ? "fatal" : c.kind, code: c.code, message: `TikTok отклонил публикацию: ${data.fail_reason ?? "причина не указана"}`, raw: st.body };
+      // Проблемы с самим файлом/ссылкой повтором не лечатся — это окончательный отказ.
+      return { status: "failed", kind: /download|url|file|format|duration|resolution|frame/i.test(c.code) ? "fatal" : c.kind, code: c.code, message: `TikTok отклонил публикацию: ${data.fail_reason ?? "причина не указана"}`, raw: st.body };
     }
     await sleep(3000);
   }

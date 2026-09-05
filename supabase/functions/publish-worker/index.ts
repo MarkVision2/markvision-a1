@@ -42,6 +42,7 @@ Deno.serve(async (req) => {
   const partitions = Math.min(Math.max(Number(body?.partitions ?? 1), 1), 16);
   const partition = body?.partition == null ? null : Math.min(Math.max(Number(body.partition), 0), partitions - 1);
 
+  try {
   const { data, error } = await admin.rpc("claim_publish_jobs", {
     p_batch: batchSize,
     p_lock_timeout: "10 minutes",
@@ -74,4 +75,7 @@ Deno.serve(async (req) => {
   }
 
   return json({ ok: true, partition, partitions, ...out, results });
+  } catch (e) {
+    return json({ error: e instanceof Error ? e.message : String(e) }, 500);
+  }
 });

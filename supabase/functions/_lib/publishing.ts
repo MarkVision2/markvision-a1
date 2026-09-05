@@ -43,6 +43,10 @@ export interface PublishJob {
   hashtags: string[];
   attempts: number;
   container_id: string | null;
+  /** Опросов обработки медиа (processing) — не смешивается с attempts. */
+  poll_count?: number;
+  status?: string;
+  locked_at?: string | null;
 }
 
 export interface PublishVideo {

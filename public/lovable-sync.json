@@ -1,7 +1,7 @@
 {
-  "git_sha": "bcea3aa",
-  "git_sha_full": "bcea3aa817dc54be8fe26385c76cef04ef7caa16",
-  "updated_at": "2026-09-05T05:34:00Z",
-  "label": "Улучшил дизайн публикации",
+  "git_sha": "5356a0b",
+  "git_sha_full": "5356a0bcf8c8b0cc7b4dbb1d2df6b4d85bd8d32d",
+  "updated_at": "2026-09-05T10:40:17+04:00",
+  "label": "[vercel-deploy] Merge: Публикации — аудит кода, безопасность publish-accounts, планировщик, раннер, монитор, композер (#261)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }

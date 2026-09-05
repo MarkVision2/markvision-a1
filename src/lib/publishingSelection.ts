@@ -20,7 +20,9 @@ export const MIN_HEALTH_TO_PUBLISH = 20;
 /** Темп по умолчанию, когда группа не выбрана: coalesce(g.per_hour, 10) в SQL. */
 export const DEFAULT_PER_HOUR = 10;
 
-export type IneligibleReason = "disabled" | "not_active" | "low_health";
+export type IneligibleReason =
+  | "disabled" | "not_active" | "low_health"
+  | "not_in_group" | "platform_mismatch" | "group_paused" | "project_paused";
 
 export interface Eligibility {
   ok: boolean;
@@ -33,20 +35,51 @@ const REASON_HINT: Record<IneligibleReason, string> = {
   disabled: "публикация выключена — задание не создастся",
   not_active: "статус не «Активен» — задание не создастся",
   low_health: `здоровье ниже ${MIN_HEALTH_TO_PUBLISH} — планировщик пропустит`,
+  not_in_group: "не входит в выбранную группу — планировщик пропустит",
+  platform_mismatch: "площадка не совпадает с площадкой группы — планировщик пропустит",
+  group_paused: "группа на паузе — задания не создаются",
+  project_paused: "публикации проекта на паузе — задания не создаются",
 };
 
+/** Контекст планирования, который сервер учитывает помимо самого аккаунта. */
+export interface PlanContext {
+  /** Группа из композера: plan_publish_slots режет выборку по её составу и площадке. */
+  group?: PublishGroup | null;
+  /** publish_project_settings.paused — при паузе plan_publish_slots не создаёт ничего. */
+  projectPaused?: boolean;
+  /** Все группы проекта — чтобы увидеть паузу группы аккаунта даже без выбранной группы. */
+  groups?: PublishGroup[];
+}
+
+/** Состав группы = publish_accounts.group_id ∪ group.account_ids (как в SQL). */
+export function isGroupMember(a: PublishAccount, g: PublishGroup): boolean {
+  return a.group_id === g.id || (g.account_ids ?? []).includes(a.id);
+}
+
 /**
- * Возьмёт ли планировщик этот аккаунт. Дневной лимит сюда не входит:
- * при drip/daily переполненный день просто переносится на следующий.
+ * Возьмёт ли планировщик этот аккаунт — зеркало фильтров plan_publish_slots.
+ * Дневной лимит сюда не входит: при drip/daily переполненный день просто
+ * переносится на следующий.
  */
-export function accountEligibility(a: PublishAccount): Eligibility {
-  const reason: IneligibleReason | null = !a.publish_enabled
-    ? "disabled"
-    : a.status !== "active"
-      ? "not_active"
-      : Number(a.health_score ?? 0) < MIN_HEALTH_TO_PUBLISH
-        ? "low_health"
-        : null;
+export function accountEligibility(a: PublishAccount, ctx: PlanContext = {}): Eligibility {
+  const ownGroup = ctx.groups?.find((g) => g.id === a.group_id) ?? null;
+  const reason: IneligibleReason | null = ctx.projectPaused
+    ? "project_paused"
+    : ctx.group?.review_mode === "paused"
+      ? "group_paused"
+      : !a.publish_enabled
+        ? "disabled"
+        : a.status !== "active"
+          ? "not_active"
+          : Number(a.health_score ?? 0) < MIN_HEALTH_TO_PUBLISH
+            ? "low_health"
+            : ctx.group && !isGroupMember(a, ctx.group)
+              ? "not_in_group"
+              : ctx.group?.platform && a.platform !== ctx.group.platform
+                ? "platform_mismatch"
+                : ownGroup?.review_mode === "paused"
+                  ? "group_paused"
+                  : null;
   return { ok: reason == null, reason, hint: reason ? REASON_HINT[reason] : null };
 }
 
@@ -109,11 +142,12 @@ export function planPreview(
   mode: PublishMode,
   group: PublishGroup | null,
   start: Date = new Date(),
+  ctx: Omit<PlanContext, "group"> = {},
 ): PlanPreview {
   const eligible: PublishAccount[] = [];
   const skipped: PlanPreview["skipped"] = [];
   for (const a of selected) {
-    const e = accountEligibility(a);
+    const e = accountEligibility(a, { ...ctx, group });
     if (e.ok) eligible.push(a);
     else skipped.push({ account: a, hint: e.hint ?? "пропущен" });
   }
@@ -147,6 +181,25 @@ export function formatStep(minutes: number): string {
     return m ? `${h} ч ${m} мин` : `${h} ч`;
   }
   return `${Math.max(1, Math.round(minutes))} мин`;
+}
+
+/* ───────────────────────────── время старта (Алматы) ───────────────────────────── */
+
+/** Казахстан с 2024 года живёт в одном поясе без перевода часов. */
+export const ALMATY_OFFSET = "+05:00";
+
+/** «2026-09-10T14:30» из <input type=datetime-local> как время Алматы → ISO в UTC. */
+export function almatyLocalToIso(value: string): string | null {
+  const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?::\d{2})?$/.exec(value.trim());
+  if (!m) return null;
+  const t = Date.parse(`${m[1]}T${m[2]}:00${ALMATY_OFFSET}`);
+  return Number.isNaN(t) ? null : new Date(t).toISOString();
+}
+
+/** Текущее время Алматы в формате datetime-local — для атрибута min и подсказок. */
+export function almatyLocalNow(now: number = Date.now()): string {
+  const shifted = new Date(now + 5 * 3_600_000);
+  return shifted.toISOString().slice(0, 16);
 }
 
 /** Сегодняшняя загрузка аккаунта с учётом разгона: «1 / 3». */

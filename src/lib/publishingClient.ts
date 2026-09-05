@@ -59,7 +59,8 @@ export interface PublishAccount {
 
 export interface AvailablePage {
   page_id: string;
-  page_name: string;
+  /** Meta может не отдать имя страницы. */
+  page_name: string | null;
   ig_user_id: string | null;
   ig_username: string | null;
   ig_name: string | null;
@@ -124,6 +125,8 @@ export interface PublishJob {
   error_code: string | null;
   error_message: string | null;
   published_at: string | null;
+  /** Аренда воркера; processing без свежей аренды — зависшее задание. */
+  locked_at?: string | null;
   created_at: string;
   publish_accounts: { account_name: string; handle: string | null } | null;
   publish_videos: { title: string | null; file_url: string } | null;
@@ -225,6 +228,8 @@ export interface PublishVideoResult {
   video_id: string;
   created: number;
   skipped: number;
+  /** Почему заданий 0: пауза проекта/группы или ни один аккаунт не годен. */
+  reason?: string | null;
   jobs: { job_id: string; account_id: string; scheduled_at: string; created: boolean }[];
 }
 
@@ -236,6 +241,14 @@ export const ACCOUNT_STATUS_META: Record<PublishAccountStatus, { label: string; 
   limited: { label: "Ограничен", cls: "bg-orange-500/10 text-orange-700 dark:text-orange-300" },
   error: { label: "Ошибка", cls: "bg-destructive/10 text-destructive" },
   disabled: { label: "Выключен", cls: "bg-muted text-muted-foreground" },
+};
+
+/** Точка-акцент площадки (фильтры, сводка, предпросмотр) — один набор на весь раздел. */
+export const PLATFORM_DOT: Record<PublishPlatform, string> = {
+  instagram: "bg-pink-500",
+  tiktok: "bg-sky-400",
+  youtube: "bg-red-500",
+  threads: "bg-zinc-400",
 };
 
 export const PLATFORM_META: Record<PublishPlatform, { label: string; cls: string }> = {
@@ -262,6 +275,17 @@ export const JOB_STATUS_META: Record<PublishJobStatus, { label: string; cls: str
 };
 
 /** Что можно сделать с заданием из интерфейса — зеркало проверок job_retry/job_cancel. */
+/** Аренда воркера живёт 10 минут (claim_publish_jobs); дольше — задание зависло. */
+export const JOB_LOCK_STALE_MS = 10 * 60_000;
+
+/** Что можно сделать с конкретным заданием: processing без живой аренды тоже можно повторить/отменить. */
+export function jobActions(job: Pick<PublishJob, "status" | "locked_at">, now: number = Date.now()): { retry: boolean; cancel: boolean; stale: boolean } {
+  const stale = job.status === "processing" && (!job.locked_at || now - Date.parse(job.locked_at) > JOB_LOCK_STALE_MS);
+  if (stale) return { retry: true, cancel: true, stale };
+  const a = JOB_ACTIONS[job.status] ?? { retry: false, cancel: false };
+  return { ...a, stale };
+}
+
 export const JOB_ACTIONS: Record<PublishJobStatus, { retry: boolean; cancel: boolean }> = {
   pending: { retry: false, cancel: true },
   retry: { retry: true, cancel: true },
@@ -401,14 +425,15 @@ export interface GroupUpsertInput {
   account_ids: string[];
   platform?: PublishPlatform | null;
   publish_strategy?: PublishStrategy;
-  per_hour?: number;
   persona_id?: string | null;
   review_mode?: ReviewMode;
   timezone?: string | null;
   window_start?: string | null;
   window_end?: string | null;
-  min_gap_minutes?: number;
-  jitter_minutes?: number;
+  /** null — вернуть значение по умолчанию (публикация в час 10, интервал 120, джиттер 20). */
+  per_hour?: number | null;
+  min_gap_minutes?: number | null;
+  jitter_minutes?: number | null;
 }
 
 export interface PersonaUpsertInput {
@@ -431,8 +456,9 @@ export interface SettingsUpsertInput {
   notify_mode?: NotifyMode;
   digest_chat_id?: string | null;
   paused?: boolean;
-  daily_usd?: number;
-  monthly_usd?: number;
+  /** null — вернуть бюджет по умолчанию (20 / 300 $). */
+  daily_usd?: number | null;
+  monthly_usd?: number | null;
 }
 
 /* ───────────── API-ключи проекта (edge api, docs/PUBLIC-API.md) ───────────── */
@@ -558,10 +584,13 @@ export async function runHealthCheck(projectId: string, accountIds?: string[]): 
 
 export type OAuthPlatform = "threads" | "tiktok" | "youtube";
 
-/** Ссылка на согласие площадки (edge publish-oauth/start); открывать в новом окне. */
-export async function startPublishOAuth(projectId: string, platform: OAuthPlatform, groupId?: string | null): Promise<string> {
+/**
+ * Ссылка на согласие площадки (edge publish-oauth/start); открывать в новом окне.
+ * returnPath — куда вернуть пользователя после согласия (по умолчанию «Публикации»).
+ */
+export async function startPublishOAuth(projectId: string, platform: OAuthPlatform, groupId?: string | null, returnPath = "/marketing/publishing"): Promise<string> {
   const { data, error } = await supabase.functions.invoke("publish-oauth/start", {
-    body: { project_id: projectId, platform, return_url: `${window.location.origin}/marketing/publishing`, group_id: groupId ?? null },
+    body: { project_id: projectId, platform, return_url: `${window.location.origin}${returnPath}`, group_id: groupId ?? null },
   });
   if (error) {
     const ctx = (error as { context?: Response }).context;

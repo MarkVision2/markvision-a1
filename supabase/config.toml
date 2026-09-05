@@ -211,6 +211,11 @@ verify_jwt = false
 # Контур автопубликации (docs/PUBLISHING-SYSTEM.md). Очередь разбирает pg_cron,
 # заявки шлёт n8n — оба ходят без пользовательского JWT, авторизация внутри
 # функций по x-automation-key = automation_settings.cron_secret.
+# publish-accounts: JWT пользователя проверяет сама функция (requireUser + requireProjectAccess),
+# а скриптовый онбординг и n8n ходят с x-automation-key без JWT.
+[functions.publish-accounts]
+verify_jwt = false
+
 [functions.publish-worker]
 verify_jwt = false
 
@@ -252,4 +257,9 @@ verify_jwt = false
 # внутри функции; без этой записи шлюз требовал JWT и отвечал
 # UNAUTHORIZED_NO_AUTH_HEADER — заливка >45 МБ из композера и монтажа не работала.
 [functions.r2-presign-upload]
+verify_jwt = false
+
+# Раздел «Подключение TikTok» (docs/TIKTOK-DEVELOPER-APP.md): Display API и
+# Content Posting API поверх аккаунтов publish_accounts; JWT проверяется внутри.
+[functions.tiktok-connect]
 verify_jwt = false

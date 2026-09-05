@@ -50,6 +50,11 @@
 - **Публичный API и MCP-сервер** (внешний клиент по API-ключу проекта загружает видео и ставит
   публикацию): edge `api` + таблица `api_keys`, ключи выдаются в «Публикации → Настройки»,
   MCP-сервер `mcp/markvision/`. Контракт — `docs/PUBLIC-API.md`.
+- **Подключение TikTok** (страница `/marketing/tiktok`, витрина для App review TikTok for Developers):
+  Login Kit → Display API (профиль, видео) → Content Posting API (Direct Post / inbox) → отключение
+  с отзывом токена; edge `tiktok-connect`, каталог прав `_lib/tiktokApi.ts`. Заявка, песочница,
+  сценарий демо-видео — `docs/TIKTOK-DEVELOPER-APP.md`. Публичные `/terms` и `/privacy`
+  (общие для всей платформы, RU/EN) — `src/pages/Legal.tsx` + `src/data/legalContent.ts`.
 
 ## Карта (montage-часть)
 - `pipeline/` — Python-скрипты анализа (transcribe → indexed → edl → review → faces → props → audio); shorts.py (шортсы), download.py + reference.py (ремейк референса по ссылке)

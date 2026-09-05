@@ -33,6 +33,7 @@ import {
   type PublishAccount,
 } from "../_lib/publishing.ts";
 import { ensureFreshToken } from "../_lib/publishRunner.ts";
+import { identityRequest, parseIdentity, tokenNeedsRefresh } from "../_lib/publishOAuth.ts";
 import { requireProjectAccess } from "../_lib/auth.ts";
 import { computeHealth } from "../_lib/publishHealth.ts";
 
@@ -40,6 +41,8 @@ import { computeHealth } from "../_lib/publishHealth.ts";
 const ERROR_STREAK_LIMIT = 3;
 /** За сколько дней до истечения токена начинаем предупреждать. */
 const TOKEN_WARN_DAYS = 7;
+/** Сколько работаем за вызов: сеть на 100+ аккаунтов не влезает в лимит функции, остаток доберёт следующий тик. */
+const WALL_CLOCK_BUDGET_MS = 45_000;
 
 const GRAPH_IG = "https://graph.instagram.com/v21.0";
 const GRAPH_FB = "https://graph.facebook.com/v21.0";
@@ -57,8 +60,8 @@ async function refreshLongLivedToken(
   token: string,
 ): Promise<{ token: string; expiresAt: string } | { error: string } | null> {
   let url: string | null = null;
-  if (platform === "threads") url = `${GRAPH_THREADS}/refresh_access_token?grant_type=th_refresh_token&access_token=${token}`;
-  else if (platform === "instagram" && /^IG/i.test(token)) url = `${GRAPH_IG}/refresh_access_token?grant_type=ig_refresh_token&access_token=${token}`;
+  if (platform === "threads") url = `${GRAPH_THREADS}/refresh_access_token?grant_type=th_refresh_token&access_token=${encodeURIComponent(token)}`;
+  else if (platform === "instagram" && /^IG/i.test(token)) url = `${GRAPH_IG}/refresh_access_token?grant_type=ig_refresh_token&access_token=${encodeURIComponent(token)}`;
   if (!url) return null;
   try {
     const res = await fetch(url);
@@ -73,7 +76,7 @@ async function refreshLongLivedToken(
 
 async function threadsTokenAlive(userId: string, token: string): Promise<{ alive: boolean; reason?: string }> {
   try {
-    const res = await fetch(`${GRAPH_THREADS}/${userId}?fields=id&access_token=${token}`);
+    const res = await fetch(`${GRAPH_THREADS}/${userId}?fields=id&access_token=${encodeURIComponent(token)}`);
     const body = await res.json().catch(() => ({}));
     if (body?.error) {
       const code = body.error.code;
@@ -93,7 +96,7 @@ async function instagramTokenAlive(
 ): Promise<{ alive: boolean; reason?: string }> {
   const graph = /^IG/i.test(token) ? GRAPH_IG : GRAPH_FB;
   try {
-    const res = await fetch(`${graph}/${externalId}?fields=id&access_token=${token}`);
+    const res = await fetch(`${graph}/${externalId}?fields=id&access_token=${encodeURIComponent(token)}`);
     const body = await res.json().catch(() => ({}));
     if (body?.error) {
       const code = body.error.code;
@@ -121,10 +124,28 @@ async function probeAccount(admin: SupabaseClient, account: PublishAccount): Pro
   if (!token) return { alive: false, reason: "токен не расшифрован — нужен reconnect" };
 
   if (account.platform === "tiktok" || account.platform === "youtube") {
-    const fresh = await ensureFreshToken(admin, { ...account, token_expires_at: new Date(0).toISOString() }, token);
-    if (fresh.error && /invalid_grant|invalid_token|access_token_invalid|revoked|reconnect/i.test(fresh.error)) return { alive: false, reason: fresh.error };
-    if (fresh.error) return { alive: null, reason: fresh.error };
-    return { alive: true, reason: null };
+    // Живость — запрос «кто я» текущим access-токеном; refresh только когда он
+    // и правда истёк (иначе каждая проверка ротировала refresh_token TikTok).
+    let live = token;
+    if (tokenNeedsRefresh(account.token_expires_at, Date.now(), 600)) {
+      const fresh = await ensureFreshToken(admin, account, token);
+      if (fresh.error && /invalid_grant|invalid_token|access_token_invalid|revoked|reconnect/i.test(fresh.error)) return { alive: false, reason: fresh.error };
+      if (fresh.error) return { alive: null, reason: fresh.error };
+      live = fresh.token;
+      if (fresh.expiresAt) account.token_expires_at = fresh.expiresAt;
+    }
+    try {
+      const rq = identityRequest(account.platform, live);
+      const res = await fetch(rq.url, rq.init);
+      const body = await res.json().catch(() => ({}));
+      if (parseIdentity(account.platform, body)) return { alive: true, reason: null };
+      if (res.status === 401 || res.status === 403) return { alive: false, reason: `площадка отвергла токен (HTTP ${res.status})` };
+      const code = String((body as { error?: { code?: string; message?: string } })?.error?.code ?? "");
+      if (/access_token_invalid|invalid_token|scope_not_authorized|token_expired/i.test(code)) return { alive: false, reason: code };
+      return { alive: null, reason: `площадка не ответила по существу (HTTP ${res.status})` };
+    } catch (e) {
+      return { alive: null, reason: e instanceof Error ? e.message : String(e) };
+    }
   }
   const r = account.platform === "threads"
     ? await threadsTokenAlive(account.external_account_id, token)
@@ -165,8 +186,11 @@ async function checkHealth(admin: SupabaseClient, projectId: string | null, acco
   const out: { id: string; account_name: string; platform: string; alive: boolean | null; health_score: number; reasons: string[] }[] = [];
   const dead: PublishAccount[] = [];
   const now = new Date().toISOString();
+  const deadline = Date.now() + WALL_CLOCK_BUDGET_MS;
+  let skipped = 0;
 
   for (const account of accounts) {
+    if (Date.now() > deadline) { skipped++; continue; }
     const probe = await probeAccount(admin, account);
     const nextStatus = probe.alive === false
       ? "token_expired"
@@ -200,7 +224,7 @@ async function checkHealth(admin: SupabaseClient, projectId: string | null, acco
     await notifyProject(admin, pid, `🔑 Требуется переподключение аккаунтов (${names.length}):\n• ${names.join("\n• ")}`);
   }
 
-  return { checked: accounts.length, token_expired: dead.length, accounts: out };
+  return { checked: accounts.length - skipped, token_expired: dead.length, skipped, accounts: out };
 }
 
 async function checkTokens(admin: SupabaseClient) {
@@ -217,16 +241,26 @@ async function checkTokens(admin: SupabaseClient) {
   const soon = Date.now() + TOKEN_WARN_DAYS * 86_400_000;
   const refreshBefore = Date.now() + TOKEN_REFRESH_DAYS * 86_400_000;
 
+  const deadline = Date.now() + WALL_CLOCK_BUDGET_MS;
+  const processed: PublishAccount[] = [];
+
   for (const account of accounts) {
+    if (Date.now() > deadline) break;
+    processed.push(account);
     let token: string | null = null;
     try { token = await decryptSecret(account.access_token_encrypted); } catch { token = null; }
     if (!token) { dead.push(account); continue; }
 
-    // TikTok / YouTube: живость = успешное обновление refresh_token'ом.
+    // TikTok / YouTube: раз в сутки обновляем access-токен refresh_token'ом
+    // (у TikTok он живёт 24 часа) и этим же подтверждаем живость.
     if (account.platform === "tiktok" || account.platform === "youtube") {
       const fresh = await ensureFreshToken(admin, { ...account, token_expires_at: new Date(0).toISOString() }, token);
       if (fresh.error && /invalid_grant|invalid_token|access_token_invalid|revoked|reconnect/i.test(fresh.error)) dead.push(account);
-      else if (!fresh.error) refreshed++;
+      else if (!fresh.error) {
+        refreshed++;
+        if (fresh.expiresAt) account.token_expires_at = fresh.expiresAt;
+      }
+      if (account.token_expires_at && new Date(account.token_expires_at).getTime() < soon) expiring.push(account);
       continue;
     }
 
@@ -238,13 +272,19 @@ async function checkTokens(admin: SupabaseClient) {
     if (unknownIgExpiry || (expiresAt != null && expiresAt < refreshBefore)) {
       const r = await refreshLongLivedToken(account.platform, token);
       if (r && "token" in r) {
-        await admin.from("publish_accounts").update({
-          access_token_encrypted: await encryptSecret(r.token),
-          token_expires_at: r.expiresAt,
-          token_refreshed_at: new Date().toISOString(),
-        }).eq("id", account.id);
-        token = r.token;
-        refreshed++;
+        try {
+          await admin.from("publish_accounts").update({
+            access_token_encrypted: await encryptSecret(r.token),
+            token_expires_at: r.expiresAt,
+            token_refreshed_at: new Date().toISOString(),
+          }).eq("id", account.id);
+          token = r.token;
+          account.token_expires_at = r.expiresAt;
+          refreshed++;
+        } catch (e) {
+          // Не смогли сохранить обновлённый токен (нет PUBLISH_TOKEN_KEY) — старый ещё жив, идём дальше.
+          console.error("[publish-monitor] сохранение токена:", e instanceof Error ? e.message : String(e));
+        }
       }
     }
     if (account.token_expires_at && new Date(account.token_expires_at).getTime() < soon && !(expiresAt != null && expiresAt < refreshBefore)) {
@@ -258,9 +298,9 @@ async function checkTokens(admin: SupabaseClient) {
   }
 
   const deadIds = new Set(dead.map((a) => a.id));
-  const stats = await outcomes30d(admin, accounts.map((a) => a.id));
+  const stats = await outcomes30d(admin, processed.map((a) => a.id));
   const now = new Date().toISOString();
-  for (const account of accounts) {
+  for (const account of processed) {
     const isDead = deadIds.has(account.id);
     const o = stats.get(account.id) ?? { failed: 0, published: 0 };
     const h = computeHealth({
@@ -296,7 +336,8 @@ async function checkTokens(admin: SupabaseClient) {
   }
 
   return {
-    checked: accounts.length,
+    checked: processed.length,
+    skipped: accounts.length - processed.length,
     token_expired: dead.length,
     expiring_soon: expiring.length,
     refreshed,
@@ -406,10 +447,13 @@ Deno.serve(async (req) => {
     }
   }
 
-  if (mode === "health") return json({ ok: true, mode, ...(await checkHealth(admin, projectId, accountIds)) });
-
-  if (mode === "tokens") return json({ ok: true, mode, ...(await checkTokens(admin)) });
-  if (mode === "errors") return json({ ok: true, mode, ...(await checkErrors(admin)) });
-  if (mode === "digest") return json({ ok: true, mode, ...(await sendDigests(admin)) });
-  return json({ error: `неизвестный режим: ${mode}` }, 400);
+  try {
+    if (mode === "health") return json({ ok: true, mode, ...(await checkHealth(admin, projectId, accountIds)) });
+    if (mode === "tokens") return json({ ok: true, mode, ...(await checkTokens(admin)) });
+    if (mode === "errors") return json({ ok: true, mode, ...(await checkErrors(admin)) });
+    if (mode === "digest") return json({ ok: true, mode, ...(await sendDigests(admin)) });
+    return json({ error: `неизвестный режим: ${mode}` }, 400);
+  } catch (e) {
+    return json({ error: e instanceof Error ? e.message : String(e) }, 500);
+  }
 });

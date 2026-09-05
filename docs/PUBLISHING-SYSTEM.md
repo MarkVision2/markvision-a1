@@ -326,6 +326,9 @@ pending ──claim──► processing ──► published
 
 Все четыре площадки публикуют: Instagram, Threads, TikTok (Direct Post по ссылке), YouTube
 (resumable upload). Подключение Threads / TikTok / YouTube — OAuth через `publish-oauth`.
+TikTok дополнительно имеет собственный раздел «Подключение TikTok» (`/marketing/tiktok`):
+Login Kit, Display API, Content Posting API с загрузкой файлом (без верификации домена),
+отключение с отзывом токена — витрина для App review, см. `docs/TIKTOK-DEVELOPER-APP.md`.
 
 Планировщик слотов (окна, интервалы, разгон, джиттер), партиции воркера, Threads-publisher,
 обновление long-lived токенов, часовой дайджест, персоны и группы с режимом согласования,
@@ -334,7 +337,7 @@ pending ──claim──► processing ──► published
 
 Аварийная пауза проекта — `publish_project_settings.paused` (рубильник во вкладке «Настройки»):
 `claim_publish_jobs` не отдаёт задания, `plan_publish_slots` не ставит слоты, очередь сохраняется.
-Сводка по группам — витрина `publish_group_metrics` (вкладка «Сеть»). Метрики публикаций
+Сводка по группам — витрина `publish_group_metrics` (вкладка «Группы»). Метрики публикаций
 собираются по всем четырём площадкам (`publish-metrics`; TikTok требует scope `video.list` —
 аккаунты, подключённые без него, помечены в списке и требуют reconnect).
 

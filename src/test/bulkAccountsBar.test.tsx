@@ -18,7 +18,7 @@ const refetch = vi.fn().mockResolvedValue(undefined);
 
 const pub = {
   accounts: [], groups: [{ id: "g1", name: "Клиники" }], personas: [{ id: "p1", name: "Врач" }],
-  updateAccount, refetch,
+  updateAccount, updateAccountQuiet: updateAccount, refetch,
 } as unknown as UsePublishing;
 
 const renderBar = (selected = ["a1", "a2"]) =>

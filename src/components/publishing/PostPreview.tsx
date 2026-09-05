@@ -7,16 +7,7 @@ import { Bookmark, Heart, MessageCircle, MoreHorizontal, Music2, Send, Share2, T
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { PLATFORM_META, formatFollowers, type PublishAccount, type PublishPlatform } from "@/lib/publishingClient";
 
-/**
- * Точка-акцент площадки. PLATFORM_META.cls — светлотемные text-*-700,
- * на тёмном фоне шапки он не читается, поэтому здесь свой набор.
- */
-const PLATFORM_DOT: Record<PublishPlatform, string> = {
-  instagram: "bg-pink-500",
-  tiktok: "bg-sky-400",
-  youtube: "bg-red-500",
-  threads: "bg-zinc-400",
-};
+import { PLATFORM_DOT } from "@/lib/publishingClient";
 import { cn } from "@/lib/utils";
 
 export interface PreviewContent {
