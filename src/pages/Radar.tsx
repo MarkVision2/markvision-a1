@@ -217,7 +217,8 @@ export default function Radar() {
       </div>
 
       <Tabs defaultValue="trends" className="mt-6">
-        <TabsList>
+        {/* Пять вкладок со счётчиками не влезают в 390 px одной строкой — переносим. */}
+        <TabsList className="h-auto flex-wrap">
           <TabsTrigger value="trends">Тренды{posts.length ? ` (${posts.length})` : ""}</TabsTrigger>
           <TabsTrigger value="ideas">Идеи{ideas.length ? ` (${ideas.length})` : ""}</TabsTrigger>
           <TabsTrigger value="authors">Авторы</TabsTrigger>
