@@ -79,6 +79,21 @@ export function formatAge(iso: string | null | undefined, now: number = Date.now
   return `${Math.floor(mo / 12)} г назад`;
 }
 
+/** Тип медиа от сборщика (video / Sidecar / GraphImage / shorts / …) → слово для интерфейса. */
+export function mediaTypeLabel(mediaType: string | null | undefined): string {
+  const t = String(mediaType ?? "").trim().toLowerCase();
+  if (!t) return "пост";
+  if (/reel|clip/.test(t)) return "reels";
+  if (/short/.test(t)) return "shorts";
+  if (/video/.test(t)) return "видео";
+  if (/sidecar|carousel|album/.test(t)) return "карусель";
+  if (/image|photo|graphimage/.test(t)) return "фото";
+  if (/story|stories/.test(t)) return "сторис";
+  if (t === "ad") return "объявление";
+  if (t === "text") return "текст";
+  return t;
+}
+
 /** Главный показатель поста: просмотры, а если их нет (фото/карусель) — лайки. */
 export function primaryMetric(post: RadarPost): { value: number; kind: "views" | "likes" } {
   const views = Number(post.metrics?.views ?? 0);

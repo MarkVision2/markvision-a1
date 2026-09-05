@@ -109,7 +109,7 @@ export function TrendsTab({ posts, ownSourceIds, busy, onOpen, onAnalyze, onAddS
       {visible.length === 0 ? (
         <Empty>Под эти фильтры постов нет — снимите период или нишу.</Empty>
       ) : (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+        <div className="grid grid-cols-1 gap-3 min-[480px]:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
           {visible.map((post, i) => (
             <TrendCard
               key={post.id}

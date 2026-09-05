@@ -45,7 +45,7 @@ export function TrendCard({ post, rank, own = false, busy, onOpen, onAnalyze }: 
       <button type="button" onClick={onOpen} className="relative aspect-[4/5] w-full overflow-hidden bg-muted text-left" aria-label="Открыть разбор поста">
         <PostThumb post={post} imgClassName="transition-transform duration-300 group-hover:scale-[1.03]" />
         <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-2">
-          <div className="flex min-w-0 items-center gap-1.5">
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
             <PlatformChip platform={post.platform} short className="bg-background/80 backdrop-blur" />
             {own && <Chip label="свой аккаунт" cls="bg-background/85 text-success ring-1 ring-inset ring-success/40 backdrop-blur" />}
             {fresh && <Chip label="Свежий" cls="bg-background/80 text-foreground backdrop-blur" />}
@@ -89,17 +89,17 @@ export function TrendCard({ post, rank, own = false, busy, onOpen, onAnalyze }: 
           <p className="text-xs text-muted-foreground">Без подписи</p>
         )}
 
-        <dl className="grid grid-cols-3 gap-2 rounded-xl bg-muted/50 px-3 py-2 text-xs">
+        <dl className="grid grid-cols-3 gap-1.5 rounded-xl bg-muted/50 px-2.5 py-2 text-xs sm:gap-2 sm:px-3">
           <div className="min-w-0">
-            <dt className="text-muted-foreground">обычно</dt>
+            <dt className="text-[11px] text-muted-foreground">обычно</dt>
             <dd className="truncate font-semibold tabular-nums">{usual == null ? "—" : formatCompact(usual)}</dd>
           </div>
           <div className="min-w-0">
-            <dt className="text-muted-foreground">сейчас</dt>
+            <dt className="text-[11px] text-muted-foreground">сейчас</dt>
             <dd className={cn("truncate font-semibold tabular-nums", viral && "text-success")}>{formatCompact(main.value)}</dd>
           </div>
           <div className="min-w-0">
-            <dt className="text-muted-foreground">ER</dt>
+            <dt className="text-[11px] text-muted-foreground">ER</dt>
             <dd className="truncate font-semibold tabular-nums">{formatEngagement(post.engagement_rate)}</dd>
           </div>
         </dl>
