@@ -1,7 +1,7 @@
 {
-  "git_sha": "e6c52e4",
-  "git_sha_full": "e6c52e47f3f7656325f67239e06c7941880796cb",
-  "updated_at": "2026-09-05T13:03:07+04:00",
-  "label": "feat(radar): сборщик — Threads, Facebook, Библиотека рекламы Meta, хештеги YouTube [vercel-deploy]",
+  "git_sha": "e350db8",
+  "git_sha_full": "e350db8f78b210f7c782e25d0c17f58ddaac1c58",
+  "updated_at": "2026-09-05T13:04:02+04:00",
+  "label": "fix(publishing): TikTok через FILE_UPLOAD, короткие токены без штрафа здоровья [vercel-deploy]",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
