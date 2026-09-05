@@ -18,7 +18,7 @@ post_metrics ◀──── publish-metrics ◀──── publish_jobs ◀─
 |---|---|
 | Схема радара | `supabase/migrations/20260905100000_radar.sql` — `radar_sources`, `radar_posts`, `radar_runs`, `idea_bank`, `radar_post_score()`, `radar_recompute_post()`, `radar_due_sources()`, витрина `radar_metrics`, крон `radar-maintenance` |
 | Схема дистрибуции и связки | `supabase/migrations/20260905110000_publishing_scale.sql` — `personas`, колонки `content_plan_items` (`parent_item_id`, `target_group_id`, `persona_id`, `engine`, `idea_id`, `publish_video_id`), колонки групп и аккаунтов, `publish_slots` + `publish_next_slot()` + `plan_publish_slots()`, `claim_publish_jobs` v2 (счётчики, здоровье, партиции), `post_metrics` + `post_metrics_due()` + `idea_recompute_outcomes()`, `publish_project_settings`, `project_budgets` + `usage_ledger` + `project_budget_ok()`, витрина `publish_metrics`, `radar_promote_idea()`, `claim_next_content_job` с фильтром по движку, кроны |
-| Радар | `supabase/functions/radar/index.ts`, чистая логика `supabase/functions/_lib/radar.ts` |
+| Радар | `supabase/functions/radar/index.ts`, чистая логика `supabase/functions/_lib/radar.ts` (нормализация, разбор), `supabase/functions/_lib/radarCrawl.ts` (прямой сборщик Apify: акторы, вход, разворачивание ответа, стоимость); миграция `20260907110000_radar_crawler.sql` (статус и id запуска в `radar_runs`) |
 | Конвейер: варианты, персоны, автопередача | `supabase/functions/content-pipeline/index.ts` (маршрут `/items/:id/variants`, `handoffToPublishing`, автоодобрение доверенных групп) |
 | Дистрибуция | `publish-intake` (планировщик слотов, стратегия группы), `publish-worker` (партиции), `_lib/publishers/threads.ts`, `publish-monitor` (обновление токенов, дайджест), `publish-metrics` (новая), `publish-accounts` (персоны, настройки, задания, Threads, «залить в группу»), `_lib/publishRunner.ts` (режим уведомлений) |
 | Интерфейс | `src/pages/Radar.tsx` + `src/lib/radarClient.ts` + `src/hooks/useRadar.ts`; `src/pages/Publishing.tsx` + `src/lib/publishingClient.ts` + `src/hooks/usePublishing.ts`; блок вариантов в `src/components/content-plan/ContentPipelinePanel.tsx` |
@@ -31,14 +31,32 @@ post_metrics ◀──── publish-metrics ◀──── publish_jobs ◀─
 ## M1. Радар
 
 Источники (`radar_sources`): аккаунт конкурента, хештег, запрос Ad Library, собственный аккаунт;
-интервал сбора по источнику. Сборщик — n8n «Radar · сборщик v2»: Apify (instagram-scraper,
-clockworks tiktok-scraper) с токеном в заголовке, ScrapeCreators для одиночных ссылок; результат
-уходит подписанным вызовом в `POST /radar/internal/ingest` (HMAC как у контент-конвейера, секрет
-`RADAR_CALLBACK_SECRET`, иначе `CONTENT_PIPELINE_CALLBACK_SECRET`). Нормализация полей любого
-провайдера — `normalizeIngestItem` (единый источник правды, покрыт тестами).
+интервал сбора по источнику.
+
+**Сборщик — прямой Apify из edge-функции** (секрет `APIFY_TOKEN`, чистая логика
+`_lib/radarCrawl.ts`): актор по площадке — `apify~instagram-scraper` (аккаунт → `details`:
+профиль с подписчиками и последними постами одним запуском; хештег → `posts`; ссылка на
+`/p/`, `/reel/`), `clockworks~tiktok-scraper` (`profiles` / `hashtags` / `postURLs`),
+`streamers~youtube-scraper` (канал `@ник` или `UC…` → shorts + videos; ссылка на видео).
+Запуск асинхронный: `POST /acts/{actor}/runs` → строка `radar_runs` со `status = running`
+и `external_id` (id запуска). Результат дособирается в `syncRuns()`: при `GET /radar`
+(обзор, до 6 запусков — поэтому «Обновить» и опрос страницы показывают посты, не дожидаясь
+крона) и по крону `radar-maintenance` (до 20). Успех → элементы датасета →
+`flattenApifyItems()` → `normalizeIngestItem()` → `radar_posts` + `radar_recompute_post()`,
+стоимость по тарифу актора → `radar_runs.cost_usd` и `usage_ledger` (`engine = apify`).
+Пустой результат → `failed` с текстом («аккаунт закрыт или ник неверный»), зависший запуск
+(> 20 минут) закрывается ошибкой. Один источник/ссылка не запускается второй раз, пока
+первый работает. Threads, Facebook и «Библиотека рекламы» прямым сборщиком пока не
+собираются — источник получает `last_error` с причиной.
+
+Запасной сборщик — n8n «Radar · сборщик v2» (`N8N_RADAR_WEBHOOK_URL`), используется только
+если `APIFY_TOKEN` не задан: результат уходит подписанным вызовом в
+`POST /radar/internal/ingest` (HMAC как у контент-конвейера, секрет `RADAR_CALLBACK_SECRET`,
+иначе `CONTENT_PIPELINE_CALLBACK_SECRET`). Нормализация полей любого провайдера —
+`normalizeIngestItem` (единый источник правды, покрыт тестами).
 
 Разбор делает сама edge-функция по крону `radar-maintenance` (каждые 15 минут, до 8 постов за
-тик): Whisper по `video_url` (https, не приватные хосты, ≤ 25 МБ) → LLM по JSON-схеме
+тик) и фоном после `GET /radar` (до 2 постов в очереди — так разбор ссылки не ждёт крона): Whisper по `video_url` (https, не приватные хосты, ≤ 25 МБ) → LLM по JSON-схеме
 (`hook`, `structure`, `triggers`, `niche`, `score`, `idea_title`, `idea_angle`,
 `script_outline`) через `_lib/aiProvider.ts` → `radar_recompute_post()`: engagement rate,
 скорость, оценка `radar_post_score()` (насыщение около 5 % ER, 200 взаимодействий/час, оценка
@@ -267,8 +285,8 @@ followers` по d3–d7, 5 % ≈ 100 → `idea_bank.outcome_score`.
 | Вызов | Кто | Что |
 |---|---|---|
 | `GET /radar?project_id` | JWT | источники, витрина, идеи, лучшие посты, группы, сборы |
-| `POST /radar/sources`, `/sources/:id/delete`, `/sources/:id/crawl` | JWT | источники; upsert сразу пинает сборщик |
-| `POST /radar/analyze-url` | JWT | одна ссылка через n8n (`mode: url`) |
+| `POST /radar/sources`, `/sources/:id/delete`, `/sources/:id/crawl` | JWT | источники; upsert сразу запускает сбор (`kicked`, `kick_error`, `run_id`); `crawl` отвечает 400 с причиной, если запуск невозможен, 402 — бюджет |
+| `POST /radar/analyze-url` | JWT | одна ссылка Instagram / TikTok / YouTube → запуск Apify (`mode: url`), 400 с причиной |
 | `POST /radar/posts/:id/analyze` | JWT | повторный разбор поста |
 | `POST /radar/ideas/:id`, `/ideas/:id/promote` | JWT | статус/правка идеи; идея → тема контент-плана |
 | `POST /radar/internal/ingest` | HMAC | посты от сборщика |
@@ -288,8 +306,9 @@ followers` по d3–d7, 5 % ≈ 100 → `idea_bank.outcome_score`.
 
 | Где | Переменная | Назначение |
 |---|---|---|
-| Edge secrets | `RADAR_CALLBACK_SECRET` | HMAC ingest радара (иначе используется `CONTENT_PIPELINE_CALLBACK_SECRET`) |
-| Edge secrets | `N8N_RADAR_WEBHOOK_URL`, `N8N_RADAR_WEBHOOK_KEY` | `https://n8n.zapoinov.com/webhook/radar-crawl` и `x-pipeline-key` |
+| Edge secrets | `APIFY_TOKEN` | прямой сборщик радара (Instagram / TikTok / YouTube); токен аккаунта Apify (`https://console.apify.com/settings/integrations`) |
+| Edge secrets | `RADAR_CALLBACK_SECRET` | HMAC ingest радара от n8n (иначе используется `CONTENT_PIPELINE_CALLBACK_SECRET`) — нужен только для запасного сборщика |
+| Edge secrets | `N8N_RADAR_WEBHOOK_URL`, `N8N_RADAR_WEBHOOK_KEY` | запасной n8n-сборщик, используется только без `APIFY_TOKEN` |
 | Edge secrets | `OPENAI_API_KEY` (или `LOVABLE_API_KEY`) | Whisper и LLM-разбор радара через `_lib/aiProvider.ts` |
 | Edge secrets | `THREADS_APP_ID`, `THREADS_APP_SECRET` | приложение Meta с Threads API (redirect URI: `…/functions/v1/publish-oauth/callback/threads`) |
 | Edge secrets | `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` | приложение TikTok for Developers (Login Kit + Content Posting API; redirect URI `…/callback/tiktok`; верифицировать домен видео) |
@@ -341,7 +360,7 @@ Google, Threads, `PUBLISH_TOKEN_KEY`) и n8n-импорты — отдельны
 | Симптом | Где смотреть | Действие |
 |---|---|---|
 | Посты не разбираются | `radar_posts.analysis_status = failed/skipped`, `error`; `radar_metrics.posts_unanalyzed` | `skipped` = бюджет; `failed` = ошибка провайдера (текст в `error`); `POST /radar/posts/:id/analyze` |
-| Источник не собирается | `radar_sources.last_crawled_at`, `last_error`; `radar_runs` | сборщик n8n включён? `N8N_RADAR_WEBHOOK_URL/KEY`; Apify-лимиты |
+| Источник не собирается | `radar_sources.last_error`; `radar_runs.status/error` (running дольше 20 мин → закроется ошибкой) | `APIFY_TOKEN` задан? (страница показывает баннер); Threads/Facebook/Ad Library прямым сборщиком не собираются; «аккаунт закрыт или ник неверный» — проверить ник; лимиты и баланс Apify (`console.apify.com`) |
 | Идея не стала темой | `idea_bank.status`, `content_item_id` | `radar_promote_idea` идемпотентна: повторный вызов вернёт ту же тему |
 | Вариант не рендерится | `content_plan_items.engine`, `personas.engine_default` | n8n v5 берёт только `heygen`; для `reels_faceless` нужен Reels-воркер |
 | Одобрено, но публикаций нет | `pipeline_runs.metadata.handoff`, `content_plan_items.publish_video_id`, `target_group_id` | без группы видео попадает только в библиотеку; группа `paused` не планируется |

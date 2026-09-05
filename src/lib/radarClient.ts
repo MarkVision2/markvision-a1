@@ -83,16 +83,31 @@ export interface Idea {
   created_at: string;
 }
 
+export type RadarRunStatus = "running" | "done" | "failed";
+
 export interface RadarRun {
   id: string;
   source_id: string | null;
   provider: string;
+  /** running — актор Apify ещё работает; done — посты загружены; failed — ошибка. */
+  status: RadarRunStatus;
+  /** crawl — сбор источника; url — разбор одной ссылки. */
+  mode: "crawl" | "url";
+  url: string | null;
+  actor: string | null;
   items: number;
   inserted: number;
   cost_usd: number;
   error: string | null;
   started_at: string;
   finished_at: string | null;
+}
+
+/** Что настроено на сервере: прямой сборщик Apify, запасной n8n, AI-разбор. */
+export interface RadarCrawlerInfo {
+  direct: boolean;
+  n8n: boolean;
+  ai: boolean;
 }
 
 export interface RadarMetrics {
@@ -118,6 +133,7 @@ export interface RadarOverview {
   posts: RadarPost[];
   groups: RadarGroup[];
   runs: RadarRun[];
+  crawler?: RadarCrawlerInfo | null;
 }
 
 export interface UpsertSourceInput {
@@ -171,6 +187,12 @@ export const ANALYSIS_STATUS_META: Record<RadarAnalysisStatus, { label: string; 
   done: { label: "Разобран", cls: "bg-emerald-500/10 text-emerald-700" },
   failed: { label: "Ошибка", cls: "bg-destructive/10 text-destructive" },
   skipped: { label: "Пропущен", cls: "bg-muted text-muted-foreground" },
+};
+
+export const RUN_STATUS_META: Record<RadarRunStatus, { label: string; cls: string }> = {
+  running: { label: "Собираем", cls: "bg-amber-500/10 text-amber-700" },
+  done: { label: "Готово", cls: "bg-emerald-500/10 text-emerald-700" },
+  failed: { label: "Ошибка", cls: "bg-destructive/10 text-destructive" },
 };
 
 export const IDEA_STATUS_META: Record<IdeaStatus, { label: string; cls: string }> = {
@@ -244,11 +266,11 @@ export const radarApi = {
   overview: (projectId: string) =>
     call<RadarOverview>(`radar?project_id=${encodeURIComponent(projectId)}`, "GET"),
   upsertSource: (input: UpsertSourceInput) =>
-    call<{ source: RadarSource; kicked: boolean }>("radar/sources", "POST", { ...input }),
+    call<{ source: RadarSource; kicked: boolean; kick_error?: string | null; run_id?: string | null }>("radar/sources", "POST", { ...input }),
   deleteSource: (id: string) => call<{ ok: true }>(`radar/sources/${id}/delete`, "POST", {}),
-  crawlSource: (id: string) => call<{ kicked: boolean }>(`radar/sources/${id}/crawl`, "POST", {}),
+  crawlSource: (id: string) => call<{ kicked: boolean; run_id?: string | null }>(`radar/sources/${id}/crawl`, "POST", {}),
   analyzeUrl: (projectId: string, url: string) =>
-    call<{ kicked: boolean; message: string }>("radar/analyze-url", "POST", { project_id: projectId, url }),
+    call<{ kicked: boolean; run_id?: string | null; message: string }>("radar/analyze-url", "POST", { project_id: projectId, url }),
   analyzePost: (id: string) =>
     call<{ ok: boolean; idea_id: string | null; error: string | null }>(`radar/posts/${id}/analyze`, "POST", {}),
   updateIdea: (id: string, patch: IdeaPatch) => call<{ idea: Idea }>(`radar/ideas/${id}`, "POST", { ...patch }),
