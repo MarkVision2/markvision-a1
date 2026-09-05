@@ -1,7 +1,7 @@
 {
-  "git_sha": "bcea3aa",
-  "git_sha_full": "bcea3aa817dc54be8fe26385c76cef04ef7caa16",
-  "updated_at": "2026-09-05T05:34:00Z",
-  "label": "Улучшил дизайн публикации",
+  "git_sha": "9813d06",
+  "git_sha_full": "9813d06019c1228ad9ffe459b76bc71b1df22e22",
+  "updated_at": "2026-09-05T09:40:17+04:00",
+  "label": "fix(publishing): аудит готовности — заливка >45 МБ, повтор/отмена заданий, время старта [vercel-deploy]",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
