@@ -60,8 +60,8 @@ export function BulkAccountsBar({ pub, selected, onClear }: Props) {
 
   const commitLimit = () => {
     const v = Number(limit);
-    if (!Number.isInteger(v) || v < 0) {
-      toast.error("Лимит — целое число от 0");
+    if (!Number.isInteger(v) || v < 1 || v > 200) {
+      toast.error("Лимит — целое число от 1 до 200; чтобы не публиковать, выключите аккаунты");
       return;
     }
     void applyAll(`Лимит ${v}/день`, { daily_limit: v }, "limit");

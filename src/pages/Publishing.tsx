@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { AlertCircle, ChevronDown, ExternalLink, Instagram, KeyRound, Loader2, PauseCircle, Plus, RefreshCw, Search, Send, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
@@ -164,7 +164,8 @@ export default function Publishing() {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <Button size="sm" onClick={() => setDialog("video")} disabled={disabled || !projectId}>
+              {/* Пока аккаунты грузятся, композер открылся бы с пустым выбором. */}
+              <Button size="sm" onClick={() => setDialog("video")} disabled={disabled || pub.loading || !projectId}>
                 <Upload className="mr-1.5 h-4 w-4" /> Залить видео
               </Button>
             </>
@@ -795,14 +796,19 @@ function SettingsTab({ pub }: { pub: UsePublishing }) {
   const [monthly, setMonthly] = useState("");
   const [paused, setPaused] = useState(false);
 
+  // Форму заполняем с сервера один раз на проект: любое действие на странице
+  // перечитывает settings, и правка бюджета, ещё не сохранённая, пропадала бы.
+  const seededFor = useRef<string | null>(null);
   useEffect(() => {
-    if (!s) return;
+    if (!s) { seededFor.current = null; return; }
+    if (seededFor.current === pub.projectId) return;
+    seededFor.current = pub.projectId;
     setNotify(s.settings.notify_mode);
     setChat(s.settings.digest_chat_id ?? "");
     setDaily(String(s.budget.daily_usd));
     setMonthly(String(s.budget.monthly_usd));
     setPaused(Boolean(s.settings.paused));
-  }, [s]);
+  }, [s, pub.projectId]);
 
   if (!s) return <EmptyState text="Настройки не загружены — выберите проект или обновите страницу." />;
 

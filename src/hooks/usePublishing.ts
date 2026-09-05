@@ -43,23 +43,37 @@ export function usePublishing() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [jobsLoading, setJobsLoading] = useState(false);
   const alive = useRef(true);
   const firstJobsEffect = useRef(true);
+  // Номера запросов: медленный ответ по прошлому проекту или прошлому фильтру
+  // не должен перетирать свежие данные (alive один на все запросы и этого не ловит).
+  const loadSeq = useRef(0);
+  const jobsSeq = useRef(0);
 
   const fetchJobs = useCallback(
     async (status: PublishJobStatus | "all" = jobsStatus, limit: number = jobsLimit, videoId: string | null = jobsVideo) => {
       if (!projectId) return;
-      const r = await publishingApi.jobsList(projectId, {
-        limit,
-        ...(status === "all" ? {} : { status }),
-        ...(videoId ? { video_id: videoId } : {}),
-      });
-      if (alive.current) setJobs(r.jobs ?? []);
+      const seq = ++jobsSeq.current;
+      setJobsLoading(true);
+      try {
+        const r = await publishingApi.jobsList(projectId, {
+          limit,
+          ...(status === "all" ? {} : { status }),
+          ...(videoId ? { video_id: videoId } : {}),
+        });
+        if (alive.current && seq === jobsSeq.current) setJobs(r.jobs ?? []);
+      } finally {
+        if (alive.current && seq === jobsSeq.current) setJobsLoading(false);
+      }
     },
     [projectId, jobsStatus, jobsLimit, jobsVideo],
   );
 
-  const refetch = useCallback(async () => {
+  // jobsOverride — фильтры очереди для этого чтения (смена проекта сбрасывает их,
+  // а замыкание fetchJobs ещё помнит старые). Без аргумента — текущие фильтры;
+  // не-массив игнорируем: refetch иногда висит прямо на onClick и получает событие.
+  const refetch = useCallback(async (jobsOverride?: unknown) => {
     if (!projectId) {
       setAccounts([]);
       setGroups([]);
@@ -70,6 +84,7 @@ export function usePublishing() {
       return;
     }
     setLoading(true);
+    const seq = ++loadSeq.current;
     try {
       // Каждый источник — независимо: ошибка одного не должна прятать остальные.
       const [a, g, p, s, m] = await Promise.allSettled([
@@ -79,7 +94,7 @@ export function usePublishing() {
         publishingApi.settingsGet(projectId),
         publishingApi.metrics(projectId),
       ]);
-      if (!alive.current) return;
+      if (!alive.current || seq !== loadSeq.current) return;
       // Отказ источника обнуляет его данные: иначе после смены проекта на экране
       // оставалась сеть аккаунтов прошлого проекта под баннером ошибки.
       setAccounts(a.status === "fulfilled" ? a.value.accounts ?? [] : []);
@@ -89,25 +104,34 @@ export function usePublishing() {
       setMetrics(m.status === "fulfilled" ? m.value : null);
       const failed = [a, g, p, s, m].find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
       setError(failed ? (failed.reason instanceof Error ? failed.reason.message : "Ошибка загрузки") : null);
-      await fetchJobs().catch(() => undefined);
+      const jobsArgs = Array.isArray(jobsOverride)
+        ? (jobsOverride as [PublishJobStatus | "all", number, string | null])
+        : ([] as unknown as [PublishJobStatus | "all", number, string | null]);
+      await fetchJobs(...jobsArgs).catch((e) => { if (alive.current) setError(e instanceof Error ? e.message : "Ошибка загрузки заданий"); });
     } finally {
-      if (alive.current) setLoading(false);
+      if (alive.current && seq === loadSeq.current) setLoading(false);
     }
   }, [projectId, fetchJobs]);
 
   useEffect(() => {
     alive.current = true;
-    void refetch();
+    // Фильтры очереди — от прошлого проекта: его видео и статус к новому не относятся.
+    setJobsStatusRaw("all");
+    setJobsVideoRaw(null);
+    setJobsLimit(JOBS_PAGE);
+    void refetch(["all", JOBS_PAGE, null]);
     return () => {
       alive.current = false;
     };
   }, [projectId]);
 
   // Смена фильтра заданий — перечитываем только задания (первый рендер уже покрыт refetch).
+  // Старые строки убираем сразу: иначе под новым чипом видна прошлая выборка.
   useEffect(() => {
     if (firstJobsEffect.current) { firstJobsEffect.current = false; return; }
     if (!projectId) return;
-    void fetchJobs(jobsStatus, jobsLimit, jobsVideo).catch(() => undefined);
+    setJobs([]);
+    void fetchJobs(jobsStatus, jobsLimit, jobsVideo).catch((e) => { if (alive.current) setError(e instanceof Error ? e.message : "Ошибка загрузки заданий"); });
   }, [jobsStatus, jobsLimit, jobsVideo]);
 
   // Новый фильтр — снова первая страница, иначе подгруженный хвост прилипает к другому статусу.
@@ -146,6 +170,7 @@ export function usePublishing() {
     /** Есть ли смысл в «Показать ещё»: выборка упёрлась в лимит и потолок сервера не достигнут. */
     jobsHasMore: jobs.length >= jobsLimit && jobsLimit < JOBS_MAX,
     loadMoreJobs,
+    jobsLoading,
     loading,
     error,
     busy,

@@ -60,6 +60,16 @@ interface MetaPage {
   instagram_business_account?: IgBusinessAccount;
 }
 
+/** Пояс из списка IANA: иначе опечатка всплывёт не здесь, а в AT TIME ZONE при планировании слотов. */
+function validTimeZone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function metaPages(token: string): Promise<{ pages: MetaPage[]; error?: string }> {
   // Токен кодируется: символы вроде «|» или пробел в сыром виде ломают разбор
   // на стороне Graph («Cannot parse access token»).
@@ -316,7 +326,11 @@ Deno.serve(async (req) => {
         if (!p.ok) return json({ error: "персона не из этого проекта" }, 400);
         patch.persona_id = p.value;
       }
-      if (body?.timezone === null || typeof body?.timezone === "string") patch.timezone = body.timezone?.trim() || null;
+      if (body?.timezone === null || typeof body?.timezone === "string") {
+        const tz = body.timezone?.trim() || null;
+        if (tz && !validTimeZone(tz)) return json({ error: `неизвестный часовой пояс: ${tz}` }, 400);
+        patch.timezone = tz;
+      }
       if (body?.window_start === null || typeof body?.window_start === "string") patch.window_start = body.window_start || null;
       if (body?.window_end === null || typeof body?.window_end === "string") patch.window_end = body.window_end || null;
       if (typeof body?.ramp_enabled === "boolean") patch.ramp_enabled = body.ramp_enabled;
@@ -391,8 +405,11 @@ Deno.serve(async (req) => {
         row.review_mode = body.review_mode;
       }
       // Пустое значение — «стереть»: часовой пояс и окно возвращаются к умолчаниям колонки.
-      if (typeof body?.timezone === "string") row.timezone = body.timezone.trim() || "Asia/Almaty";
-      else if (body?.timezone === null) row.timezone = "Asia/Almaty";
+      if (typeof body?.timezone === "string") {
+        const tz = body.timezone.trim() || "Asia/Almaty";
+        if (!validTimeZone(tz)) return json({ error: `неизвестный часовой пояс: ${tz}` }, 400);
+        row.timezone = tz;
+      } else if (body?.timezone === null) row.timezone = "Asia/Almaty";
       const timeRe = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
       for (const k of ["window_start", "window_end"] as const) {
         if (typeof body?.[k] === "string" && body[k]) {
@@ -728,9 +745,9 @@ Deno.serve(async (req) => {
       const jobId = String(body?.job_id ?? "");
       if (!jobId) return json({ error: "job_id обязателен" }, 400);
       const { data: job } = await admin.from("publish_jobs")
-        .select("id, status, account_id, locked_at").eq("id", jobId).eq("project_id", projectId).maybeSingle();
+        .select("id, status, account_id, locked_at, container_id, error_code").eq("id", jobId).eq("project_id", projectId).maybeSingle();
       if (!job) return json({ error: "задание не найдено" }, 404);
-      const j = job as { id: string; status: string; account_id: string; locked_at: string | null };
+      const j = job as { id: string; status: string; account_id: string; locked_at: string | null; container_id: string | null; error_code: string | null };
       // processing без живой аренды — воркер умер; claim освободит его через 10 минут,
       // а оператору нечего было нажать. Считаем такое зависшим и даём повтор/отмену.
       const stale = j.status === "processing" && (!j.locked_at || Date.now() - Date.parse(j.locked_at) > 10 * 60_000);
@@ -740,14 +757,21 @@ Deno.serve(async (req) => {
         if (!["failed", "cancelled", "manual_review", "retry"].includes(j.status) && !stale) {
           return json({ error: `задание в статусе «${j.status}» повторять нечего` }, 400);
         }
+        // retry с живым контейнером и без ошибки — это не отказ, а ожидание обработки
+        // видео площадкой (раннер опрашивает контейнер раз в минуту). Сброс контейнера
+        // здесь = повторная заливка = два поста.
+        if (j.status === "retry" && j.container_id && !j.error_code) {
+          return json({ error: "площадка ещё обрабатывает загруженное видео — задание вернётся само; повторять не нужно" }, 409);
+        }
         const now = new Date().toISOString();
         const { error } = await admin.from("publish_jobs").update({
           status: "pending",
           // Новый заход с чистого листа: счётчик попыток и контейнер площадки
           // (мёртвый контейнер повторно опрашивать бессмысленно), слот — сейчас,
-          // иначе claim ждал бы старого scheduled_at.
+          // иначе claim ждал бы старого scheduled_at. Зависший processing — исключение:
+          // его контейнер раннер добьёт, а не зальёт видео снова.
           attempts: 0,
-          container_id: null,
+          container_id: stale ? j.container_id : null,
           scheduled_at: now,
           next_attempt_at: now,
           locked_at: null,
