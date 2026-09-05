@@ -71,14 +71,14 @@ server.registerTool("markvision_list_groups", {
 
 server.registerTool("markvision_upload_media", {
   title: "Загрузить видео",
-  description: "Загружает видеофайл с диска в хранилище MarkVision и возвращает file_url для markvision_create_publication. До 2 ГБ; mp4/mov.",
+  description: "Загружает видеофайл с диска в хранилище MarkVision и возвращает file_url для markvision_create_publication. До 2 ГБ; mp4/mov; длительность 3–900 секунд (короче площадки не принимают).",
   inputSchema: { file_path: z.string().describe("Абсолютный путь к файлу на этой машине.") },
 }, ({ file_path }) => run(() => client.uploadFile(file_path)));
 
 server.registerTool("markvision_create_publication", {
   title: "Поставить публикацию",
   description:
-    "Принимает готовое видео по ссылке и ставит задания публикации по аккаунтам. " +
+    "Принимает готовое видео по ссылке (mp4/mov, 3–900 секунд, до 1 ГБ) и ставит задания публикации по аккаунтам. " +
     "Если не передать ни group_id, ни account_ids — задания не создаются, только принимается видео (потом markvision_create_jobs). " +
     "Возвращает publication id и созданные задания с временем.",
   inputSchema: {
@@ -87,7 +87,7 @@ server.registerTool("markvision_create_publication", {
     caption: z.string().optional().describe("Подпись к посту. Хэштеги передаются отдельно."),
     hashtags: z.array(z.string()).optional().describe("Без решётки или с ней — всё равно."),
     caption_variants: z.array(z.string()).optional().describe("Варианты подписи — раздаются аккаунтам по кругу."),
-    duration_sec: z.number().positive().optional(),
+    duration_sec: z.number().min(3).max(900).optional().describe("Длительность в секундах, если известна: 3–900."),
     ...targetShape,
   },
 }, (input) => run(() => client.createPublication(input)));

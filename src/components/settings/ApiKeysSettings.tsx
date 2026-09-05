@@ -285,6 +285,7 @@ export function ApiKeysSettings() {
               <li>Заголовок <code>Authorization: Bearer mv_live_…</code> или <code>x-api-key</code>.</li>
               <li>Проект берётся из ключа, чужие объекты недоступны. Лимит 120 запросов в минуту.</li>
               <li>Права: чтение, публикация, управление. Отзыв ключа действует сразу.</li>
+              <li>Видео: mp4/mov, 3–900 секунд, до 2 ГБ при загрузке через API и до 1 ГБ по внешней ссылке.</li>
             </ul>
             <a
               href="https://github.com/MarkVision2/markvision-a1/blob/main/docs/PUBLIC-API.md"

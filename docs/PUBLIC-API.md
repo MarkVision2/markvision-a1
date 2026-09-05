@@ -120,8 +120,10 @@ curl -X POST "$API/publications/distribute" -H "Authorization: Bearer $KEY" -H "
 - `caption_variants` раздаются аккаунтам по кругу, хэштеги подклеиваются к подписи.
 - Ответ: `{ ok, video_id, caption_preview, created, skipped, accounts: [{ id, account_name, scheduled_at }] }`.
 
-Проверка входа: `file_url` — https; по ссылке должно лежать видео (`content-type: video/*`)
-не больше 1 ГБ; `mode` — из списка; `group_id`/`account_ids` — uuid; `start_at` — ISO 8601.
+Проверка входа: `file_url` — https на `.mp4/.mov/.m4v`; по ссылке должно лежать видео
+(`content-type: video/*`) не больше 1 ГБ; `duration_sec`, если передан, — от 3 до 900 секунд
+(короче площадки не принимают, ответ `422`); `mode` — из списка; `group_id`/`account_ids` — uuid;
+`start_at` — ISO 8601. Чужая группа или аккаунт — `404` до постановки.
 
 ### Управление аккаунтами, группами и настройками
 
