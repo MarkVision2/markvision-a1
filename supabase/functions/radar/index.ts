@@ -286,7 +286,12 @@ async function startRun(db: SupabaseClient, t: RunTarget): Promise<KickResult> {
       `/acts/${spec.actor}/runs?timeout=${APIFY_RUN_TIMEOUT_SEC}`,
       { method: "POST", body: JSON.stringify(spec.input) },
     );
-    const { data: run } = await db.from("radar_runs").insert({ ...base, external_id: res.data.id, status: "running" }).select("id").maybeSingle();
+    const { data: run, error: runErr } = await db.from("radar_runs").insert({ ...base, external_id: res.data.id, status: "running" }).select("id").maybeSingle();
+    if (runErr || !run) {
+      // Актор уже запущен и тарифицируется, а следить за ним некому (syncRuns ищет по строке) — гасим.
+      await apify(`/actor-runs/${res.data.id}/abort`, { method: "POST" }).catch(() => undefined);
+      throw new Error(`запуск не записан в radar_runs: ${runErr?.message ?? "нет строки"}`);
+    }
     if (t.sourceId) await db.from("radar_sources").update({ last_crawled_at: now, last_error: null }).eq("id", t.sourceId);
     return { kicked: true, run_id: (run as { id: string } | null)?.id };
   } catch (e) {

@@ -4,7 +4,7 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { AccountWindowDialog, validateWindow } from "@/components/publishing/AccountWindowDialog";
+import { AccountWindowDialog, isValidTimeZone, validateWindow } from "@/components/publishing/AccountWindowDialog";
 import type { PublishAccount, PublishGroup } from "@/lib/publishingClient";
 
 const account = (p: Partial<PublishAccount>): PublishAccount => ({
@@ -61,5 +61,14 @@ describe("AccountWindowDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: /Сбросить окно/ }));
     fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
     await waitFor(() => expect(onSave).toHaveBeenCalledWith({ timezone: "Asia/Almaty", window_start: null, window_end: null }));
+  });
+});
+
+describe("isValidTimeZone", () => {
+  it("IANA-идентификаторы проходят, опечатки — нет", () => {
+    expect(isValidTimeZone("Asia/Almaty")).toBe(true);
+    expect(isValidTimeZone("UTC")).toBe(true);
+    expect(isValidTimeZone("Asia/Almata")).toBe(false);
+    expect(isValidTimeZone("Москва")).toBe(false);
   });
 });

@@ -260,8 +260,10 @@ export function UploadPublishDialog({ open, onClose, pub, video = null }: { open
     try {
       const r = await pub.publishVideo({
         ...(video ? { video_id: video.id, repost: true } : { file_url: url }),
-        title: title.trim() || undefined,
-        caption: caption.trim() || undefined,
+        // Повтор: пустая строка тоже уходит — так оператор может стереть текст карточки
+        // (сервер пишет "" как null); при новой заливке пустое поле просто не шлём.
+        title: repost ? title.trim() : title.trim() || undefined,
+        caption: repost ? caption.trim() : caption.trim() || undefined,
         hashtags: splitCsv(hashtags).map((h) => h.replace(/^#/, "")),
         mode,
         account_ids: preview.eligible.map((a) => a.id),
@@ -269,7 +271,10 @@ export function UploadPublishDialog({ open, onClose, pub, video = null }: { open
         ...(startIso ? { start_at: startIso } : {}),
       });
       if (!r.created) {
-        const m = `Заданий не создано${r.reason ? `: ${r.reason}` : ""}`;
+        // Повтор: created = 0 без причины значит, что во всех аккаунтах ролик уже стоит в очереди.
+        const m = repost && r.skipped && !r.reason
+          ? `Новых заданий нет — во всех ${r.skipped} аккаунтах этот ролик уже стоит в очереди`
+          : `Заданий не создано${r.reason ? `: ${r.reason}` : ""}`;
         setErr(m);
         toast.error(m);
         return;

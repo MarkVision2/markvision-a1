@@ -180,10 +180,11 @@ async function groupUpsert(req: Request, deps: Deps, ctx: ApiKeyContext, id: str
   const body = pick(await readJson(req), GROUP_FIELDS);
   if (id) {
     // Частичная правка: недостающие поля берём из текущей группы.
-    const { data } = await admin.from("publish_account_groups").select("name, account_ids").eq("id", id).maybeSingle();
-    const cur = (data ?? {}) as { name?: string; account_ids?: string[] };
+    // platform тоже: group_upsert пишет её всегда, без неё частичная правка обнулила бы площадку группы.
+    const { data } = await admin.from("publish_account_groups").select("name, account_ids, platform").eq("id", id).maybeSingle();
+    const cur = (data ?? {}) as { name?: string; account_ids?: string[]; platform?: string | null };
     return passthrough(await accountsAction(deps, ctx, "group_upsert", {
-      id, name: cur.name, account_ids: cur.account_ids ?? [], ...body,
+      id, name: cur.name, account_ids: cur.account_ids ?? [], platform: cur.platform ?? null, ...body,
     }));
   }
   if (typeof body.name !== "string" || !body.name.trim()) return json({ error: "name обязателен" }, 400);
@@ -408,7 +409,14 @@ async function dispatch(req: Request, deps: Deps, ctx: ApiKeyContext, route: Api
 export async function handle(req: Request, deps: Deps): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
-  const route = matchRoute(req.method, new URL(req.url).pathname);
+  // Кривое percent-кодирование в пути бросает URIError из decodeURIComponent —
+  // без этого ответ был бы текстовым 500 без CORS.
+  let route: ReturnType<typeof matchRoute>;
+  try {
+    route = matchRoute(req.method, new URL(req.url).pathname);
+  } catch {
+    return json({ error: "некорректный путь запроса" }, 400);
+  }
   if (!route) return json({ error: "маршрут не найден — см. docs/PUBLIC-API.md" }, 404);
 
   const auth = await resolveApiKey(req, deps.admin, deps.now());
