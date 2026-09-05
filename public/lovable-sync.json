@@ -1,7 +1,7 @@
 {
-  "git_sha": "b577b65",
-  "git_sha_full": "b577b6590c0fb7095ddf2b8771880ccf97991163",
-  "updated_at": "2026-09-05T16:06:36+04:00",
-  "label": "Merge: отметка «использован» у API-ключа пишется с ожиданием (#267)",
+  "git_sha": "e7f0176",
+  "git_sha_full": "e7f0176effc0ee060d080a0f1e5a0547aba9a0d8",
+  "updated_at": "2026-09-05T16:09:45+04:00",
+  "label": "[vercel-deploy] Merge: ограничение длительности видео в MCP, документации и настройках (#268)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
