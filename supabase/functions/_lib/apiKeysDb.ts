@@ -31,7 +31,9 @@ export async function resolveApiKey(req: Request, admin: SupabaseClient, now = D
   if (row.revoked_at) return { ok: false, status: 401, error: "API-ключ отозван" };
   if (row.expires_at && Date.parse(row.expires_at) <= now) return { ok: false, status: 401, error: "срок API-ключа истёк" };
 
-  admin.from("api_keys").update({ last_used_at: new Date(now).toISOString() }).eq("id", row.id)
+  // Ждём запись: edge-runtime может оборвать фоновые промисы после ответа,
+  // и «использован» в интерфейсе останется пустым. Ошибка записи ключ не блокирует.
+  await admin.from("api_keys").update({ last_used_at: new Date(now).toISOString() }).eq("id", row.id)
     .then(() => undefined, () => undefined);
 
   return {
