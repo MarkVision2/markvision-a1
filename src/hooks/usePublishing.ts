@@ -22,6 +22,10 @@ import {
  * персоны, настройки, метрики и задания. Мутации оборачивают клиент и после
  * успеха перечитывают данные; `busy` — имя действия, которое сейчас идёт.
  */
+const JOBS_PAGE = 200;
+/** Потолок publish-accounts jobs_list. */
+const JOBS_MAX = 500;
+
 export function usePublishing() {
   const { activeId: projectId } = useProjectsStore();
 
@@ -31,7 +35,11 @@ export function usePublishing() {
   const [settings, setSettings] = useState<PublishSettings | null>(null);
   const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
   const [jobs, setJobs] = useState<PublishJob[]>([]);
-  const [jobsStatus, setJobsStatus] = useState<PublishJobStatus | "all">("all");
+  const [jobsStatus, setJobsStatusRaw] = useState<PublishJobStatus | "all">("all");
+  // Страница заданий: сервер отдаёт до 500, начинаем с 200 и подгружаем по кнопке.
+  const [jobsLimit, setJobsLimit] = useState(JOBS_PAGE);
+  // Фильтр «задания этого видео» — из вкладки «Видео».
+  const [jobsVideo, setJobsVideoRaw] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -39,12 +47,16 @@ export function usePublishing() {
   const firstJobsEffect = useRef(true);
 
   const fetchJobs = useCallback(
-    async (status: PublishJobStatus | "all" = jobsStatus) => {
+    async (status: PublishJobStatus | "all" = jobsStatus, limit: number = jobsLimit, videoId: string | null = jobsVideo) => {
       if (!projectId) return;
-      const r = await publishingApi.jobsList(projectId, status === "all" ? { limit: 200 } : { status, limit: 200 });
+      const r = await publishingApi.jobsList(projectId, {
+        limit,
+        ...(status === "all" ? {} : { status }),
+        ...(videoId ? { video_id: videoId } : {}),
+      });
       if (alive.current) setJobs(r.jobs ?? []);
     },
-    [projectId, jobsStatus],
+    [projectId, jobsStatus, jobsLimit, jobsVideo],
   );
 
   const refetch = useCallback(async () => {
@@ -95,8 +107,13 @@ export function usePublishing() {
   useEffect(() => {
     if (firstJobsEffect.current) { firstJobsEffect.current = false; return; }
     if (!projectId) return;
-    void fetchJobs(jobsStatus).catch(() => undefined);
-  }, [jobsStatus]);
+    void fetchJobs(jobsStatus, jobsLimit, jobsVideo).catch(() => undefined);
+  }, [jobsStatus, jobsLimit, jobsVideo]);
+
+  // Новый фильтр — снова первая страница, иначе подгруженный хвост прилипает к другому статусу.
+  const setJobsStatus = useCallback((s: PublishJobStatus | "all") => { setJobsStatusRaw(s); setJobsLimit(JOBS_PAGE); }, []);
+  const setJobsVideo = useCallback((id: string | null) => { setJobsVideoRaw(id); setJobsLimit(JOBS_PAGE); }, []);
+  const loadMoreJobs = useCallback(() => setJobsLimit((l) => Math.min(l + JOBS_PAGE, JOBS_MAX)), []);
 
   const act = useCallback(
     async <T>(name: string, fn: (pid: string) => Promise<T>, reload = true): Promise<T> => {
@@ -123,6 +140,12 @@ export function usePublishing() {
     jobs,
     jobsStatus,
     setJobsStatus,
+    jobsLimit,
+    jobsVideo,
+    setJobsVideo,
+    /** Есть ли смысл в «Показать ещё»: выборка упёрлась в лимит и потолок сервера не достигнут. */
+    jobsHasMore: jobs.length >= jobsLimit && jobsLimit < JOBS_MAX,
+    loadMoreJobs,
     loading,
     error,
     busy,

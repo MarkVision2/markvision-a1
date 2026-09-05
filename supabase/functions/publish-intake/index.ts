@@ -164,11 +164,21 @@ async function createJobs(
 
   if (!rows.length) return { created: 0, skipped: 0, accounts: [] };
 
-  // ignoreDuplicates — повторный вызов не породит второй пост в тот же аккаунт
-  // (уникальность (video_id, account_id) в схеме).
-  const { data, error } = await admin.from("publish_jobs")
-    .upsert(rows, { onConflict: "video_id,account_id", ignoreDuplicates: true })
-    .select("id");
+  // Повторный вызов не породит второй пост в тот же аккаунт: у аккаунта уже есть
+  // задание с этим видео (кроме отменённого) — пропускаем. Раньше это держала
+  // полная уникальность (video_id, account_id); теперь она частичная (только
+  // активные задания), чтобы «Опубликовать ещё» из библиотеки видео работало.
+  const { data: existing, error: exErr } = await admin.from("publish_jobs")
+    .select("account_id")
+    .eq("video_id", video.id)
+    .neq("status", "cancelled")
+    .in("account_id", rows.map((r) => r.account_id));
+  if (exErr) throw new Error(exErr.message);
+  const taken = new Set((existing ?? []).map((r) => (r as { account_id: string }).account_id));
+  const fresh = rows.filter((r) => !taken.has(r.account_id));
+  const { data, error } = fresh.length
+    ? await admin.from("publish_jobs").insert(fresh).select("id")
+    : { data: [] as { id: string }[], error: null };
   if (error) throw new Error(error.message);
 
   const created = (data ?? []).length;

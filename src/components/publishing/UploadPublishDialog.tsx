@@ -26,7 +26,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { AccountChips } from "@/components/publishing/AccountChips";
 import { PostPreview, type PreviewContent } from "@/components/publishing/PostPreview";
 import type { UsePublishing } from "@/hooks/usePublishing";
-import { PLATFORM_META, PUBLISH_MODE_META, type PublishGroup, type PublishMode, type PublishStrategy } from "@/lib/publishingClient";
+import { PLATFORM_META, PUBLISH_MODE_META, type PublishGroup, type PublishMode, type PublishStrategy, type PublishVideo } from "@/lib/publishingClient";
 import { DEFAULT_PER_HOUR, almatyLocalNow, almatyLocalToIso, formatStep, isGroupMember, isPublishable, planPreview } from "@/lib/publishingSelection";
 import { ACCEPT_VIDEO, formatBytes, uploadPublishVideo, validateVideoFile } from "@/lib/publishingUpload";
 import { cn } from "@/lib/utils";
@@ -56,7 +56,13 @@ function fmtTime(d: Date): string {
   return d.toLocaleString("ru-RU", { timeZone: "Asia/Almaty", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
-export function UploadPublishDialog({ open, onClose, pub }: { open: boolean; onClose: () => void; pub: UsePublishing }) {
+/**
+ * `video` — режим «Опубликовать ещё» из библиотеки: файл уже в publish_videos,
+ * заливку и проверку ссылки пропускаем, текст подставляем из карточки, на сервер
+ * уходит video_id + repost (второе задание в аккаунт, где ролик уже выходил).
+ */
+export function UploadPublishDialog({ open, onClose, pub, video = null }: { open: boolean; onClose: () => void; pub: UsePublishing; video?: PublishVideo | null }) {
+  const repost = video != null;
   const [source, setSource] = useState<"file" | "url">("file");
   const [file, setFile] = useState<File | null>(null);
   const [fileUrl, setFileUrl] = useState("");
@@ -83,9 +89,10 @@ export function UploadPublishDialog({ open, onClose, pub }: { open: boolean; onC
 
   useEffect(() => {
     if (!open) return;
-    setSource("file");
+    // Повтор: ссылка ролика из библиотеки — предпросмотр работает как с готовой ссылкой.
+    setSource(video ? "url" : "file");
     setFile(null);
-    setFileUrl("");
+    setFileUrl(video?.file_url ?? "");
     setUploadedUrl(null);
     setProgress(null);
     setDragging(false);
@@ -93,9 +100,9 @@ export function UploadPublishDialog({ open, onClose, pub }: { open: boolean; onC
     // По умолчанию — все аккаунты, которые планировщик реально возьмёт.
     setSelected(new Set(pub.accounts.filter(isPublishable).map((a) => a.id)));
     setGroupId(NO_GROUP);
-    setTitle("");
-    setCaption("");
-    setHashtags("");
+    setTitle(video?.title ?? "");
+    setCaption(video?.base_caption ?? "");
+    setHashtags((video?.hashtags ?? []).join(", "));
     setMode("drip");
     setStartAt("");
     setErr(null);
@@ -204,7 +211,9 @@ export function UploadPublishDialog({ open, onClose, pub }: { open: boolean; onC
   /* ── отправка ── */
 
   const submit = async () => {
-    if (source === "url") {
+    if (repost) {
+      // Ролик уже в библиотеке — файл не проверяем и не заливаем.
+    } else if (source === "url") {
       const bad = validateFileUrl(fileUrl);
       if (bad) {
         setErr(bad);
@@ -245,12 +254,12 @@ export function UploadPublishDialog({ open, onClose, pub }: { open: boolean; onC
     }
 
     // Файл заливаем прямо здесь, если это ещё не сделано вручную.
-    const url = source === "url" ? fileUrl.trim() : uploadedUrl ?? (await startUpload());
+    const url = video ? video.file_url : source === "url" ? fileUrl.trim() : uploadedUrl ?? (await startUpload());
     if (!url) return;
 
     try {
       const r = await pub.publishVideo({
-        file_url: url,
+        ...(video ? { video_id: video.id, repost: true } : { file_url: url }),
         title: title.trim() || undefined,
         caption: caption.trim() || undefined,
         hashtags: splitCsv(hashtags).map((h) => h.replace(/^#/, "")),
@@ -279,9 +288,11 @@ export function UploadPublishDialog({ open, onClose, pub }: { open: boolean; onC
     <Dialog open={open} onOpenChange={(v) => !v && !busy && onClose()}>
       <DialogContent className="publishing-studio flex h-[92vh] max-w-7xl flex-col gap-0 overflow-hidden border-border/80 bg-background/95 p-0 shadow-elevated backdrop-blur-2xl sm:rounded-2xl">
         <DialogHeader className="border-b border-border/70 bg-card/30 px-7 py-5">
-          <DialogTitle className="text-xl">Залить видео</DialogTitle>
+          <DialogTitle className="text-xl">{repost ? "Опубликовать ещё раз" : "Залить видео"}</DialogTitle>
           <DialogDescription className="mt-1">
-            Один ролик → пачка аккаунтов. Справа — как пост ляжет в ленту каждой площадки.
+            {repost
+              ? "Ролик из библиотеки → пачка аккаунтов, в том числе те, где он уже выходил. Правки текста сохранятся в карточке видео."
+              : "Один ролик → пачка аккаунтов. Справа — как пост ляжет в ленту каждой площадки."}
           </DialogDescription>
         </DialogHeader>
 
@@ -320,6 +331,18 @@ export function UploadPublishDialog({ open, onClose, pub }: { open: boolean; onC
               </section>
 
               {/* Видео */}
+              {video ? (
+              <section className="flex items-center gap-3 rounded-xl border border-border/70 bg-card/35 p-4 text-sm">
+                <FileVideo className="h-5 w-5 shrink-0 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-semibold uppercase text-muted-foreground">Ролик из библиотеки</div>
+                  <a href={video.file_url} target="_blank" rel="noreferrer" className="block truncate text-primary hover:underline">
+                    {video.title || video.file_url.split("/").pop()}
+                  </a>
+                </div>
+                {(video.published ?? 0) > 0 && <span className="shrink-0 text-xs text-muted-foreground">уже выходил: {video.published}</span>}
+              </section>
+              ) : (
               <section className="space-y-3">
                 <div className="flex items-center justify-between">
                   <Label className="text-xs font-semibold uppercase text-muted-foreground">Видео</Label>
@@ -399,6 +422,7 @@ export function UploadPublishDialog({ open, onClose, pub }: { open: boolean; onC
                   />
                 )}
               </section>
+              )}
 
               <section className="space-y-1.5 rounded-xl border border-border/70 bg-card/35 p-4">
                 <Label className="text-xs text-muted-foreground">Хэштеги (через запятую)</Label>
