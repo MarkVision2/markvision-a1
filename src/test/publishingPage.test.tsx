@@ -167,21 +167,26 @@ describe("страница «Публикации»", () => {
     toastSuccess.mockClear();
   });
 
-  it("плитки показывают числа из metrics", () => {
+  it("сводка: активные аккаунты с разбивкой по площадкам, очередь, сутки, здоровье, расход", () => {
     renderPage();
     expect(screen.getByText("4 / 7")).toBeTruthy();
+    // Разбивка по площадкам считается по списку аккаунтов: 1 Instagram + 1 TikTok, остальные — по нулям, но видны.
+    expect(screen.getByTitle("Instagram").textContent).toMatch(/Instagram 1$/);
+    expect(screen.getByTitle("YouTube").textContent).toMatch(/YouTube 0$/);
     expect(screen.getByText("13")).toBeTruthy();
     expect(screen.getByText("9")).toBeTruthy();
-    expect(screen.getByText("2")).toBeTruthy();
+    expect(screen.getByText(/ошибок 2/)).toBeTruthy();
     expect(screen.getByText("81%")).toBeTruthy();
-    expect(screen.getByText("3")).toBeTruthy();
+    expect(screen.getByText(/токены истекают 3/)).toBeTruthy();
     expect(screen.getByText("$12.34")).toBeTruthy();
   });
 
-  it("вкладка «Сеть»: строка группы с составом, здоровьем и публикациями за неделю", async () => {
+  it("сводка по группам живёт во вкладке «Группы»: состав, здоровье, публикации за неделю", async () => {
     renderPage();
-    fireEvent.mouseDown(screen.getByRole("tab", { name: "Сеть" }));
-    fireEvent.click(screen.getByRole("tab", { name: "Сеть" }));
+    expect(screen.queryByRole("tab", { name: "Сеть" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Подключённые" })).toBeNull();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Группы" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Группы" }));
     await waitFor(() => expect(screen.getByText("Алматы · IG")).toBeTruthy());
     expect(screen.getByText("8 / 10")).toBeTruthy();
     expect(screen.getByText("77%")).toBeTruthy();
@@ -296,9 +301,10 @@ describe("страница «Публикации»", () => {
     fireEvent.click(await screen.findByRole("button", { name: /^Ссылка/ }));
     fireEvent.change(screen.getByLabelText("Ссылка на видео"), { target: { value: "https://cdn.example.com/reel.mp4" } });
 
-    // Оба годных аккаунта выбраны по умолчанию — снимаем TikTok чипом.
+    // Оба годных аккаунта выбраны по умолчанию — снимаем TikTok в списке аккаунтов (он в popover).
     expect(screen.getByRole("button", { name: /Отправить на публикацию \(2\)/ })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /aiva.tt — TikTok/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Выбрано аккаунтов: 2/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /aiva.tt — TikTok/ }));
 
     fireEvent.click(screen.getByRole("button", { name: /Отправить на публикацию \(1\)/ }));
     await waitFor(() =>

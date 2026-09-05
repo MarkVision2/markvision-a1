@@ -1078,6 +1078,7 @@ export type Database = {
           id: string
           lead_id: string
           payload: Json | null
+          project_id: string | null
           rule: string
         }
         Insert: {
@@ -1086,6 +1087,7 @@ export type Database = {
           id?: string
           lead_id: string
           payload?: Json | null
+          project_id?: string | null
           rule: string
         }
         Update: {
@@ -1094,6 +1096,7 @@ export type Database = {
           id?: string
           lead_id?: string
           payload?: Json | null
+          project_id?: string | null
           rule?: string
         }
         Relationships: []
@@ -1103,6 +1106,15 @@ export type Database = {
           auto_msg_24h_enabled: boolean
           auto_msg_24h_hours: number
           auto_msg_24h_template_key: string
+          binotel_auto_create_leads: boolean
+          binotel_crm_base_url: string | null
+          binotel_credentials_present: boolean | null
+          binotel_enabled: boolean
+          binotel_key: string | null
+          binotel_operator: string | null
+          binotel_pbx_number: string | null
+          binotel_project_id: string | null
+          binotel_secret: string | null
           cron_secret: string | null
           followup_2h_enabled: boolean
           followup_2h_minutes: number
@@ -1124,6 +1136,15 @@ export type Database = {
           auto_msg_24h_enabled?: boolean
           auto_msg_24h_hours?: number
           auto_msg_24h_template_key?: string
+          binotel_auto_create_leads?: boolean
+          binotel_crm_base_url?: string | null
+          binotel_credentials_present?: boolean | null
+          binotel_enabled?: boolean
+          binotel_key?: string | null
+          binotel_operator?: string | null
+          binotel_pbx_number?: string | null
+          binotel_project_id?: string | null
+          binotel_secret?: string | null
           cron_secret?: string | null
           followup_2h_enabled?: boolean
           followup_2h_minutes?: number
@@ -1145,6 +1166,15 @@ export type Database = {
           auto_msg_24h_enabled?: boolean
           auto_msg_24h_hours?: number
           auto_msg_24h_template_key?: string
+          binotel_auto_create_leads?: boolean
+          binotel_crm_base_url?: string | null
+          binotel_credentials_present?: boolean | null
+          binotel_enabled?: boolean
+          binotel_key?: string | null
+          binotel_operator?: string | null
+          binotel_pbx_number?: string | null
+          binotel_project_id?: string | null
+          binotel_secret?: string | null
           cron_secret?: string | null
           followup_2h_enabled?: boolean
           followup_2h_minutes?: number
@@ -1163,6 +1193,65 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      binotel_call_log: {
+        Row: {
+          created_at: string
+          direction: string | null
+          disposition: string | null
+          duration_sec: number | null
+          error_text: string | null
+          general_call_id: string | null
+          id: string
+          lead_id_resolved: string | null
+          phone_normalized: string | null
+          processing_status: string
+          raw_payload: Json | null
+          recording_url: string | null
+          request_type: string
+          started_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          direction?: string | null
+          disposition?: string | null
+          duration_sec?: number | null
+          error_text?: string | null
+          general_call_id?: string | null
+          id?: string
+          lead_id_resolved?: string | null
+          phone_normalized?: string | null
+          processing_status: string
+          raw_payload?: Json | null
+          recording_url?: string | null
+          request_type: string
+          started_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          direction?: string | null
+          disposition?: string | null
+          duration_sec?: number | null
+          error_text?: string | null
+          general_call_id?: string | null
+          id?: string
+          lead_id_resolved?: string | null
+          phone_normalized?: string | null
+          processing_status?: string
+          raw_payload?: Json | null
+          recording_url?: string | null
+          request_type?: string
+          started_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "binotel_call_log_lead_id_resolved_fkey"
+            columns: ["lead_id_resolved"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       cabinet_daily_insights: {
         Row: {
@@ -1260,6 +1349,7 @@ export type Database = {
           content: string | null
           created_at: string
           created_by: string | null
+          duration_sec: number | null
           direction:
             | Database["public"]["Enums"]["communication_direction"]
             | null
@@ -1277,6 +1367,7 @@ export type Database = {
           content?: string | null
           created_at?: string
           created_by?: string | null
+          duration_sec?: number | null
           direction?:
             | Database["public"]["Enums"]["communication_direction"]
             | null
@@ -1294,6 +1385,7 @@ export type Database = {
           content?: string | null
           created_at?: string
           created_by?: string | null
+          duration_sec?: number | null
           direction?:
             | Database["public"]["Enums"]["communication_direction"]
             | null
@@ -1315,6 +1407,200 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      content_factory_brand_templates: {
+        Row: {
+          brandbook_urls: string[]
+          colors: Json
+          created_at: string
+          created_by: string | null
+          description: string | null
+          fonts: Json
+          id: string
+          is_default: boolean
+          logo_url: string | null
+          name: string
+          project_id: string
+          prompt_addon: string | null
+          reference_urls: string[]
+          style_notes: string | null
+          tone: string | null
+          updated_at: string
+        }
+        Insert: {
+          brandbook_urls?: string[]
+          colors?: Json
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          fonts?: Json
+          id?: string
+          is_default?: boolean
+          logo_url?: string | null
+          name: string
+          project_id: string
+          prompt_addon?: string | null
+          reference_urls?: string[]
+          style_notes?: string | null
+          tone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          brandbook_urls?: string[]
+          colors?: Json
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          fonts?: Json
+          id?: string
+          is_default?: boolean
+          logo_url?: string | null
+          name?: string
+          project_id?: string
+          prompt_addon?: string | null
+          reference_urls?: string[]
+          style_notes?: string | null
+          tone?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      content_factory_gallery: {
+        Row: {
+          brand_template_id: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          image_url: string
+          metadata: Json
+          project_id: string
+          prompt_snapshot: string | null
+          request_id: string | null
+          session_id: string | null
+          style_id: string | null
+          style_label: string | null
+          type_id: string | null
+          type_title: string | null
+        }
+        Insert: {
+          brand_template_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          image_url: string
+          metadata?: Json
+          project_id: string
+          prompt_snapshot?: string | null
+          request_id?: string | null
+          session_id?: string | null
+          style_id?: string | null
+          style_label?: string | null
+          type_id?: string | null
+          type_title?: string | null
+        }
+        Update: {
+          brand_template_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          image_url?: string
+          metadata?: Json
+          project_id?: string
+          prompt_snapshot?: string | null
+          request_id?: string | null
+          session_id?: string | null
+          style_id?: string | null
+          style_label?: string | null
+          type_id?: string | null
+          type_title?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "content_factory_gallery_brand_template_id_fkey"
+            columns: ["brand_template_id"]
+            isOneToOne: false
+            referencedRelation: "content_factory_brand_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      content_factory_gallery_hidden: {
+        Row: {
+          hidden_at: string
+          hidden_by: string | null
+          project_id: string
+          request_id: string
+          slide_index: number
+        }
+        Insert: {
+          hidden_at?: string
+          hidden_by?: string | null
+          project_id: string
+          request_id: string
+          slide_index?: number
+        }
+        Update: {
+          hidden_at?: string
+          hidden_by?: string | null
+          project_id?: string
+          request_id?: string
+          slide_index?: number
+        }
+        Relationships: []
+      }
+      content_factory_results: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          id: string
+          image_url: string | null
+          project_id: string | null
+          raw: Json | null
+          request_id: string
+          session_id: string | null
+          slide_index: number
+          status: string
+          style_id: string | null
+          style_label: string | null
+          type_id: string | null
+          type_title: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          image_url?: string | null
+          project_id?: string | null
+          raw?: Json | null
+          request_id: string
+          session_id?: string | null
+          slide_index?: number
+          status?: string
+          style_id?: string | null
+          style_label?: string | null
+          type_id?: string | null
+          type_title?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          image_url?: string | null
+          project_id?: string | null
+          raw?: Json | null
+          request_id?: string
+          session_id?: string | null
+          slide_index?: number
+          status?: string
+          style_id?: string | null
+          style_label?: string | null
+          type_id?: string | null
+          type_title?: string | null
+          updated_at?: string
+        }
+        Relationships: []
       }
       deals: {
         Row: {
@@ -1928,6 +2214,10 @@ export type Database = {
           campaign: string | null
           channel: Database["public"]["Enums"]["lead_channel"] | null
           city: string | null
+          client_request: string | null
+          company_name: string | null
+          contact_person: string | null
+          industry: string | null
           click_id: string | null
           created_at: string
           created_by: string | null
@@ -1974,6 +2264,10 @@ export type Database = {
           campaign?: string | null
           channel?: Database["public"]["Enums"]["lead_channel"] | null
           city?: string | null
+          client_request?: string | null
+          company_name?: string | null
+          contact_person?: string | null
+          industry?: string | null
           click_id?: string | null
           created_at?: string
           created_by?: string | null
@@ -2020,6 +2314,10 @@ export type Database = {
           campaign?: string | null
           channel?: Database["public"]["Enums"]["lead_channel"] | null
           city?: string | null
+          client_request?: string | null
+          company_name?: string | null
+          contact_person?: string | null
+          industry?: string | null
           click_id?: string | null
           created_at?: string
           created_by?: string | null
@@ -2070,6 +2368,82 @@ export type Database = {
             columns: ["stage_id"]
             isOneToOne: false
             referencedRelation: "pipeline_stages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lg_cities: {
+        Row: {
+          city: string
+          created_at: string
+          enabled: boolean
+          id: string
+          last_parsed_at: string | null
+          project_id: string
+          sort: number
+        }
+        Insert: {
+          city: string
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          last_parsed_at?: string | null
+          project_id: string
+          sort?: number
+        }
+        Update: {
+          city?: string
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          last_parsed_at?: string | null
+          project_id?: string
+          sort?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lg_cities_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lg_rubrics: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          id: string
+          label: string
+          project_id: string
+          rubric: string
+          sort: number
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          label: string
+          project_id: string
+          rubric: string
+          sort?: number
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          label?: string
+          project_id?: string
+          rubric?: string
+          sort?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lg_rubrics_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
         ]
@@ -2639,6 +3013,7 @@ export type Database = {
           key: string
           order_index: number
           pipeline_id: string
+          stage_role: string
           title: string
           updated_at: string
         }
@@ -2652,6 +3027,7 @@ export type Database = {
           key: string
           order_index: number
           pipeline_id: string
+          stage_role?: string
           title: string
           updated_at?: string
         }
@@ -2665,6 +3041,7 @@ export type Database = {
           key?: string
           order_index?: number
           pipeline_id?: string
+          stage_role?: string
           title?: string
           updated_at?: string
         }
@@ -2766,6 +3143,143 @@ export type Database = {
         }
         Relationships: []
       }
+      project_binotel_settings: {
+        Row: {
+          api_key: string | null
+          api_secret: string | null
+          auto_create_leads: boolean
+          crm_base_url: string | null
+          credentials_present: boolean | null
+          enabled: boolean
+          operator: string | null
+          pbx_number: string | null
+          project_id: string
+          updated_at: string
+        }
+        Insert: {
+          api_key?: string | null
+          api_secret?: string | null
+          auto_create_leads?: boolean
+          crm_base_url?: string | null
+          credentials_present?: boolean | null
+          enabled?: boolean
+          operator?: string | null
+          pbx_number?: string | null
+          project_id: string
+          updated_at?: string
+        }
+        Update: {
+          api_key?: string | null
+          api_secret?: string | null
+          auto_create_leads?: boolean
+          crm_base_url?: string | null
+          credentials_present?: boolean | null
+          enabled?: boolean
+          operator?: string | null
+          pbx_number?: string | null
+          project_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_binotel_settings_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: true
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_automation_settings: {
+        Row: {
+          auto_msg_24h_enabled: boolean
+          auto_msg_24h_hours: number
+          auto_msg_24h_template_key: string
+          followup_2h_enabled: boolean
+          followup_2h_minutes: number
+          project_id: string
+          revival_7d_days: number
+          revival_7d_enabled: boolean
+          revival_7d_template_key: string
+          updated_at: string
+        }
+        Insert: {
+          auto_msg_24h_enabled?: boolean
+          auto_msg_24h_hours?: number
+          auto_msg_24h_template_key?: string
+          followup_2h_enabled?: boolean
+          followup_2h_minutes?: number
+          project_id: string
+          revival_7d_days?: number
+          revival_7d_enabled?: boolean
+          revival_7d_template_key?: string
+          updated_at?: string
+        }
+        Update: {
+          auto_msg_24h_enabled?: boolean
+          auto_msg_24h_hours?: number
+          auto_msg_24h_template_key?: string
+          followup_2h_enabled?: boolean
+          followup_2h_minutes?: number
+          project_id?: string
+          revival_7d_days?: number
+          revival_7d_enabled?: boolean
+          revival_7d_template_key?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      project_stage_automation_rules: {
+        Row: {
+          enabled: boolean
+          id: string
+          project_id: string
+          stage_id: string
+          template: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          enabled?: boolean
+          id?: string
+          project_id: string
+          stage_id: string
+          template?: string
+          title?: string
+          updated_at?: string
+        }
+        Update: {
+          enabled?: boolean
+          id?: string
+          project_id?: string
+          stage_id?: string
+          template?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      project_stage_automation_sent: {
+        Row: {
+          lead_id: string
+          project_id: string
+          sent_at: string
+          stage_id: string
+        }
+        Insert: {
+          lead_id: string
+          project_id: string
+          sent_at?: string
+          stage_id: string
+        }
+        Update: {
+          lead_id?: string
+          project_id?: string
+          sent_at?: string
+          stage_id?: string
+        }
+        Relationships: []
+      }
       project_briefs: {
         Row: {
           ai_cta: string | null
@@ -2822,6 +3336,41 @@ export type Database = {
           usp?: string | null
         }
         Relationships: []
+      }
+      project_metric_labels: {
+        Row: {
+          column_key: string
+          created_at: string
+          id: string
+          label: string
+          project_id: string
+          updated_at: string
+        }
+        Insert: {
+          column_key: string
+          created_at?: string
+          id?: string
+          label: string
+          project_id: string
+          updated_at?: string
+        }
+        Update: {
+          column_key?: string
+          created_at?: string
+          id?: string
+          label?: string
+          project_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_metric_labels_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       project_members: {
         Row: {
@@ -3933,6 +4482,27 @@ export type Database = {
           },
         ]
       }
+      project_binotel_settings_safe: {
+        Row: {
+          auto_create_leads: boolean | null
+          credentials_present: boolean | null
+          crm_base_url: string | null
+          enabled: boolean | null
+          operator: string | null
+          pbx_number: string | null
+          project_id: string | null
+          updated_at: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_binotel_settings_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: true
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       projects_public: {
         Row: {
           created_at: string | null
@@ -4185,12 +4755,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4214,11 +4784,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4239,11 +4809,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4264,11 +4834,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -4281,11 +4851,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never) = never,
+    : never = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

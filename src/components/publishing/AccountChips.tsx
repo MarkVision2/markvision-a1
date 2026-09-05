@@ -3,9 +3,11 @@
  * Негодные (выключены, не активны, здоровье < 20) показываются приглушённо и
  * не выбираются — планировщик их всё равно пропустит.
  */
-import { Check } from "lucide-react";
+import { Check, ChevronDown, Users } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { PLATFORM_META, type PublishAccount } from "@/lib/publishingClient";
 import { accountEligibility, isPublishable } from "@/lib/publishingSelection";
 import { initials } from "@/components/publishing/PostPreview";
@@ -35,23 +37,37 @@ export function AccountChips({ accounts, selected, onChange }: Props) {
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      {accounts.map((a) => {
+    <div className="space-y-2.5">
+      <div className="flex items-center gap-2">
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button type="button" variant="outline" className="h-10 flex-1 justify-between border-border/80 bg-secondary/40 px-3 hover:bg-secondary/70">
+              <span className="flex min-w-0 items-center gap-2">
+                <Users className="h-4 w-4 text-primary" />
+                <span className="truncate">Выбрано аккаунтов: {selected.size}</span>
+              </span>
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-[min(34rem,calc(100vw-2rem))] border-border/80 bg-popover p-2 shadow-elevated">
+            <div className="max-h-72 space-y-1 overflow-y-auto pr-1">
+              {accounts.map((a) => {
         const e = accountEligibility(a);
         const chosen = selected.has(a.id);
         const meta = PLATFORM_META[a.platform];
         return (
-          <button
+          <Button
             key={a.id}
             type="button"
+            variant="ghost"
             disabled={!e.ok}
             onClick={() => toggle(a.id)}
             title={e.hint ?? `${a.account_name} · ${meta?.label ?? a.platform}`}
             aria-pressed={chosen}
             aria-label={`${a.handle ?? a.account_name} — ${meta?.label ?? a.platform}`}
             className={cn(
-              "group relative flex max-w-[190px] items-center gap-2 rounded-full border py-1 pl-1 pr-3 text-left transition-colors",
-              chosen ? "border-primary bg-primary/10" : "border-border hover:bg-muted",
+              "group relative flex h-auto w-full justify-start gap-3 rounded-lg border px-2.5 py-2 text-left",
+              chosen ? "border-primary/40 bg-primary/10" : "border-transparent hover:border-border hover:bg-muted",
               !e.ok && "cursor-not-allowed opacity-40",
             )}
           >
@@ -71,14 +87,26 @@ export function AccountChips({ accounts, selected, onChange }: Props) {
                 {meta?.label ?? a.platform}
               </span>
             </span>
-          </button>
+          </Button>
         );
-      })}
-
-      <label className="ml-1 flex cursor-pointer items-center gap-1.5 text-sm">
+              })}
+            </div>
+          </PopoverContent>
+        </Popover>
+        <label className="flex h-10 shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-border/80 bg-secondary/40 px-3 text-sm">
         <Checkbox checked={allChosen} disabled={!usable.length} onCheckedChange={toggleAll} aria-label="Выбрать все аккаунты" />
         <span>Все</span>
-      </label>
+        </label>
+      </div>
+      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+        {accounts.filter((a) => selected.has(a.id)).slice(0, 7).map((a) => (
+          <div key={a.id} className="flex shrink-0 items-center gap-2 rounded-full border border-primary/35 bg-primary/10 py-1 pl-1 pr-2.5">
+            <Avatar className="h-6 w-6"><AvatarFallback className="text-[9px]">{initials(a.account_name)}</AvatarFallback></Avatar>
+            <span className="max-w-32 truncate text-xs font-medium">{a.handle ?? a.account_name}</span>
+          </div>
+        ))}
+        {selected.size > 7 && <span className="flex shrink-0 items-center text-xs text-muted-foreground">+{selected.size - 7}</span>}
+      </div>
     </div>
   );
 }

@@ -42,7 +42,14 @@ export function validateVideoFile(file: File): string | null {
 async function presignR2(filename: string, contentType: string, size: number): Promise<{ uploadUrl: string; publicUrl: string }> {
   const res = await fetch(`${clientSupabaseUrl}/functions/v1/r2-presign-upload`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "x-app-key": clientSupabasePublishableKey },
+    // Authorization обязателен: шлюз Supabase с verify_jwt=true отбрасывает запрос
+    // до функции, а publishable-ключ он принимает как anon-JWT.
+    headers: {
+      "Content-Type": "application/json",
+      "x-app-key": clientSupabasePublishableKey,
+      apikey: clientSupabasePublishableKey,
+      Authorization: `Bearer ${clientSupabasePublishableKey}`,
+    },
     body: JSON.stringify({ filename, contentType, size }),
   });
   const j = await res.json().catch(() => ({}));
