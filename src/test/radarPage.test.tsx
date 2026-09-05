@@ -86,7 +86,11 @@ vi.mock("@/hooks/useRadar", () => ({
       id: "src-own", project_id: "proj-1", kind: "own_account", platform: "instagram", handle: "aiva",
       label: null, enabled: true, crawl_interval_hours: 24, last_crawled_at: null, last_error: null, created_at: "2026-09-01T10:00:00.000Z",
     }],
-    metrics: { sources: 3, posts_total: 60, posts_7d: 42, posts_unanalyzed: 5, posts_viral: 4, ideas_new: 7, ideas_used: 2, spent_month_usd: 1.5, last_run_at: null },
+    metrics: {
+      sources: 3, sources_total: 4, posts_total: 60, posts_7d: 42, posts_unanalyzed: 5, posts_analyzed: 55,
+      posts_viral: 4, posts_scored: 48, ideas_total: 9, ideas_new: 7, ideas_approved: 1, ideas_used: 2,
+      spent_month_crawl_usd: 0.021, spent_month_ai_usd: 0.045, spent_month_usd: 0.066, last_run_at: null, runs_active: 0,
+    },
     ideas: [idea],
     posts: [post, { ...post, id: "post-own", source_id: "src-own", author_handle: "aiva", external_id: "own-1" }],
     groups: [
@@ -129,11 +133,18 @@ describe("Radar page", () => {
     expect(screen.getByText("Источников")).toBeTruthy();
     expect(screen.getByText("42")).toBeTruthy();
     expect(screen.getByText("Залетевших")).toBeTruthy();
-    expect(screen.getByText("Не разобрано")).toBeTruthy();
+    expect(screen.getByText("Ждут разбора")).toBeTruthy();
     expect(screen.getByText("Новых идей")).toBeTruthy();
-    expect(screen.getByText("Использовано идей")).toBeTruthy();
-    expect(screen.getByText("$1.50")).toBeTruthy();
+    expect(screen.getByText("Идей в плане")).toBeTruthy();
+    // Расход — суммой и с разбивкой; «$0.00» на центах врал бы.
+    expect(screen.getByText("$0.066")).toBeTruthy();
+    expect(screen.getByText("сбор $0.021 · разбор $0.045")).toBeTruthy();
     expect(screen.getByText(/постов под наблюдением/)).toBeTruthy();
+    // Каждое число подписано, откуда оно: знаменатели и периоды.
+    expect(screen.getByText("всего собрано 60")).toBeTruthy();
+    expect(screen.getByText("из 48 с X-фактором")).toBeTruthy();
+    expect(screen.getByText("разобрано 55")).toBeTruthy();
+    expect(screen.getByText("включено из 4")).toBeTruthy();
     expect(screen.getByRole("textbox", { name: "Ссылка на публикацию" })).toBeTruthy();
   });
 

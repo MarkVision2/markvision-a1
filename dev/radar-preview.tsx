@@ -8,7 +8,7 @@ import { MemoryRouter } from "react-router-dom";
 import "@/index.css";
 import { AuthorsTab } from "@/components/radar/AuthorsTab";
 import { IdeaCard } from "@/components/radar/IdeaCard";
-import { MetricTile, fmtUsd } from "@/components/radar/RadarBits";
+import { MetricsRow } from "@/components/radar/MetricsRow";
 import { RadarHero } from "@/components/radar/RadarHero";
 import { TrendsTab } from "@/components/radar/TrendsTab";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -42,16 +42,20 @@ const sources: RadarSource[] = [
 
 const idea: Idea = { id: "i1", title: "Три ошибки при отбеливании", hook: "Вы всё ещё отбеливаете зубы дома?", angle: "Показать, что домашнее отбеливание портит эмаль", niche: "стоматология", script_draft: "Хук: вопрос\n1. Полоски\n2. Сода\n3. Уголь\nCTA: консультация", structure: null, source_post_ids: ["1"], score: 82, status: "new", target_group_id: null, content_item_id: null, outcome_score: null, created_at: ago(1) };
 
+const METRICS = {
+  sources: 3, sources_total: 3, posts_total: 28, posts_7d: 28, posts_unanalyzed: 0, posts_analyzed: 28,
+  posts_viral: 6, posts_scored: 28, ideas_total: 19, ideas_new: 19, ideas_approved: 0, ideas_used: 2,
+  spent_month_crawl_usd: 0.0212, spent_month_ai_usd: 0.0505, spent_month_usd: 0.0717,
+  last_run_at: ago(0.1), runs_active: 0,
+};
+
 function Preview() {
   const [tab, setTab] = useState("trends");
   const noop = async () => {};
   return (
     <div className="mx-auto max-w-7xl p-6">
-      <RadarHero metrics={{ sources: 2, posts_total: 60, posts_7d: 12, posts_unanalyzed: 2, posts_viral: 4, ideas_new: 7, ideas_used: 2, spent_month_usd: 1.5, last_run_at: ago(0.1) }} sourcesCount={2} crawling={false} busy={false} onAnalyzeUrl={noop} />
-      <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
-        <MetricTile label="Источников" value={2} /><MetricTile label="Постов за 7 дней" value={12} /><MetricTile label="Залетевших" value={4} accent />
-        <MetricTile label="Не разобрано" value={2} /><MetricTile label="Новых идей" value={7} /><MetricTile label="Использовано идей" value={2} /><MetricTile label="Расход за месяц" value={fmtUsd(1.5)} />
-      </div>
+      <RadarHero metrics={METRICS} sourcesCount={2} crawling={false} busy={false} onAnalyzeUrl={noop} />
+      <MetricsRow metrics={METRICS} sourcesFallback={3} />
       <Tabs value={tab} onValueChange={setTab} className="mt-6">
         <TabsList><TabsTrigger value="trends">Тренды (5)</TabsTrigger><TabsTrigger value="ideas">Идеи (1)</TabsTrigger><TabsTrigger value="authors">Авторы</TabsTrigger></TabsList>
         <TabsContent value="trends" className="mt-4"><TrendsTab posts={posts} ownSourceIds={new Set(["s2"])} busy={null} onOpen={() => {}} onAnalyze={() => {}} onAddSource={() => {}} /></TabsContent>

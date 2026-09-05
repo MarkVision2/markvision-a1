@@ -120,16 +120,28 @@ export interface RadarCrawlerInfo {
 }
 
 export interface RadarMetrics {
+  /** Включённых источников. */
   sources: number;
+  sources_total: number;
   posts_total: number;
   posts_7d: number;
+  /** В очереди на разбор (pending + failed). */
   posts_unanalyzed: number;
+  posts_analyzed: number;
   /** Постов с X-фактором ≥ 2. */
   posts_viral: number;
+  /** Постов, у которых X-фактор вообще посчитан — знаменатель «залетевших». */
+  posts_scored: number;
+  ideas_total: number;
   ideas_new: number;
+  ideas_approved: number;
   ideas_used: number;
+  /** Расход радара за текущий месяц из usage_ledger. */
+  spent_month_crawl_usd: number;
+  spent_month_ai_usd: number;
   spent_month_usd: number;
   last_run_at: string | null;
+  runs_active: number;
 }
 
 export interface RadarGroup {
