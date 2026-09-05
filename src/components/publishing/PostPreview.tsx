@@ -194,8 +194,8 @@ export function PostPreview({ account, content }: { account: PublishAccount; con
   const Card = BY_PLATFORM[account.platform] ?? InstagramCard;
   const meta = PLATFORM_META[account.platform];
   return (
-    <figure className="overflow-hidden rounded-2xl border bg-card">
-      <figcaption className="flex items-center justify-between gap-2 border-b bg-muted/50 px-3 py-1.5 text-xs">
+    <figure className="overflow-hidden rounded-xl border border-border/80 bg-card shadow-card">
+      <figcaption className="flex items-center justify-between gap-2 border-b border-border/70 bg-secondary/50 px-3 py-2 text-xs">
         <span className="flex items-center gap-1.5 font-medium">
           <span className={cn("h-2 w-2 rounded-full", PLATFORM_DOT[account.platform] ?? "bg-muted-foreground")} />
           {meta?.label ?? account.platform}
