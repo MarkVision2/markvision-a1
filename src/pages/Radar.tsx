@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import {
-  ChevronDown, ChevronUp, ExternalLink, Link2, Loader2, Plus, Radar as RadarIcon, RefreshCw, Sparkles, Trash2,
+  AlertTriangle, ChevronDown, ChevronUp, ExternalLink, Link2, Loader2, Plus, Radar as RadarIcon, RefreshCw, Sparkles, Trash2,
 } from "lucide-react";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -27,6 +27,7 @@ import {
   ANALYSIS_STATUS_META,
   IDEA_STATUS_META,
   PLATFORM_META,
+  RUN_STATUS_META,
   SCORE_TONE_CLS,
   SOURCE_KIND_META,
   formatEngagement,
@@ -37,6 +38,7 @@ import {
   type RadarGroup,
   type RadarPlatform,
   type RadarPost,
+  type RadarRun,
   type RadarSource,
   type RadarSourceKind,
 } from "@/lib/radarClient";
@@ -63,6 +65,32 @@ function fmtCompact(n: number | null | undefined): string {
 }
 
 const fmtUsd = (n: number | null | undefined) => `$${(Number(n) || 0).toFixed(2)}`;
+
+/** Ссылка без протокола и query — для узкой колонки. */
+function shortUrl(url: string): string {
+  const s = url.replace(/^https?:\/\/(www\.)?/i, "").replace(/[?#].*$/, "");
+  return s.length > 48 ? `${s.slice(0, 45)}…` : s;
+}
+
+/** Что именно собирал запуск: ник источника или ссылка. */
+function RunTarget({ run, source }: { run: RadarRun; source: RadarSource | undefined }) {
+  if (run.mode === "url" && run.url) {
+    return (
+      <a href={run.url} target="_blank" rel="noreferrer" className="text-primary underline-offset-2 hover:underline" title={run.url}>
+        {shortUrl(run.url)}
+      </a>
+    );
+  }
+  if (source) {
+    return (
+      <span className="inline-flex flex-wrap items-center gap-1.5">
+        <span className="font-medium">@{source.handle}</span>
+        <Chip label={PLATFORM_META[source.platform]?.label ?? source.platform} cls={PLATFORM_META[source.platform]?.cls ?? ""} />
+      </span>
+    );
+  }
+  return <span className="text-muted-foreground">источник удалён</span>;
+}
 
 const errMsg = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
 
@@ -429,8 +457,15 @@ export default function Radar() {
   const navigate = useNavigate();
   const { activeId: projectId } = useProjectsStore();
   const r = useRadar();
-  const { sources, metrics, ideas, posts, groups, runs, loading, error, busy } = r;
+  const { sources, metrics, ideas, posts, groups, runs, crawler, crawling, loading, error, busy } = r;
   const ownSourceIds = useMemo(() => new Set(sources.filter((s) => s.kind === "own_account").map((s) => s.id)), [sources]);
+  const sourcesById = useMemo(() => new Map(sources.map((s) => [s.id, s] as const)), [sources]);
+  const runningSourceIds = useMemo(
+    () => new Set(runs.filter((run) => run.status === "running" && run.source_id).map((run) => run.source_id as string)),
+    [runs],
+  );
+  const crawlerMissing = crawler != null && !crawler.direct && !crawler.n8n;
+  const aiMissing = crawler != null && !crawler.ai;
 
   const [addOpen, setAddOpen] = useState(false);
   const [urlOpen, setUrlOpen] = useState(false);
@@ -444,7 +479,9 @@ export default function Radar() {
   const addSource = async (input: Parameters<React.ComponentProps<typeof AddSourceDialog>["onSubmit"]>[0]) => {
     try {
       const res = await r.upsertSource(input);
-      toast.success(res.kicked ? "Источник добавлен, сбор запущен" : "Источник добавлен — сбор пойдёт по расписанию");
+      if (res.kicked) toast.success("Источник добавлен, сбор запущен", { description: "Посты появятся через 1–2 минуты" });
+      else if (res.kick_error) toast.success("Источник добавлен", { description: `Сбор не запущен: ${res.kick_error}` });
+      else toast.success("Источник добавлен — сбор пойдёт по расписанию");
       setAddOpen(false);
     } catch (e) {
       toast.error(errMsg(e, "Не удалось добавить источник"));
@@ -475,7 +512,9 @@ export default function Radar() {
   const crawlSource = async (id: string) => {
     try {
       const res = await r.crawlSource(id);
-      toast.success(res.kicked ? "Сбор запущен" : "Сборщик n8n недоступен — попробуйте позже");
+      toast.success(res.kicked ? "Сбор запущен" : "Сборщик недоступен — попробуйте позже", {
+        description: res.kicked ? "Посты появятся через 1–2 минуты, страница обновится сама" : undefined,
+      });
     } catch (e) {
       toast.error(errMsg(e, "Не удалось запустить сбор"));
     }
@@ -564,6 +603,15 @@ export default function Radar() {
       {error && (
         <div className="mt-4 rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-2 text-sm text-destructive">{error}</div>
       )}
+      {(crawlerMissing || aiMissing) && (
+        <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-2 text-sm text-amber-800" role="status">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div className="grid gap-0.5">
+            {crawlerMissing && <span>Сборщик не настроен: задайте секрет <code className="rounded bg-muted px-1">APIFY_TOKEN</code> в Supabase — без него источники и ссылки не собираются.</span>}
+            {aiMissing && <span>AI-разбор не настроен: нужен секрет <code className="rounded bg-muted px-1">OPENAI_API_KEY</code> — посты собираются, но не разбираются.</span>}
+          </div>
+        </div>
+      )}
 
       <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <MetricTile label="Источников" value={metrics?.sources ?? sources.length} />
@@ -579,7 +627,10 @@ export default function Radar() {
           <TabsTrigger value="ideas">Идеи{ideas.length ? ` (${ideas.length})` : ""}</TabsTrigger>
           <TabsTrigger value="posts">Посты{posts.length ? ` (${posts.length})` : ""}</TabsTrigger>
           <TabsTrigger value="sources">Источники{sources.length ? ` (${sources.length})` : ""}</TabsTrigger>
-          <TabsTrigger value="runs">Сборы</TabsTrigger>
+          <TabsTrigger value="runs" className="gap-1.5">
+            Сборы{runs.length ? ` (${runs.length})` : ""}
+            {crawling && <Loader2 className="h-3 w-3 animate-spin" aria-label="Идёт сбор" />}
+          </TabsTrigger>
         </TabsList>
 
         {/* Идеи */}
@@ -679,7 +730,11 @@ export default function Radar() {
                         <TableCell className="font-medium">@{s.handle}</TableCell>
                         <TableCell className="text-muted-foreground">{s.label || "—"}</TableCell>
                         <TableCell className="whitespace-nowrap tabular-nums">{s.crawl_interval_hours} ч</TableCell>
-                        <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{fmtDate(s.last_crawled_at)}</TableCell>
+                        <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                          {runningSourceIds.has(s.id)
+                            ? <Chip label="Собираем…" cls={RUN_STATUS_META.running.cls} />
+                            : fmtDate(s.last_crawled_at)}
+                        </TableCell>
                         <TableCell className="max-w-[220px] truncate text-xs text-destructive" title={s.last_error ?? undefined}>{s.last_error || ""}</TableCell>
                         <TableCell>
                           <Switch
@@ -717,6 +772,8 @@ export default function Radar() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>Статус</TableHead>
+                    <TableHead>Что собирали</TableHead>
                     <TableHead>Провайдер</TableHead>
                     <TableHead>Элементов</TableHead>
                     <TableHead>Новых</TableHead>
@@ -728,6 +785,13 @@ export default function Radar() {
                 <TableBody>
                   {runs.map((run) => (
                     <TableRow key={run.id}>
+                      <TableCell>
+                        <Chip
+                          label={(RUN_STATUS_META[run.status] ?? RUN_STATUS_META.done).label}
+                          cls={(RUN_STATUS_META[run.status] ?? RUN_STATUS_META.done).cls}
+                        />
+                      </TableCell>
+                      <TableCell><RunTarget run={run} source={run.source_id ? sourcesById.get(run.source_id) : undefined} /></TableCell>
                       <TableCell className="font-medium">{run.provider}</TableCell>
                       <TableCell className="tabular-nums">{run.items}</TableCell>
                       <TableCell className="tabular-nums">{run.inserted}</TableCell>

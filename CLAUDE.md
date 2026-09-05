@@ -40,13 +40,16 @@
   n8n `docs/n8n-content-pipeline-v5.json`. Всё — `docs/CONTENT-PIPELINE.md`;
   диагностика и smoke test — `node scripts/content-pipeline-smoke.mjs doctor|e2e`.
 - **Платформа автопостинга (радар идей → варианты по группам → согласование → дистрибуция 100+)**:
-  edge `radar` (идеи конкурентов, `idea_bank`, «в контент-план»), персоны и варианты тем, автопередача
+  edge `radar` (сборщик конкурентов через Apify по секрету `APIFY_TOKEN`, `idea_bank`, «в контент-план»), персоны и варианты тем, автопередача
   одобренного ролика в `publish_videos`, планировщик слотов `plan_publish_slots`, воркер в партициях,
   Threads, дайджест, `post_metrics`. Страницы «Радар идей» и «Публикации». План —
   `docs/AUTOPOSTING-PLATFORM-PLAN.md`, реализация — `docs/AUTOPOSTING-PLATFORM.md`.
 - **Автопубликация готового видео в аккаунты площадок** (Instagram/TikTok/YouTube/Threads):
   очередь `publish_jobs` + edge-функции `publish-*`, оркестрация заявок и отчётов — в n8n.
   Детали, контракты endpoint'ов и онбординг аккаунтов — `docs/PUBLISHING-SYSTEM.md`.
+- **Публичный API и MCP-сервер** (внешний клиент по API-ключу проекта загружает видео и ставит
+  публикацию): edge `api` + таблица `api_keys`, ключи выдаются в «Публикации → Настройки»,
+  MCP-сервер `mcp/markvision/`. Контракт — `docs/PUBLIC-API.md`.
 - **Подключение TikTok** (страница `/marketing/tiktok`, витрина для App review TikTok for Developers):
   Login Kit → Display API (профиль, видео) → Content Posting API (Direct Post / inbox) → отключение
   с отзывом токена; edge `tiktok-connect`, каталог прав `_lib/tiktokApi.ts`. Заявка, песочница,

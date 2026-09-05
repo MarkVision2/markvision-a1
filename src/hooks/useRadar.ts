@@ -8,13 +8,17 @@ import {
   type UpsertSourceInput,
 } from "@/lib/radarClient";
 
-const ACTIVE_POLL_MS = 30_000;
+/** Пока идёт сбор (запуск Apify) — опрос чаще: обзор сам дособирает результат. */
+const CRAWL_POLL_MS = 15_000;
+/** Пока есть посты в очереди разбора. */
+const ANALYSIS_POLL_MS = 30_000;
 
-const EMPTY: RadarOverview = { sources: [], metrics: null, ideas: [], posts: [], groups: [], runs: [] };
+const EMPTY: RadarOverview = { sources: [], metrics: null, ideas: [], posts: [], groups: [], runs: [], crawler: null };
 
 /**
- * Обзор радара по активному проекту. Пока есть посты в очереди разбора —
- * опрос раз в 30 с. Каждая мутация ждёт ответ edge-функции и перечитывает обзор.
+ * Обзор радара по активному проекту. Пока идёт сбор — опрос раз в 15 с, пока
+ * есть посты в очереди разбора — раз в 30 с. Каждая мутация ждёт ответ
+ * edge-функции и перечитывает обзор.
  */
 export function useRadar() {
   const { activeId: projectId } = useProjectsStore();
@@ -40,6 +44,7 @@ export function useRadar() {
           posts: d.posts ?? [],
           groups: d.groups ?? [],
           runs: d.runs ?? [],
+          crawler: d.crawler ?? null,
         });
         setError(null);
       }
@@ -58,12 +63,14 @@ export function useRadar() {
     };
   }, [refetch]);
 
-  const active = data.posts.some((p) => p.analysis_status === "pending" || p.analysis_status === "analyzing");
+  const crawling = data.runs.some((r) => r.status === "running");
+  const analyzing = data.posts.some((p) => p.analysis_status === "pending" || p.analysis_status === "analyzing");
+  const pollMs = crawling ? CRAWL_POLL_MS : analyzing ? ANALYSIS_POLL_MS : 0;
   useEffect(() => {
-    if (!active) return;
-    const t = setInterval(() => void refetch(), ACTIVE_POLL_MS);
+    if (!pollMs) return;
+    const t = setInterval(() => void refetch(), pollMs);
     return () => clearInterval(t);
-  }, [active, refetch]);
+  }, [pollMs, refetch]);
 
   const act = useCallback(
     async <T,>(name: string, fn: () => Promise<T>): Promise<T> => {
@@ -85,6 +92,7 @@ export function useRadar() {
     loading,
     error,
     busy,
+    crawling,
     refetch,
     upsertSource: (input: Omit<UpsertSourceInput, "project_id"> & { project_id?: string }) =>
       act("source", () => radarApi.upsertSource({ ...input, project_id: input.project_id ?? projectId })),

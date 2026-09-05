@@ -461,6 +461,33 @@ export interface SettingsUpsertInput {
   monthly_usd?: number | null;
 }
 
+/* ───────────── API-ключи проекта (edge api, docs/PUBLIC-API.md) ───────────── */
+
+export type ApiScope = "read" | "publish" | "manage";
+
+export interface ApiKey {
+  id: string;
+  name: string;
+  key_prefix: string;
+  scopes: ApiScope[];
+  created_at: string;
+  last_used_at: string | null;
+  expires_at: string | null;
+  revoked_at: string | null;
+}
+
+export interface ApiKeyCreateInput {
+  name: string;
+  scopes?: ApiScope[];
+  expires_days?: number;
+}
+
+export const API_SCOPE_META: Record<ApiScope, { label: string; hint: string }> = {
+  read: { label: "Чтение", hint: "аккаунты, группы, настройки, статусы публикаций" },
+  publish: { label: "Публикация", hint: "загрузка медиа, постановка и управление заданиями (включает чтение)" },
+  manage: { label: "Управление", hint: "правка аккаунтов, групп и настроек проекта (включает чтение)" },
+};
+
 export interface PublishVideoInput {
   file_url?: string;
   video_id?: string;
@@ -512,6 +539,12 @@ export const publishingApi = {
   jobCancel: (project_id: string, job_id: string) => call<{ ok: true; status: "cancelled" }>("job_cancel", { project_id, job_id }),
   publishVideo: (project_id: string, input: PublishVideoInput) =>
     call<PublishVideoResult>("publish_video", { project_id, ...input }),
+
+  apiKeyList: (project_id: string) => call<{ keys: ApiKey[] }>("api_key_list", { project_id }),
+  /** Ответ несёт сам ключ — единственный раз, дальше в базе только хэш. */
+  apiKeyCreate: (project_id: string, input: ApiKeyCreateInput) =>
+    call<{ key: string; api_key: ApiKey }>("api_key_create", { project_id, ...input }),
+  apiKeyRevoke: (project_id: string, key_id: string) => call<{ ok: true }>("api_key_revoke", { project_id, key_id }),
 };
 
 /* ───────────────────────────── проверка здоровья ───────────────────────────── */

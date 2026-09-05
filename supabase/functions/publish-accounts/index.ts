@@ -27,9 +27,12 @@
  *   { action: "publish_video", project_id, file_url | video_id, group_id?, account_ids?, mode?, title?, caption?, hashtags? }
  *   { action: "metrics", project_id } → { publish, radar, videos, groups, accounts } — accounts из publish_account_metrics
  *   { action: "metrics", project_id } — витрины publish_metrics / radar_metrics
+ *   { action: "api_key_list" | "api_key_create" | "api_key_revoke", project_id, name?, scopes?, expires_days?, key_id? }
+ *       — API-ключи проекта для edge-функции api (docs/PUBLIC-API.md); ключ отдаётся один раз при создании
  */
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { requireProjectAccess, requireUser } from "../_lib/auth.ts";
+import { generateApiKey, hashApiKey, normalizeScopes } from "../_lib/apiKeys.ts";
 import { resolveMetaAccessToken } from "../_lib/metaToken.ts";
 import {
   automationKeyValid,
@@ -166,9 +169,11 @@ Deno.serve(async (req) => {
 
   // Скриптовый онбординг ходит с ключом автоматизации, интерфейс — под пользователем.
   const viaAutomation = await automationKeyValid(req, admin);
+  let userId: string | null = null;
   if (!viaAutomation) {
     const auth = await requireUser(req);
     if (!auth.ok) return json({ error: "unauthorized" }, 401);
+    userId = auth.userId;
     const access = await requireProjectAccess(auth.authHeader, pid);
     if (!access.ok) return access.response;
   }
@@ -562,6 +567,47 @@ Deno.serve(async (req) => {
         const { error } = await admin.from("project_budgets").upsert(row, { onConflict: "project_id" });
         if (error) return json({ error: error.message }, 500);
       }
+      return json({ ok: true });
+    }
+
+    /* ── API-ключи проекта: список, выдача (ключ показывается один раз), отзыв ── */
+    if (action === "api_key_list") {
+      const { data, error } = await admin.from("api_keys")
+        .select("id, name, key_prefix, scopes, created_at, last_used_at, expires_at, revoked_at")
+        .eq("project_id", pid).order("created_at", { ascending: false });
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true, keys: data ?? [] });
+    }
+    if (action === "api_key_create") {
+      const name = String(body?.name ?? "").trim().slice(0, 80);
+      if (!name) return json({ error: "name обязателен — как называется клиент (например, «Claude MCP»)" }, 400);
+      const scopes = normalizeScopes(body?.scopes);
+      const expiresDays = body?.expires_days == null ? null : Number(body.expires_days);
+      if (expiresDays != null && (!Number.isFinite(expiresDays) || expiresDays <= 0)) {
+        return json({ error: "expires_days — число дней больше нуля" }, 400);
+      }
+      const generated = generateApiKey();
+      const { data, error } = await admin.from("api_keys").insert({
+        project_id: pid,
+        name,
+        key_prefix: generated.prefix,
+        key_hash: await hashApiKey(generated.key),
+        scopes,
+        created_by: userId,
+        expires_at: expiresDays ? new Date(Date.now() + expiresDays * 86_400_000).toISOString() : null,
+      }).select("id, name, key_prefix, scopes, created_at, last_used_at, expires_at, revoked_at").maybeSingle();
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true, key: generated.key, api_key: data });
+    }
+    if (action === "api_key_revoke") {
+      const keyId = String(body?.key_id ?? "");
+      if (!keyId) return json({ error: "key_id обязателен" }, 400);
+      const { data, error } = await admin.from("api_keys")
+        .update({ revoked_at: new Date().toISOString() })
+        .eq("id", keyId).eq("project_id", pid).is("revoked_at", null)
+        .select("id").maybeSingle();
+      if (error) return json({ error: error.message }, 500);
+      if (!data) return json({ error: "ключ не найден или уже отозван" }, 404);
       return json({ ok: true });
     }
 

@@ -31,6 +31,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { AccountsTable, PLATFORM_DOT } from "@/components/publishing/AccountsTable";
+import { ApiKeysSection } from "@/components/publishing/ApiKeysSection";
 import { JobsTab } from "@/components/publishing/JobsTab";
 import { NetworkTab } from "@/components/publishing/NetworkTab";
 import { UploadPublishDialog } from "@/components/publishing/UploadPublishDialog";
@@ -207,7 +208,10 @@ export default function Publishing() {
           </TabsContent>
           <TabsContent value="personas" className="mt-3"><PersonasTab pub={pub} /></TabsContent>
           <TabsContent value="jobs" className="mt-3"><JobsTab pub={pub} /></TabsContent>
-          <TabsContent value="settings" className="mt-3"><SettingsTab pub={pub} /></TabsContent>
+          <TabsContent value="settings" className="mt-3 space-y-4">
+            <SettingsTab pub={pub} />
+            <ApiKeysSection projectId={pub.projectId} />
+          </TabsContent>
         </Tabs>}
       </div>
 

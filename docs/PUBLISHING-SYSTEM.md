@@ -63,6 +63,7 @@ TikTok/YouTube/Threads и автопродления Meta-токенов. Дет
 | Разбор очереди | `supabase/functions/publish-worker/` |
 | HTTP-точка публикации | `supabase/functions/publish-dispatch/` |
 | Аккаунты (подключение, вкл/выкл) | `supabase/functions/publish-accounts/` |
+| Публичный API по ключу проекта (MCP, агенты) | `supabase/functions/api/` — контракт `docs/PUBLIC-API.md`, MCP-сервер `mcp/markvision/` |
 | Сторожа токенов и ошибок | `supabase/functions/publish-monitor/` |
 | n8n-воркфлоу (копия) | `docs/n8n-autoposting.json` |
 | Диагностика готовности | `scripts/publishing-doctor.mjs` |
@@ -135,6 +136,8 @@ pending ──claim──► processing ──► published
 Авторизация машинных вызовов — заголовок `x-automation-key` =
 `automation_settings.cron_secret`. Из интерфейса — пользовательский JWT
 (роль `admin`/`manager`, для `publish-accounts` — доступ к проекту).
+Для внешних клиентов (Claude через MCP, скрипты) — не общий `cron_secret`, а
+персональный API-ключ проекта через edge-функцию `api`: `docs/PUBLIC-API.md`.
 
 ### `POST publish-intake`
 
