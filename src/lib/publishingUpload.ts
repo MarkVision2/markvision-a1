@@ -11,6 +11,8 @@ import { clientSupabaseUrl, clientSupabasePublishableKey } from "@/lib/supabaseC
 
 const BUCKET = "publish-uploads";
 const SUPABASE_UPLOAD_LIMIT = 45 * 1024 * 1024;
+/** Потолок r2-presign-upload — дальше площадки всё равно не примут. */
+export const MAX_UPLOAD_BYTES = 2048 * 1024 * 1024;
 
 /** Площадки принимают mp4/mov; всё остальное отсекаем до заливки. */
 export const ACCEPT_VIDEO = "video/mp4,video/quicktime,.mp4,.mov,.m4v";
@@ -36,6 +38,7 @@ export function validateVideoFile(file: File): string | null {
     return "Площадки принимают только .mp4 и .mov — переконвертируйте файл";
   }
   if (file.size === 0) return "Файл пустой";
+  if (file.size > MAX_UPLOAD_BYTES) return `Файл больше ${formatBytes(MAX_UPLOAD_BYTES)} — сожмите ролик перед заливкой`;
   return null;
 }
 
@@ -88,7 +91,14 @@ export async function uploadPublishVideo(
 
   if (file.size > SUPABASE_UPLOAD_LIMIT) {
     const { uploadUrl, publicUrl } = await presignR2(`publish-${projectId}-${sanitize(file.name)}`, contentType, file.size);
-    await putWithProgress(uploadUrl, file, contentType, onProgress);
+    try {
+      await putWithProgress(uploadUrl, file, contentType, onProgress);
+    } catch (e) {
+      // Один повтор на обрыв сети: гигабайтный ролик не должен падать от одного разрыва.
+      if (!(e instanceof Error) || !/Сетевая ошибка/.test(e.message)) throw e;
+      onProgress?.(0);
+      await putWithProgress(uploadUrl, file, contentType, onProgress);
+    }
     return { url: publicUrl };
   }
 

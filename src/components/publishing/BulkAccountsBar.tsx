@@ -33,6 +33,7 @@ export function BulkAccountsBar({ pub, selected, onClear }: Props) {
   /**
    * Одна правка на все выделенные строки. Идём последовательно, а не
    * Promise.all: сотня параллельных вызовов edge-функции упрётся в лимиты.
+   * Перечитываем страницу один раз в конце, а не после каждой строки.
    */
   const applyAll = async (label: string, patch: AccountUpdateInput, key: string) => {
     setRunning(key);
@@ -41,7 +42,7 @@ export function BulkAccountsBar({ pub, selected, onClear }: Props) {
     try {
       for (const id of selected) {
         try {
-          await pub.updateAccount(id, patch);
+          await pub.updateAccountQuiet(id, patch);
           ok += 1;
         } catch (e) {
           failures.push(e instanceof Error ? e.message : "ошибка");

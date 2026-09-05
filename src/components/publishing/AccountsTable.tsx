@@ -41,6 +41,7 @@ import { initials } from "@/components/publishing/PostPreview";
 import type { UsePublishing } from "@/hooks/usePublishing";
 import {
   ACCOUNT_STATUS_META,
+  PLATFORM_DOT as PLATFORM_DOT_META,
   PLATFORM_META,
   effectiveDailyLimit,
   formatFollowers,
@@ -62,13 +63,8 @@ export const HEALTH_DOT = {
   bad: "bg-destructive",
 } as const;
 
-/** Точка площадки в фильтре и сводке — цвет тот же, что у бейджа. */
-export const PLATFORM_DOT: Record<PublishPlatform, string> = {
-  instagram: "bg-pink-500",
-  tiktok: "bg-slate-400",
-  youtube: "bg-red-500",
-  threads: "bg-zinc-400",
-};
+/** Точка площадки — единый набор из publishingClient (тот же в предпросмотре и сводке). */
+export const PLATFORM_DOT = PLATFORM_DOT_META;
 
 type View = "manage" | "stats";
 type SortKey = "account_name" | "followers" | "posts_total" | "reach" | "comments" | "er_percent" | "health_score";
@@ -180,6 +176,8 @@ export function AccountsTable({ pub }: { pub: UsePublishing }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [view, setView] = useState<View>("manage");
   const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: "followers", desc: true });
+  // «Внимание»: не активен, выключен или здоровье ниже порога — то, что сводка зовёт «требуют внимания».
+  const [attentionOnly, setAttentionOnly] = useState(false);
 
   const run = async (label: string, fn: () => Promise<unknown>) => {
     try {
@@ -202,7 +200,12 @@ export function AccountsTable({ pub }: { pub: UsePublishing }) {
     return m;
   }, [pub.metrics?.accounts]);
 
-  const filtered = useMemo(() => filterAccounts(pub.accounts, filters), [pub.accounts, filters]);
+  const needsAttention = (a: PublishAccount) => a.status !== "active" || !a.publish_enabled || Number(a.health_score ?? 0) < 20;
+  const attentionCount = useMemo(() => pub.accounts.filter(needsAttention).length, [pub.accounts]);
+  const filtered = useMemo(() => {
+    const base = filterAccounts(pub.accounts, filters);
+    return attentionOnly ? base.filter(needsAttention) : base;
+  }, [pub.accounts, filters, attentionOnly]);
   const visible = useMemo(() => {
     if (view !== "stats") return filtered;
     const dir = sort.desc ? -1 : 1;
@@ -242,11 +245,13 @@ export function AccountsTable({ pub }: { pub: UsePublishing }) {
       visible.reduce(
         (acc, a) => {
           const m = metricsById.get(a.id);
+          // Те же правила, что в ячейках: охват и комментарии — только по снятым метрикам.
+          const measured = (m?.measured_posts ?? 0) > 0;
           return {
             followers: acc.followers + (m?.followers ?? a.followers ?? 0),
             posts: acc.posts + (m?.posts_total ?? 0),
-            reach: acc.reach + (m?.reach ?? 0),
-            comments: acc.comments + (m?.comments ?? 0),
+            reach: acc.reach + (measured ? m!.reach : 0),
+            comments: acc.comments + (measured ? m!.comments : 0),
           };
         },
         { followers: 0, posts: 0, reach: 0, comments: 0 },
@@ -254,9 +259,10 @@ export function AccountsTable({ pub }: { pub: UsePublishing }) {
     [visible, metricsById],
   );
 
-  // Выделение переживает перерисовку, но не должно тянуть отключённые аккаунты.
-  const live = useMemo(() => new Set(pub.accounts.map((a) => a.id)), [pub.accounts]);
-  const chosen = useMemo(() => [...selected].filter((id) => live.has(id)), [selected, live]);
+  // Массовое действие идёт только по тем, кто сейчас на экране: выделение под другим
+  // фильтром не должно уезжать в него незаметно.
+  const visibleIds = useMemo(() => new Set(visible.map((a) => a.id)), [visible]);
+  const chosen = useMemo(() => [...selected].filter((id) => visibleIds.has(id)), [selected, visibleIds]);
   const allVisibleChosen = visible.length > 0 && visible.every((a) => selected.has(a.id));
 
   const toggleAllVisible = () => {
@@ -277,6 +283,22 @@ export function AccountsTable({ pub }: { pub: UsePublishing }) {
     setSort((s) => (s.key === key ? { key, desc: !s.desc } : { key, desc: key !== "account_name" }));
 
   if (!pub.accounts.length) {
+    if (pub.loading) {
+      return (
+        <div className="space-y-2 rounded-2xl border p-3" aria-busy="true" aria-label="Загрузка аккаунтов">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <div key={i} className="flex items-center gap-3 px-2 py-2">
+              <div className="h-8 w-8 animate-pulse rounded-full bg-muted" />
+              <div className="flex-1 space-y-1.5">
+                <div className="h-3 w-1/3 animate-pulse rounded bg-muted" />
+                <div className="h-2.5 w-1/5 animate-pulse rounded bg-muted" />
+              </div>
+              <div className="h-5 w-20 animate-pulse rounded-full bg-muted" />
+            </div>
+          ))}
+        </div>
+      );
+    }
     return (
       <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">
         Аккаунтов пока нет — подключите Instagram, TikTok, YouTube или Threads кнопкой «Подключить аккаунт».
@@ -354,6 +376,20 @@ export function AccountsTable({ pub }: { pub: UsePublishing }) {
             onClick={() => setFilters((f) => ({ ...f, platform: p }))}
           />
         ))}
+        {attentionCount > 0 && (
+          <button
+            type="button"
+            aria-pressed={attentionOnly}
+            onClick={() => setAttentionOnly((v) => !v)}
+            className={cn(
+              "inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-xs transition-colors",
+              attentionOnly ? "border-amber-500/60 bg-amber-500/10 font-medium text-amber-700 dark:text-amber-300" : "border-border text-amber-700 hover:bg-amber-500/5 dark:text-amber-300",
+            )}
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden />
+            Внимание <span className="tabular-nums">{attentionCount}</span>
+          </button>
+        )}
         <span className="ml-auto text-xs tabular-nums text-muted-foreground">{visible.length} из {pub.accounts.length}</span>
       </div>
 

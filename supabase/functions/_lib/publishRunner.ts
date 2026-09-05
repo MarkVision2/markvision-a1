@@ -33,7 +33,7 @@ export async function ensureFreshToken(
   admin: SupabaseClient,
   account: PublishAccount,
   token: string,
-): Promise<{ token: string; error?: string }> {
+): Promise<{ token: string; expiresAt?: string | null; error?: string }> {
   if (!isOAuthPlatform(account.platform)) return { token };
   const margin = account.platform === "threads" ? 10 * 86_400 : 600;
   if (!tokenNeedsRefresh(account.token_expires_at, Date.now(), margin)) return { token };
@@ -63,7 +63,7 @@ export async function ensureFreshToken(
       token_expires_at: parsed.expiresAt,
       token_refreshed_at: new Date().toISOString(),
     }).eq("id", account.id);
-    return { token: parsed.accessToken };
+    return { token: parsed.accessToken, expiresAt: parsed.expiresAt };
   } catch (e) {
     return { token, error: e instanceof Error ? e.message : String(e) };
   }
@@ -71,6 +71,8 @@ export async function ensureFreshToken(
 
 /** Сколько раз пробуем задание, прежде чем признать отказ окончательным. */
 export const MAX_ATTEMPTS = 5;
+/** Сколько раз ждём, пока площадка обработает медиа (опрос раз в минуту). */
+export const MAX_PROCESSING_POLLS = 30;
 
 export interface RunResult {
   jobId: string;
@@ -223,15 +225,30 @@ export async function runPublishJob(
   }
 
   if (outcome.status === "processing") {
+    const polls = (job.poll_count ?? 0) + 1;
+    if (polls > MAX_PROCESSING_POLLS) {
+      // Площадка так и не обработала медиа — это отказ, а не вечный опрос.
+      await patchJob(admin, job.id, {
+        status: "failed", locked_at: null, poll_count: polls,
+        error_code: "processing_timeout",
+        error_message: `площадка не обработала медиа за ${MAX_PROCESSING_POLLS} опросов (контейнер ${outcome.containerId})`,
+      });
+      await logJob(admin, { jobId: job.id, accountId: account.id, level: "error", message: `обработка медиа не завершилась за ${MAX_PROCESSING_POLLS} опросов` });
+      await notifyIfEach(admin, job.project_id, `❌ Публикация не удалась: «${account.account_name}» (${account.platform}) — площадка не обработала видео.`);
+      await settleVideo(admin, job.video_id);
+      return { jobId: job.id, status: "failed", message: "processing_timeout" };
+    }
     // Контейнер сохраняем ДО следующей попытки: повтор добьёт его, а не зальёт заново.
+    // Опрос — не попытка: attempts возвращаем (claim снова прибавит), считаем poll_count.
     await patchJob(admin, job.id, {
       status: "retry", locked_at: null, container_id: outcome.containerId,
+      attempts: Math.max(job.attempts - 1, 0), poll_count: polls,
       next_attempt_at: inMinutes(1),
       error_code: null, error_message: null,
     });
     await logJob(admin, {
       jobId: job.id, accountId: account.id,
-      message: `медиа обрабатывается площадкой, контейнер ${outcome.containerId}`,
+      message: `медиа обрабатывается площадкой, контейнер ${outcome.containerId} (опрос ${polls})`,
     });
     return { jobId: job.id, status: "processing" };
   }
@@ -252,6 +269,7 @@ export async function runPublishJob(
 
   if (outcome.kind === "unsupported") {
     await patchJob(admin, job.id, { ...base, status: "manual_review" });
+    await notifyIfEach(admin, job.project_id, `🖐 Задание на ручной разбор: «${account.account_name}» (${account.platform}) — ${outcome.message.slice(0, 200)}`);
     await settleVideo(admin, job.video_id);
     return { jobId: job.id, status: "manual_review", message: outcome.message };
   }
@@ -259,6 +277,13 @@ export async function runPublishJob(
   // Мёртвый токен и лимит — беда аккаунта, а не задания: аккаунт уже погашен,
   // задание ждёт в очереди и уедет само, как только аккаунт починят.
   if (outcome.kind === "token" || outcome.kind === "limit") {
+    if (job.attempts >= MAX_ATTEMPTS) {
+      // Аккаунт так и не починили — задание уходит на ручной разбор, а не крутится вечно в retry.
+      await patchJob(admin, job.id, { ...base, status: "manual_review" });
+      await notifyIfEach(admin, job.project_id, `🖐 Задание на ручной разбор: «${account.account_name}» (${account.platform}) — ${outcome.message.slice(0, 200)}`);
+      await settleVideo(admin, job.video_id);
+      return { jobId: job.id, status: "manual_review", message: outcome.message };
+    }
     await patchJob(admin, job.id, { ...base, status: "retry", next_attempt_at: inMinutes(60) });
     await notifyIfEach(
       admin, job.project_id,

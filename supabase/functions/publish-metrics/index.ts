@@ -72,15 +72,15 @@ async function fetchInsights(platform: string, mediaId: string, token: string): 
       return normalizeInsights(platform, body);
     }
     const url = platform === "threads"
-      ? `${GRAPH_THREADS}/${mediaId}/insights?metric=views,likes,replies,reposts,quotes,shares&access_token=${token}`
-      : `${/^IG/i.test(token) ? GRAPH_IG : GRAPH_FB}/${mediaId}/insights?metric=reach,views,likes,comments,shares,saved&access_token=${token}`;
+      ? `${GRAPH_THREADS}/${mediaId}/insights?metric=views,likes,replies,reposts,quotes,shares&access_token=${encodeURIComponent(token)}`
+      : `${/^IG/i.test(token) ? GRAPH_IG : GRAPH_FB}/${mediaId}/insights?metric=reach,views,likes,comments,shares,saved&access_token=${encodeURIComponent(token)}`;
     const res = await fetch(url);
     const body = await res.json().catch(() => ({}));
     if (body?.error) {
       // Часть метрик недоступна у отдельных типов медиа — падаем на reach/views.
       const fallback = platform === "threads"
-        ? `${GRAPH_THREADS}/${mediaId}/insights?metric=views,likes&access_token=${token}`
-        : `${/^IG/i.test(token) ? GRAPH_IG : GRAPH_FB}/${mediaId}/insights?metric=reach&access_token=${token}`;
+        ? `${GRAPH_THREADS}/${mediaId}/insights?metric=views,likes&access_token=${encodeURIComponent(token)}`
+        : `${/^IG/i.test(token) ? GRAPH_IG : GRAPH_FB}/${mediaId}/insights?metric=reach&access_token=${encodeURIComponent(token)}`;
       const r2 = await fetch(fallback);
       const b2 = await r2.json().catch(() => ({}));
       if (b2?.error) return { error: String(b2.error.message ?? body.error.message) };
@@ -107,8 +107,8 @@ async function fetchFollowers(platform: string, externalId: string, token: strin
       return v == null ? null : Number(v);
     }
     const url = platform === "threads"
-      ? `${GRAPH_THREADS}/${externalId}/threads_insights?metric=followers_count&access_token=${token}`
-      : `${/^IG/i.test(token) ? GRAPH_IG : GRAPH_FB}/${externalId}?fields=followers_count&access_token=${token}`;
+      ? `${GRAPH_THREADS}/${externalId}/threads_insights?metric=followers_count&access_token=${encodeURIComponent(token)}`
+      : `${/^IG/i.test(token) ? GRAPH_IG : GRAPH_FB}/${externalId}?fields=followers_count&access_token=${encodeURIComponent(token)}`;
     const res = await fetch(url);
     const body = await res.json().catch(() => ({}));
     if (platform === "threads") {
@@ -261,5 +261,9 @@ Deno.serve(async (req) => {
 
   const body = await req.json().catch(() => ({}));
   const limit = Math.min(Math.max(Number(body?.limit ?? 200), 1), 500);
-  return json({ ok: true, ...(await collect(admin, limit)) });
+  try {
+    return json({ ok: true, ...(await collect(admin, limit)) });
+  } catch (e) {
+    return json({ error: e instanceof Error ? e.message : String(e) }, 500);
+  }
 });

@@ -36,6 +36,7 @@ export function usePublishing() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const alive = useRef(true);
+  const firstJobsEffect = useRef(true);
 
   const fetchJobs = useCallback(
     async (status: PublishJobStatus | "all" = jobsStatus) => {
@@ -67,11 +68,13 @@ export function usePublishing() {
         publishingApi.metrics(projectId),
       ]);
       if (!alive.current) return;
-      if (a.status === "fulfilled") setAccounts(a.value.accounts ?? []);
-      if (g.status === "fulfilled") setGroups(g.value.groups ?? []);
-      if (p.status === "fulfilled") setPersonas(p.value.personas ?? []);
-      if (s.status === "fulfilled") setSettings(s.value);
-      if (m.status === "fulfilled") setMetrics(m.value);
+      // Отказ источника обнуляет его данные: иначе после смены проекта на экране
+      // оставалась сеть аккаунтов прошлого проекта под баннером ошибки.
+      setAccounts(a.status === "fulfilled" ? a.value.accounts ?? [] : []);
+      setGroups(g.status === "fulfilled" ? g.value.groups ?? [] : []);
+      setPersonas(p.status === "fulfilled" ? p.value.personas ?? [] : []);
+      setSettings(s.status === "fulfilled" ? s.value : null);
+      setMetrics(m.status === "fulfilled" ? m.value : null);
       const failed = [a, g, p, s, m].find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
       setError(failed ? (failed.reason instanceof Error ? failed.reason.message : "Ошибка загрузки") : null);
       await fetchJobs().catch(() => undefined);
@@ -88,8 +91,9 @@ export function usePublishing() {
     };
   }, [projectId]);
 
-  // Смена фильтра заданий — перечитываем только задания.
+  // Смена фильтра заданий — перечитываем только задания (первый рендер уже покрыт refetch).
   useEffect(() => {
+    if (firstJobsEffect.current) { firstJobsEffect.current = false; return; }
     if (!projectId) return;
     void fetchJobs(jobsStatus).catch(() => undefined);
   }, [jobsStatus]);
@@ -132,6 +136,9 @@ export function usePublishing() {
       act("connect_threads", (pid) => publishingApi.connectThreads(pid, input)),
     updateAccount: (accountId: string, patch: AccountUpdateInput) =>
       act(`update:${accountId}`, (pid) => publishingApi.update(pid, accountId, patch)),
+    /** Без перечитывания — для массовых правок, где refetch делается один раз в конце. */
+    updateAccountQuiet: (accountId: string, patch: AccountUpdateInput) =>
+      act(`update:${accountId}`, (pid) => publishingApi.update(pid, accountId, patch), false),
     disconnect: (accountId: string) => act(`disconnect:${accountId}`, (pid) => publishingApi.disconnect(pid, accountId)),
     groupUpsert: (input: GroupUpsertInput) => act("group_upsert", (pid) => publishingApi.groupUpsert(pid, input)),
     groupDelete: (groupId: string) => act("group_delete", (pid) => publishingApi.groupDelete(pid, groupId)),

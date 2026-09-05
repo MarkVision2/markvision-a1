@@ -93,7 +93,7 @@ export async function publishThreads(req: PublishRequest): Promise<PublishOutcom
   }
 
   while (Date.now() < deadline) {
-    const { body } = await call(`${GRAPH}/${containerId}?fields=status,error_message&access_token=${token}`);
+    const { body } = await call(`${GRAPH}/${containerId}?fields=status,error_message&access_token=${encodeURIComponent(token)}`);
     const st = (body ?? {}) as { status?: string; error_message?: string };
     if (st.status === "ERROR") {
       return {
@@ -110,7 +110,7 @@ export async function publishThreads(req: PublishRequest): Promise<PublishOutcom
   if (Date.now() >= deadline) return { status: "processing", containerId };
 
   const { body: pub } = await call(
-    `${GRAPH}/${userId}/threads_publish?creation_id=${containerId}&access_token=${token}`,
+    `${GRAPH}/${userId}/threads_publish?creation_id=${containerId}&access_token=${encodeURIComponent(token)}`,
     { method: "POST" },
   );
   const mediaId = (pub as { id?: string } | null)?.id;
@@ -121,7 +121,7 @@ export async function publishThreads(req: PublishRequest): Promise<PublishOutcom
     return { status: "failed", kind: c.kind, code: c.code, message: c.message, raw: pub };
   }
 
-  const { body: info } = await call(`${GRAPH}/${mediaId}?fields=permalink&access_token=${token}`);
+  const { body: info } = await call(`${GRAPH}/${mediaId}?fields=permalink&access_token=${encodeURIComponent(token)}`);
   return {
     status: "published",
     externalPostId: mediaId,

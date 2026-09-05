@@ -7,7 +7,7 @@
  * раскладывает задания по слотам (plan_publish_slots).
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CalendarClock, CheckCircle2, FileVideo, Link2, Loader2, Monitor, Send, Smartphone, Upload, Users, X } from "lucide-react";
+import { AlertTriangle, CalendarClock, CheckCircle2, FileVideo, Link2, Loader2, Monitor, Send, Smartphone, Upload, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,8 +26,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { AccountChips } from "@/components/publishing/AccountChips";
 import { PostPreview, type PreviewContent } from "@/components/publishing/PostPreview";
 import type { UsePublishing } from "@/hooks/usePublishing";
-import { PLATFORM_META, PUBLISH_MODE_META, type PublishMode } from "@/lib/publishingClient";
-import { formatStep, isPublishable, planPreview } from "@/lib/publishingSelection";
+import { PLATFORM_META, PUBLISH_MODE_META, type PublishGroup, type PublishMode, type PublishStrategy } from "@/lib/publishingClient";
+import { DEFAULT_PER_HOUR, almatyLocalNow, almatyLocalToIso, formatStep, isGroupMember, isPublishable, planPreview } from "@/lib/publishingSelection";
 import { ACCEPT_VIDEO, formatBytes, uploadPublishVideo, validateVideoFile } from "@/lib/publishingUpload";
 import { cn } from "@/lib/utils";
 
@@ -37,9 +37,12 @@ const NO_GROUP = "__none";
 export function validateFileUrl(url: string): string | null {
   const u = url.trim();
   if (!u) return "Укажите ссылку на видео";
-  if (!/^https:\/\/.+\.(mp4|mov|m4v)(\?|$)/i.test(u)) return "Нужна https-ссылка на файл .mp4 или .mov";
+  if (!/^https:\/\/.+\.(mp4|mov|m4v)(\?|$)/i.test(u)) return "Нужна https-ссылка на файл .mp4, .mov или .m4v";
   return null;
 }
+
+/** Стратегия группы → режим раскладки композера (те же три значения, другие имена). */
+const STRATEGY_TO_MODE: Record<PublishStrategy, PublishMode> = { all_at_once: "now", drip: "drip", daily: "daily" };
 
 function errMsg(e: unknown, fallback = "Ошибка"): string {
   return e instanceof Error ? e.message : fallback;
@@ -68,7 +71,8 @@ export function UploadPublishDialog({ open, onClose, pub }: { open: boolean; onC
   const [caption, setCaption] = useState("");
   const [hashtags, setHashtags] = useState("");
   const [mode, setMode] = useState<PublishMode>("drip");
-  // Пусто — «с этой минуты»; иначе локальное время Алматы из <input type=datetime-local>.
+  // Пусто — «с этой минуты»; иначе время Алматы из <input type=datetime-local>
+  // (браузер оператора может жить в другом поясе — переводим сами, см. almatyLocalToIso).
   const [startAt, setStartAt] = useState("");
   const [device, setDevice] = useState<"mobile" | "desktop">("mobile");
   const [err, setErr] = useState<string | null>(null);
@@ -105,28 +109,51 @@ export function UploadPublishDialog({ open, onClose, pub }: { open: boolean; onC
   const previewUrl = source === "file" ? localUrl : fileUrl.trim() || null;
 
   // Пропорция исходника — предпросмотр должен показывать реальную обрезку кадра.
+  // Ссылку зондируем с задержкой: иначе запрос уходил на каждый набранный символ.
   useEffect(() => {
     setAspect(null);
     if (!previewUrl) return;
-    const v = document.createElement("video");
-    v.preload = "metadata";
-    v.onloadedmetadata = () => {
-      if (v.videoWidth && v.videoHeight) setAspect(v.videoWidth / v.videoHeight);
+    let v: HTMLVideoElement | null = null;
+    const t = window.setTimeout(() => {
+      v = document.createElement("video");
+      v.preload = "metadata";
+      v.onloadedmetadata = () => {
+        if (v && v.videoWidth && v.videoHeight) setAspect(v.videoWidth / v.videoHeight);
+      };
+      v.src = previewUrl;
+    }, previewUrl.startsWith("blob:") ? 0 : 600);
+    return () => {
+      window.clearTimeout(t);
+      if (v) {
+        v.onloadedmetadata = null;
+        v.removeAttribute("src");
+        try { v.load(); } catch { /* jsdom не реализует load() — в браузере отменяет загрузку */ }
+      }
     };
-    v.src = previewUrl;
   }, [previewUrl]);
 
   const selectedAccounts = useMemo(() => pub.accounts.filter((a) => selected.has(a.id)), [pub.accounts, selected]);
   const group = useMemo(() => pub.groups.find((g) => g.id === groupId) ?? null, [pub.groups, groupId]);
-  const startDate = useMemo(() => {
-    if (!startAt) return null;
-    const d = new Date(startAt);
-    return Number.isNaN(d.getTime()) ? null : d;
-  }, [startAt]);
+  const projectPaused = Boolean(pub.settings?.settings.paused || pub.metrics?.publish?.paused);
+  const startIso = useMemo(() => (startAt ? almatyLocalToIso(startAt) : null), [startAt]);
+  const startDate = useMemo(() => (startIso ? new Date(startIso) : null), [startIso]);
   const preview = useMemo(
-    () => planPreview(selectedAccounts, mode, group, startDate ?? new Date()),
-    [selectedAccounts, mode, group, startDate],
+    () => planPreview(selectedAccounts, mode, group, startDate ?? new Date(), { projectPaused, groups: pub.groups }),
+    [selectedAccounts, mode, group, startDate, projectPaused, pub.groups],
   );
+
+  /**
+   * Группа в композере — это и состав, и темп: plan_publish_slots оставит только её
+   * членов нужной площадки. Поэтому выбор группы сразу отбирает её годных членов и
+   * подставляет её стратегию как режим — оператор видит то, что реально создастся.
+   */
+  const onGroupChange = (id: string) => {
+    setGroupId(id);
+    const g: PublishGroup | null = pub.groups.find((x) => x.id === id) ?? null;
+    if (!g) return;
+    setSelected(new Set(pub.accounts.filter((a) => isGroupMember(a, g) && (!g.platform || a.platform === g.platform) && isPublishable(a)).map((a) => a.id)));
+    setMode(STRATEGY_TO_MODE[g.publish_strategy] ?? "drip");
+  };
 
   const content: PreviewContent = {
     mediaUrl: previewUrl,
@@ -152,7 +179,13 @@ export function UploadPublishDialog({ open, onClose, pub }: { open: boolean; onC
   };
 
   const startUpload = async (): Promise<string | null> => {
-    if (!file || !pub.projectId) return null;
+    if (!file) return null;
+    if (!pub.projectId) {
+      const m = "Выберите проект — без него видео некуда загружать";
+      setErr(m);
+      toast.error(m);
+      return null;
+    }
     setProgress(0);
     try {
       const { url } = await uploadPublishVideo(pub.projectId, file, setProgress);
@@ -184,8 +217,22 @@ export function UploadPublishDialog({ open, onClose, pub }: { open: boolean; onC
       toast.error(m);
       return;
     }
+    if (projectPaused) {
+      const m = "Публикации проекта на паузе — снимите её во вкладке «Настройки»";
+      setErr(m);
+      toast.error(m);
+      return;
+    }
+    if (group?.review_mode === "paused") {
+      const m = `Группа «${group.name}» на паузе — задания не создадутся`;
+      setErr(m);
+      toast.error(m);
+      return;
+    }
     if (!preview.eligible.length) {
-      const m = "Не выбран ни один аккаунт, готовый к публикации";
+      const m = preview.skipped[0]?.hint
+        ? `Не выбран ни один аккаунт, готовый к публикации: ${preview.skipped[0].hint}`
+        : "Не выбран ни один аккаунт, готовый к публикации";
       setErr(m);
       toast.error(m);
       return;
@@ -210,9 +257,15 @@ export function UploadPublishDialog({ open, onClose, pub }: { open: boolean; onC
         mode,
         account_ids: preview.eligible.map((a) => a.id),
         ...(group ? { group_id: group.id } : {}),
-        ...(startDate ? { start_at: startDate.toISOString() } : {}),
+        ...(startIso ? { start_at: startIso } : {}),
       });
-      toast.success(`Создано заданий: ${r.created}${r.skipped ? `, пропущено: ${r.skipped}` : ""}`);
+      if (!r.created) {
+        const m = `Заданий не создано${r.reason ? `: ${r.reason}` : ""}`;
+        setErr(m);
+        toast.error(m);
+        return;
+      }
+      toast.success(`Создано заданий: ${r.created}${r.skipped ? `, уже стояли: ${r.skipped}` : ""}`);
       onClose();
     } catch (e) {
       setErr(errMsg(e));
@@ -241,7 +294,7 @@ export function UploadPublishDialog({ open, onClose, pub }: { open: boolean; onC
                   <Label className="flex items-center gap-2 text-xs font-semibold uppercase text-muted-foreground"><Users className="h-3.5 w-3.5" /> Куда публикуем</Label>
                   <span className="text-xs tabular-nums text-primary">{selected.size} выбрано</span>
                 </div>
-                <AccountChips accounts={pub.accounts} selected={selected} onChange={setSelected} />
+                <AccountChips accounts={pub.accounts} groups={pub.groups} selected={selected} onChange={setSelected} />
               </section>
 
               <section className="space-y-4 rounded-xl border border-border/70 bg-card/35 p-4">
@@ -366,25 +419,29 @@ export function UploadPublishDialog({ open, onClose, pub }: { open: boolean; onC
                   </Select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Темп по группе</Label>
-                  <Select value={groupId} onValueChange={setGroupId}>
+                  <Label className="text-xs text-muted-foreground">Группа (состав и темп)</Label>
+                  <Select value={groupId} onValueChange={onGroupChange}>
                     <SelectTrigger aria-label="Группа"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value={NO_GROUP}>Без группы (10/час)</SelectItem>
+                      <SelectItem value={NO_GROUP}>Без группы ({DEFAULT_PER_HOUR}/час)</SelectItem>
                       {pub.groups.map((g) => (
-                        <SelectItem key={g.id} value={g.id}>{g.name} ({g.per_hour ?? 10}/час)</SelectItem>
+                        <SelectItem key={g.id} value={g.id}>
+                          {g.name} ({g.per_hour ?? DEFAULT_PER_HOUR}/час{g.review_mode === "paused" ? " · пауза" : ""})
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  {group && <p className="text-[11px] text-muted-foreground">Отобраны только участники группы{group.platform ? ` (${PLATFORM_META[group.platform].label})` : ""}; остальные планировщик пропустит.</p>}
                 </div>
               </section>
 
               <section className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Старт раскладки</Label>
+                <Label className="text-xs text-muted-foreground">Старт раскладки (время Алматы)</Label>
                 <div className="flex items-center gap-2">
                   <Input
                     type="datetime-local"
                     value={startAt}
+                    min={almatyLocalNow()}
                     aria-label="Время старта"
                     className="max-w-[240px]"
                     onChange={(e) => setStartAt(e.target.value)}
@@ -396,6 +453,13 @@ export function UploadPublishDialog({ open, onClose, pub }: { open: boolean; onC
                   )}
                 </div>
               </section>
+
+              {(projectPaused || group?.review_mode === "paused") && (
+                <div role="alert" className="flex items-start gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>{projectPaused ? "Публикации проекта на паузе — задания не создадутся, пока пауза не снята в «Настройках»." : `Группа «${group?.name}» на паузе — выберите другую группу или снимите паузу во вкладке «Группы».`}</span>
+                </div>
+              )}
 
               {/* План */}
               <section className="space-y-2 rounded-xl border border-primary/20 bg-primary/5 p-4 text-xs">

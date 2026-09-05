@@ -211,6 +211,11 @@ verify_jwt = false
 # Контур автопубликации (docs/PUBLISHING-SYSTEM.md). Очередь разбирает pg_cron,
 # заявки шлёт n8n — оба ходят без пользовательского JWT, авторизация внутри
 # функций по x-automation-key = automation_settings.cron_secret.
+# publish-accounts: JWT пользователя проверяет сама функция (requireUser + requireProjectAccess),
+# а скриптовый онбординг и n8n ходят с x-automation-key без JWT.
+[functions.publish-accounts]
+verify_jwt = false
+
 [functions.publish-worker]
 verify_jwt = false
 
