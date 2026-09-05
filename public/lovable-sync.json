@@ -1,7 +1,7 @@
 {
-  "git_sha": "d4d2997",
-  "git_sha_full": "d4d2997d168d3857b09ed154a0f174b8e619c353",
-  "updated_at": "2026-09-05T16:23:25+04:00",
-  "label": "feat(radar): X-фактор и интерфейс «рентген» по образцу viralex.ai [vercel-deploy]",
+  "git_sha": "4c3251c",
+  "git_sha_full": "4c3251c641b23cc7a9f5340b0e58f71d01870583",
+  "updated_at": "2026-09-05T20:19:03+04:00",
+  "label": "[vercel-deploy] Merge: Публикации — правки по аудиту третьего захода: раннер, API, TikTok, радар, фронт (#269)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
