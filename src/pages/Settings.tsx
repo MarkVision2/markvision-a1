@@ -24,6 +24,7 @@ import { PipelinesSettings } from "@/components/settings/PipelinesSettings";
 import { LossReasonsSettings } from "@/components/settings/LossReasonsSettings";
 import { MetricLabelsSettings } from "@/components/settings/MetricLabelsSettings";
 import { ClientDashTokensSettings } from "@/components/settings/ClientDashTokensSettings";
+import { ApiKeysSettings } from "@/components/settings/ApiKeysSettings";
 import { InstagramOrganicSettings } from "@/components/settings/InstagramOrganicSettings";
 import { MetaTokensSettings } from "@/components/settings/MetaTokensSettings";
 import { FacebookConnect } from "@/components/settings/FacebookConnect";
@@ -54,7 +55,7 @@ const ROLE_COLOR: Record<string, string> = {
 };
 
 const SETTINGS_TABS = [
-  "team", "profile", "pipelines", "loss", "metrics-labels",
+  "team", "profile", "pipelines", "loss", "metrics-labels", "api",
   "telephony", "whatsapp", "site", "inbound", "ig-organic", "meta-tokens", "google-ads", "tiktok", "clientview",
 ] as const;
 
@@ -67,6 +68,7 @@ const PROJECT_NAV: Array<{ tab: SettingsTab; title: string; icon: LucideIcon }> 
   { tab: "pipelines", title: "Воронки", icon: GitBranch },
   { tab: "loss", title: "Причины отказа", icon: XCircle },
   { tab: "metrics-labels", title: "Показатели", icon: TableProperties },
+  { tab: "api", title: "API и MCP", icon: KeyRound },
 ];
 
 const CONNECTION_NAV: Array<{
@@ -164,7 +166,7 @@ export default function Settings() {
     profile: "disconnected",
     pipelines: "disconnected",
     loss: "disconnected",
-    "metrics-labels": "disconnected",
+    "metrics-labels": "disconnected", api: "disconnected",
     telephony: "checking",
     whatsapp: "checking",
     site: "checking",
@@ -560,6 +562,8 @@ export default function Settings() {
           {activeTab === "loss" && <LossReasonsSettings />}
 
           {activeTab === "metrics-labels" && <MetricLabelsSettings />}
+
+          {activeTab === "api" && <ApiKeysSettings />}
 
           {activeTab === "telephony" && (
             <div className="space-y-4">

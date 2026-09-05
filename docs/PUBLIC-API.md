@@ -15,7 +15,7 @@
 
 ## Ключи
 
-- Выдаются в интерфейсе: **Публикации → Настройки → API-ключи**. Ключ показывается один раз.
+- Выдаются в интерфейсе: **Настройки → API и MCP**. Ключ показывается один раз.
 - В базе (`api_keys`) хранится только sha256-хэш; в списке виден префикс `mv_live_XXXX…`.
 - Ключ привязан к **одному проекту**. `project_id` в запросах не передаётся и не принимается.
 - Права: `read` (аккаунты, группы, настройки, статусы), `publish` (загрузка медиа, постановка
@@ -154,12 +154,12 @@ Cursor. Установка, конфиг и список инструменто�
 | Маршруты и разбор тела | `supabase/functions/_lib/publicApi.ts` |
 | Сама функция | `supabase/functions/api/index.ts` (вход) + `handler.ts` (логика с зависимостями наружу); `verify_jwt = false` в `config.toml` |
 | Выдача и отзыв ключей | `publish-accounts` → `api_key_list / api_key_create / api_key_revoke` |
-| Интерфейс | `src/components/publishing/ApiKeysSection.tsx` (вкладка «Настройки») |
+| Интерфейс | `src/components/settings/ApiKeysSettings.tsx` (Настройки → API и MCP) |
 | MCP-сервер | `mcp/markvision/` |
-| Тесты | `src/test/apiKeys.test.ts`, `src/test/publicApi.test.ts`, `src/test/apiKeysSection.test.tsx` (vitest); `supabase/functions/_tests/api_test.ts` (deno test, обработчик насквозь с подменённой базой и сетью); `mcp/markvision/tests/` (node --test) |
+| Тесты | `src/test/apiKeys.test.ts`, `src/test/publicApi.test.ts`, `src/test/apiKeysSettings.test.tsx` (vitest); `supabase/functions/_tests/api_test.ts` (deno test, обработчик насквозь с подменённой базой и сетью); `mcp/markvision/tests/` (node --test) |
 
 ```bash
-npx vitest run src/test/apiKeys.test.ts src/test/publicApi.test.ts src/test/apiKeysSection.test.tsx
+npx vitest run src/test/apiKeys.test.ts src/test/publicApi.test.ts src/test/apiKeysSettings.test.tsx
 cd supabase/functions && deno test --allow-env _tests/api_test.ts
 cd mcp/markvision && npm test
 ```

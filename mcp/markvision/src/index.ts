@@ -5,7 +5,7 @@
  * поставить публикацию, узнать статус, отменить или повторить задание.
  *
  * Переменные окружения:
- *   MARKVISION_API_KEY — ключ из «Публикации → Настройки → API-ключи» (mv_live_…)
+ *   MARKVISION_API_KEY — ключ из «Настройки → API и MCP» (mv_live_…)
  *   MARKVISION_API_URL — адрес API (https://<проект>.supabase.co/functions/v1/api/v1)
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -16,7 +16,7 @@ import { ApiError, MarkVisionClient } from "./client.js";
 const apiKey = process.env.MARKVISION_API_KEY?.trim();
 const apiUrl = process.env.MARKVISION_API_URL?.trim();
 if (!apiKey) {
-  process.stderr.write("MARKVISION_API_KEY не задан — создайте ключ в MarkVision: Публикации → Настройки → API-ключи\n");
+  process.stderr.write("MARKVISION_API_KEY не задан — создайте ключ в MarkVision: Настройки → API и MCP\n");
   process.exit(1);
 }
 if (!apiUrl) {
