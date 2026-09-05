@@ -87,3 +87,11 @@ describe("действия по заданию", () => {
     expect(jobActions({ status: "pending", locked_at: null }, now)).toEqual({ retry: false, cancel: true, stale: false });
   });
 });
+
+describe("варианты подписи", () => {
+  it("по одному на строку, без пустых и дублей", async () => {
+    const { splitLines } = await import("@/components/publishing/UploadPublishDialog");
+    expect(splitLines("Первый\n\n  Второй  \r\nПервый\n")).toEqual(["Первый", "Второй"]);
+    expect(splitLines("")).toEqual([]);
+  });
+});
