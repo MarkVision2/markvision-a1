@@ -569,7 +569,7 @@ Deno.serve(async (req) => {
     if (action === "jobs_list") {
       if (!projectId) return json({ error: "project_id обязателен" }, 400);
       let q = admin.from("publish_jobs")
-        .select("id, video_id, account_id, platform, status, scheduled_at, attempts, next_attempt_at, locked_at, external_post_url, error_code, error_message, published_at, created_at, publish_accounts(account_name, handle), publish_videos(title, file_url)")
+        .select("id, video_id, account_id, platform, status, scheduled_at, attempts, next_attempt_at, locked_at, external_post_url, error_code, error_message, published_at, metrics_unavailable_reason, created_at, publish_accounts(account_name, handle), publish_videos(title, file_url)")
         .eq("project_id", projectId)
         // DESC в Postgres по умолчанию NULLS FIRST — задания без времени всплывали бы наверх.
         .order("scheduled_at", { ascending: false, nullsFirst: false })

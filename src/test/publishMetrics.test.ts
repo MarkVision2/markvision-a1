@@ -3,7 +3,7 @@
  * Threads / TikTok / YouTube, проверка прав и порог «своего хита» для радара.
  */
 import { describe, expect, it } from "vitest";
-import { metricsScopeMissing, normalizeInsights, ownPostIsHit } from "../../supabase/functions/_lib/publishMetricsCore.ts";
+import { metricsErrorPermanent, metricsScopeMissing, normalizeInsights, ownPostIsHit } from "../../supabase/functions/_lib/publishMetricsCore.ts";
 
 describe("normalizeInsights", () => {
   it("Instagram: reach/views/likes/comments/shares/saved из insights", () => {
@@ -50,5 +50,23 @@ describe("ownPostIsHit", () => {
     expect(ownPostIsHit({ reach: 12000, views: 12000 }, null)).toBe(true);
     expect(ownPostIsHit({ reach: 300, views: 300 }, null)).toBe(false);
     expect(ownPostIsHit({ reach: 300, views: 300 }, 0)).toBe(false);
+  });
+});
+
+describe("metricsErrorPermanent — пост больше не опрашиваем", () => {
+  it("Instagram: удалённый/чужой пост и отсутствие прав на insights — навсегда", () => {
+    expect(metricsErrorPermanent("instagram", "Unsupported get request. Object with ID '18340567585266502' does not exist, cannot be loaded due to missing permissions, or does not support this operation")).toBe(true);
+    expect(metricsErrorPermanent("threads", "(#10) Application does not have permission for this action")).toBe(true);
+  });
+  it("Instagram: лимит запросов и протухший токен — временные, пробуем снова", () => {
+    expect(metricsErrorPermanent("instagram", "(#4) Application request limit reached")).toBe(false);
+    expect(metricsErrorPermanent("instagram", "Invalid OAuth access token - Cannot parse access token")).toBe(false);
+    expect(metricsErrorPermanent("instagram", "")).toBe(false);
+  });
+  it("TikTok/YouTube: видео не найдено — навсегда, прочее — нет", () => {
+    expect(metricsErrorPermanent("tiktok", "TikTok не вернул видео (нет scope video.list или ролик удалён)")).toBe(true);
+    expect(metricsErrorPermanent("tiktok", "rate_limit_exceeded: too many requests")).toBe(false);
+    expect(metricsErrorPermanent("youtube", "YouTube не нашёл видео")).toBe(true);
+    expect(metricsErrorPermanent("youtube", "HTTP 403")).toBe(false);
   });
 });

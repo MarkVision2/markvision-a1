@@ -149,7 +149,12 @@ likes, comments, shares, saved`), Threads (`views, likes, replies, reposts, quot
 TikTok `POST /v2/video/query/` (`view/like/comment/share_count`; нужен scope `video.list` —
 входит в `SCOPES.tiktok`, аккаунты, подключённые без него, помечаются в ответе `reasons` как
 требующие reconnect), YouTube `videos?part=statistics` (`viewCount, likeCount, commentCount`).
-Перед сбором токен обновляется тем же `ensureFreshToken`, что и у воркера. Подписчики аккаунта
+Перед сбором токен обновляется тем же `ensureFreshToken`, что и у воркера. Пост, которого для
+нашего токена больше нет (Graph «Unsupported get request … does not exist / missing permissions»,
+TikTok/YouTube «видео не найдено» — `metricsErrorPermanent` в `_lib/publishMetricsCore.ts`),
+получает `publish_jobs.metrics_unavailable_reason` и выпадает из `post_metrics_due` по всем
+точкам (ответ функции — `unavailable`, во вкладке «Задания» — «без метрик»); reconnect аккаунта
+через `publish-oauth` пометку снимает. Временные отказы (лимит, токен) пробуются снова. Подписчики аккаунта
 раз в сутки → `publish_accounts.followers` (TikTok `user/info follower_count`, YouTube
 `channels statistics.subscriberCount`). Затем `idea_recompute_outcomes()`: медиана `reach /
 followers` по d3–d7, 5 % ≈ 100 → `idea_bank.outcome_score`.
@@ -269,6 +274,10 @@ followers` по d3–d7, 5 % ≈ 100 → `idea_bank.outcome_score`.
   перечитывания после каждой строки; выделение действует только на видимые строки;
   чип «Внимание N»; фильтры вкладки «Аккаунты» переживают переключение вкладок;
   скелет загрузки; причины пропуска при подключении Instagram.
+* Метрики (по итогам `content-pipeline-smoke.mjs doctor` на боевой базе): удалённый или
+  недоступный токену пост опрашивался каждый прогон по трём точкам — теперь помечается
+  `metrics_unavailable_reason` (миграция `20260907110000_post_metrics_unavailable.sql`),
+  `post_metrics_due` его пропускает, reconnect аккаунта снимает пометку.
 
 ## Здоровье аккаунта — как считается
 

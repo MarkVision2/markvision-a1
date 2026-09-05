@@ -125,6 +125,8 @@ export interface PublishJob {
   error_code: string | null;
   error_message: string | null;
   published_at: string | null;
+  /** Площадка не отдаёт статистику по посту (удалён / чужой токен / нет прав) — метрики не собираем до reconnect. */
+  metrics_unavailable_reason?: string | null;
   /** Аренда воркера; processing без свежей аренды — зависшее задание. */
   locked_at?: string | null;
   created_at: string;

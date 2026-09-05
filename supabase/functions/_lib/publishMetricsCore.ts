@@ -74,3 +74,21 @@ export function ownPostIsHit(m: Pick<Metrics, "reach" | "views">, followers: num
   return Boolean(followers && followers > 0 && m.reach / followers >= OWN_POST_REACH_SHARE);
 }
 
+
+/**
+ * Ошибка площадки, после которой опрашивать пост бессмысленно: ролик удалён,
+ * опубликован не этим пользователем или у токена нет прав на insights. Такие
+ * задания получают metrics_unavailable_reason и выпадают из post_metrics_due до
+ * переподключения аккаунта. Временные отказы (лимит запросов, протухший токен,
+ * сеть) сюда не попадают — их пробуем снова следующим прогоном.
+ */
+export function metricsErrorPermanent(platform: string, message: string): boolean {
+  const m = String(message ?? "").toLowerCase();
+  if (!m) return false;
+  if (platform === "tiktok") return /не вернул видео|video not found|invalid_params|not_found/.test(m);
+  if (platform === "youtube") return /не нашёл видео|videonotfound|not found/.test(m);
+  // Meta Graph (Instagram / Threads): код 100 «Unsupported get request … does not exist,
+  // cannot be loaded due to missing permissions, or does not support this operation»,
+  // #803 «some of the aliases you requested do not exist», #10 — нет права у приложения.
+  return /does not exist|unsupported get request|missing permissions|does not support this operation|invalid media id|media not found|\(#803\)|\(#10\)/.test(m);
+}

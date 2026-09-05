@@ -158,6 +158,16 @@ export function JobsTab({ pub }: { pub: UsePublishing }) {
                             Открыть <ExternalLink className="h-3 w-3" />
                           </a>
                         ) : <span className="text-muted-foreground">—</span>}
+                        {j.metrics_unavailable_reason && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span tabIndex={0} aria-label="Метрики по посту недоступны" className="ml-2 cursor-help text-xs text-muted-foreground">без метрик</span>
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              Площадка не отдаёт статистику по этому посту: {j.metrics_unavailable_reason}. Переподключение аккаунта снимет пометку.
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
                       </TableCell>
                       <TableCell className="py-2 text-right">
                         {jobActions(j).stale && (

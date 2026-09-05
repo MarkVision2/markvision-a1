@@ -300,6 +300,13 @@ async function callback(url: URL, platform: OAuthPlatform, admin: SupabaseClient
     ...(st.group_id ? { group_id: st.group_id } : {}),
   }, { onConflict: "project_id,platform,external_account_id" }).select("id, account_name").maybeSingle();
   if (error) return fail(`сохранение аккаунта: ${error.message}`);
+  // Новый токен — посты, чьи метрики были недоступны старому, пробуем собрать снова.
+  if (data?.id) {
+    await admin.from("publish_jobs")
+      .update({ metrics_unavailable_reason: null })
+      .eq("account_id", data.id)
+      .not("metrics_unavailable_reason", "is", null);
+  }
 
   return new Response(null, {
     status: 302,

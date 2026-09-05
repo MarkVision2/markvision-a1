@@ -24,7 +24,7 @@ import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supa
 import { requireUser, userHasAnyRole } from "../_lib/auth.ts";
 import { automationKeyValid, CORS_HEADERS, decryptSecret, json, type PublishAccount } from "../_lib/publishing.ts";
 import { ensureFreshToken } from "../_lib/publishRunner.ts";
-import { type Metrics, metricsScopeMissing, normalizeInsights, ownPostIsHit } from "../_lib/publishMetricsCore.ts";
+import { type Metrics, metricsErrorPermanent, metricsScopeMissing, normalizeInsights, ownPostIsHit } from "../_lib/publishMetricsCore.ts";
 
 const GRAPH_IG = "https://graph.instagram.com/v21.0";
 const GRAPH_FB = "https://graph.facebook.com/v21.0";
@@ -200,6 +200,7 @@ async function collect(admin: SupabaseClient, limit: number) {
   const reasons = new Map<string, number>();
   let collected = 0;
   let failed = 0;
+  let unavailable = 0;
   let ownFed = 0;
 
   for (const d of due) {
@@ -218,7 +219,16 @@ async function collect(admin: SupabaseClient, limit: number) {
     const m = await fetchInsights(d.platform, d.external_post_id, ctx.token);
     if ("error" in m) {
       failed++;
-      reasons.set(`${d.platform}: ${m.error}`.slice(0, 120), (reasons.get(`${d.platform}: ${m.error}`.slice(0, 120)) ?? 0) + 1);
+      const key = `${d.platform}: ${m.error}`.slice(0, 120);
+      reasons.set(key, (reasons.get(key) ?? 0) + 1);
+      if (metricsErrorPermanent(d.platform, m.error)) {
+        // Пост удалён или недоступен этому токену: больше не опрашиваем по всем
+        // контрольным точкам (post_metrics_due пропускает), reconnect аккаунта снимет пометку.
+        const { error: markErr } = await admin.from("publish_jobs")
+          .update({ metrics_unavailable_reason: key })
+          .eq("id", d.job_id);
+        if (!markErr) unavailable++;
+      }
       continue;
     }
     const { error: insErr } = await admin.from("post_metrics").upsert({
@@ -244,7 +254,7 @@ async function collect(admin: SupabaseClient, limit: number) {
     outcomes += Number(n ?? 0);
   }
   return {
-    due: due.length, collected, failed, ideas_rescored: outcomes, own_posts_fed: ownFed,
+    due: due.length, collected, failed, unavailable, ideas_rescored: outcomes, own_posts_fed: ownFed,
     reasons: Object.fromEntries(reasons),
   };
 }
