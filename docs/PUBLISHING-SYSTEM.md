@@ -331,7 +331,7 @@ pending ──claim──► processing ──► published
 
 Аварийная пауза проекта — `publish_project_settings.paused` (рубильник во вкладке «Настройки»):
 `claim_publish_jobs` не отдаёт задания, `plan_publish_slots` не ставит слоты, очередь сохраняется.
-Сводка по группам — витрина `publish_group_metrics` (вкладка «Сеть»). Метрики публикаций
+Сводка по группам — витрина `publish_group_metrics` (вкладка «Группы»). Метрики публикаций
 собираются по всем четырём площадкам (`publish-metrics`; TikTok требует scope `video.list` —
 аккаунты, подключённые без него, помечены в списке и требуют reconnect).
 

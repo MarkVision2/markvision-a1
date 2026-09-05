@@ -34,8 +34,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { AccountPicker } from "@/components/publishing/AccountPicker";
 import { BulkAccountsBar } from "@/components/publishing/BulkAccountsBar";
-import { AccountsTable } from "@/components/publishing/AccountsTable";
-import { ConnectedAccountsTab } from "@/components/publishing/ConnectedAccountsTab";
+import { AccountsTable, PLATFORM_DOT } from "@/components/publishing/AccountsTable";
 import { JobsTab } from "@/components/publishing/JobsTab";
 import { NetworkTab } from "@/components/publishing/NetworkTab";
 import { UploadPublishDialog } from "@/components/publishing/UploadPublishDialog";
@@ -71,6 +70,7 @@ import {
   type ReviewMode,
 } from "@/lib/publishingClient";
 import { ANY, EMPTY_FILTERS, filterAccounts, type AccountFilters } from "@/lib/publishingSelection";
+import { fmtRelative } from "@/lib/publishingFormat";
 import { cn } from "@/lib/utils";
 
 /* ───────────────────────────── утилиты ───────────────────────────── */
@@ -163,7 +163,7 @@ export default function Publishing() {
 
   return (
     <PageContainer wide>
-      <div className="space-y-6">
+      <div className="space-y-4">
         <PageHeader
           icon={Send}
           iconAccent="pink"
@@ -217,27 +217,33 @@ export default function Publishing() {
           </div>
         )}
 
-        <SummaryTiles pub={pub} />
+        <SummaryBar pub={pub} />
 
+        {/* Пять вкладок вместо семи: статистика по аккаунтам живёт видом внутри
+            «Аккаунтов», сводка по группам — над их настройками. */}
         <Tabs defaultValue="accounts">
           <TabsList className="flex-wrap">
             <TabsTrigger value="accounts">Аккаунты</TabsTrigger>
-            <TabsTrigger value="connected">Подключённые</TabsTrigger>
-            <TabsTrigger value="network">Сеть</TabsTrigger>
             <TabsTrigger value="groups">Группы</TabsTrigger>
             <TabsTrigger value="personas">Персоны</TabsTrigger>
             <TabsTrigger value="jobs">Задания</TabsTrigger>
             <TabsTrigger value="settings">Настройки</TabsTrigger>
           </TabsList>
-          <TabsContent value="accounts" className="mt-4"><AccountsTable pub={pub} /></TabsContent>
-          <TabsContent value="connected" className="mt-4">
-            <ConnectedAccountsTab rows={pub.metrics?.accounts ?? []} groups={pub.groups} />
+          <TabsContent value="accounts" className="mt-3"><AccountsTable pub={pub} /></TabsContent>
+          <TabsContent value="groups" className="mt-3">
+            <div className="space-y-4">
+              {(pub.metrics?.groups?.length ?? 0) > 0 && (
+                <section className="space-y-2">
+                  <h3 className="px-1 text-sm font-semibold">Сводка по группам</h3>
+                  <NetworkTab rows={pub.metrics?.groups ?? []} />
+                </section>
+              )}
+              <GroupsTab pub={pub} />
+            </div>
           </TabsContent>
-          <TabsContent value="network" className="mt-4"><NetworkTab rows={pub.metrics?.groups ?? []} /></TabsContent>
-          <TabsContent value="groups" className="mt-4"><GroupsTab pub={pub} /></TabsContent>
-          <TabsContent value="personas" className="mt-4"><PersonasTab pub={pub} /></TabsContent>
-          <TabsContent value="jobs" className="mt-4"><JobsTab pub={pub} /></TabsContent>
-          <TabsContent value="settings" className="mt-4"><SettingsTab pub={pub} /></TabsContent>
+          <TabsContent value="personas" className="mt-3"><PersonasTab pub={pub} /></TabsContent>
+          <TabsContent value="jobs" className="mt-3"><JobsTab pub={pub} /></TabsContent>
+          <TabsContent value="settings" className="mt-3"><SettingsTab pub={pub} /></TabsContent>
         </Tabs>
       </div>
 
@@ -250,42 +256,85 @@ export default function Publishing() {
 
 /* ───────────────────────────── сводка ───────────────────────────── */
 
-function SummaryTiles({ pub }: { pub: UsePublishing }) {
+function SummaryBar({ pub }: { pub: UsePublishing }) {
   const m = pub.metrics?.publish;
   const spend = m?.spent_month_usd ?? pub.settings?.spend.month_usd ?? null;
+  const today = pub.settings?.spend.today_usd ?? null;
 
-  // Тон подсвечивает только то, что требует реакции: семь одинаково громких
-  // плиток с нулями не давали понять, куда смотреть.
-  const tiles: { label: string; value: string; hint?: string; tone?: "warn" | "bad" }[] = [
-    { label: "Активных аккаунтов", value: m ? `${m.accounts_active} / ${m.accounts_total}` : "—" },
-    { label: "В очереди", value: m ? String(m.jobs_queued) : "—", hint: m?.jobs_processing ? `публикуется: ${m.jobs_processing}` : undefined },
-    { label: "Опубликовано за 24 ч", value: m ? String(m.published_24h) : "—" },
+  // Сколько аккаунтов на каждой площадке — будущие TikTok / YouTube / Threads
+  // видны сразу, даже пока их ноль.
+  const byPlatform = new Map<PublishPlatform, number>();
+  for (const a of pub.accounts) byPlatform.set(a.platform, (byPlatform.get(a.platform) ?? 0) + 1);
+
+  const attention = m ? m.accounts_token_expired + m.accounts_limited_or_error : 0;
+
+  const cells: { label: string; value: string; sub: React.ReactNode; tone?: "warn" | "bad" }[] = [
     {
-      label: "Ошибок за 24 ч",
-      value: m ? String(m.failed_24h) : "—",
-      hint: m?.manual_review ? `на ручной проверке: ${m.manual_review}` : undefined,
+      label: "Аккаунты активны",
+      value: m ? `${m.accounts_active} / ${m.accounts_total}` : "—",
+      sub: (
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+          {(Object.keys(PLATFORM_META) as PublishPlatform[]).map((p) => {
+            const n = byPlatform.get(p) ?? 0;
+            return (
+              <span key={p} className={cn("inline-flex items-center gap-1 tabular-nums", n === 0 && "opacity-50")} title={PLATFORM_META[p].label}>
+                <span className={cn("h-1.5 w-1.5 rounded-full", PLATFORM_DOT[p])} aria-hidden />
+                {PLATFORM_META[p].label} {n}
+              </span>
+            );
+          })}
+        </span>
+      ),
+    },
+    {
+      label: "В очереди",
+      value: m ? String(m.jobs_queued) : "—",
+      sub: m?.jobs_processing
+        ? `публикуется сейчас: ${m.jobs_processing}`
+        : m?.next_slot_at
+        ? `ближайший слот ${fmtRelative(m.next_slot_at)}`
+        : "заданий на публикацию нет",
+    },
+    {
+      label: "За 24 часа",
+      value: m ? String(m.published_24h) : "—",
+      sub: m
+        ? `опубликовано · ошибок ${m.failed_24h}${m.manual_review ? ` · ручная проверка ${m.manual_review}` : ""}`
+        : "",
       tone: m?.failed_24h ? "bad" : undefined,
     },
-    { label: "Среднее здоровье", value: m?.health_avg != null ? `${Math.round(m.health_avg)}%` : "—", tone: m?.health_avg != null && m.health_avg < 70 ? "warn" : undefined },
-    { label: "Токены истекают", value: m ? String(m.tokens_expiring_7d) : "—", hint: "за 7 дней", tone: m?.tokens_expiring_7d ? "warn" : undefined },
-    { label: "Расход за месяц", value: spend != null ? `$${spend.toFixed(2)}` : "—" },
+    {
+      label: "Здоровье сети",
+      value: m?.health_avg != null ? `${Math.round(m.health_avg)}%` : "—",
+      sub: m
+        ? attention || m.tokens_expiring_7d
+          ? `требуют внимания ${attention} · токены истекают ${m.tokens_expiring_7d}`
+          : "все аккаунты в порядке"
+        : "",
+      tone: attention ? "bad" : m?.health_avg != null && m.health_avg < 70 ? "warn" : m?.tokens_expiring_7d ? "warn" : undefined,
+    },
+    {
+      label: "Расход за месяц",
+      value: spend != null ? `$${spend.toFixed(2)}` : "—",
+      sub: today != null ? `сегодня $${today.toFixed(2)}` : "",
+    },
   ];
 
   return (
-    <div className="grid grid-cols-2 divide-x divide-y overflow-hidden rounded-2xl border bg-card sm:grid-cols-4 xl:grid-cols-7 xl:divide-y-0">
-      {tiles.map((t) => (
-        <div key={t.label} className="px-4 py-3">
-          <div className="truncate text-xs text-muted-foreground">{t.label}</div>
+    <div className="grid grid-cols-2 divide-x divide-y overflow-hidden rounded-2xl border bg-card md:grid-cols-5 md:divide-y-0">
+      {cells.map((c) => (
+        <div key={c.label} className="min-w-0 px-4 py-2.5">
+          <div className="truncate text-xs text-muted-foreground">{c.label}</div>
           <div
             className={cn(
-              "mt-0.5 text-xl font-semibold tabular-nums",
-              t.tone === "bad" && "text-destructive",
-              t.tone === "warn" && "text-amber-600 dark:text-amber-400",
+              "mt-0.5 text-xl font-semibold leading-tight tabular-nums",
+              c.tone === "bad" && "text-destructive",
+              c.tone === "warn" && "text-amber-600 dark:text-amber-400",
             )}
           >
-            {t.value}
+            {c.value}
           </div>
-          <div className="truncate text-xs text-muted-foreground">{t.hint ?? "\u00A0"}</div>
+          <div className="mt-0.5 truncate text-xs text-muted-foreground">{c.sub || "\u00A0"}</div>
         </div>
       ))}
     </div>
