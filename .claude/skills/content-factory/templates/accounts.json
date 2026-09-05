@@ -1,0 +1,19 @@
+{
+  "group_id": "<uuid группы в MarkVision или null>",
+  "accounts": [
+    {
+      "id": "<uuid publish_accounts>",
+      "platform": "tiktok",
+      "handle": "@example_one",
+      "persona": "практик, короткие кейсы",
+      "theme": { "bg": "#0B0F1A", "accent": "#5B8CFF", "text": "#FFFFFF" }
+    },
+    {
+      "id": "<uuid publish_accounts>",
+      "platform": "instagram",
+      "handle": "@example_two",
+      "persona": "владелец, считает деньги",
+      "theme": { "bg": "#111111", "accent": "#F5C542", "text": "#FAFAFA" }
+    }
+  ]
+}

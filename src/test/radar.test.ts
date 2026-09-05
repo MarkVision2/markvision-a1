@@ -82,6 +82,10 @@ describe("разбор поста", () => {
       metrics: { likes: 1, comments: 2, shares: 3, saves: 4, views: 5 }, followers: 100, ownNiche: "стоматология",
     });
     expect(p.system).toMatch(/Не копируй/);
+    // Модель должна видеть имена полей — иначе отвечает произвольной структурой.
+    for (const key of ["hook", "niche", "structure", "triggers", "why_it_works", "score", "idea_title", "idea_angle", "script_outline"]) {
+      expect(p.system).toContain(`"${key}"`);
+    }
     expect(p.user).toMatch(/лайки 1, комментарии 2, репосты 3, сохранения 4, просмотры 5/);
     expect(p.user).toMatch(/стоматология/);
     expect(p.user).toMatch(/речь/);
@@ -106,6 +110,7 @@ describe("разбор поста", () => {
     expect(parseAnalysis({ ...good, triggers: "нет" })?.triggers).toEqual([]);
     expect(parseAnalysis({ ...good, hook: "" })).toBeNull();
     expect(parseAnalysis("мусор")).toBeNull();
+    expect(parseAnalysis({ analysis: good })?.idea_title).toBe("Три ошибки чистки");
   });
 
   it("идея из разбора: средняя оценка поста и модели, структура с триггерами", () => {

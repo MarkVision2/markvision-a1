@@ -36,6 +36,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { AccountWindowDialog } from "@/components/publishing/AccountWindowDialog";
 import { BulkAccountsBar } from "@/components/publishing/BulkAccountsBar";
 import { initials } from "@/components/publishing/PostPreview";
 import type { UsePublishing } from "@/hooks/usePublishing";
@@ -572,6 +573,9 @@ function AccountRow({
 }) {
   const [limit, setLimit] = useState(String(a.daily_limit));
   useEffect(() => setLimit(String(a.daily_limit)), [a.daily_limit]);
+  const [windowOpen, setWindowOpen] = useState(false);
+  // Действие идёт именно по этой строке (update:<id>, disconnect:<id>) — спиннер только у неё.
+  const rowBusy = pub.busy != null && pub.busy.endsWith(`:${a.id}`);
 
   const status = ACCOUNT_STATUS_META[a.status] ?? ACCOUNT_STATUS_META.error;
   const effLimit = effectiveDailyLimit(a);
@@ -582,7 +586,9 @@ function AccountRow({
 
   const commitLimit = () => {
     const n = Number(limit);
-    if (!Number.isInteger(n) || n < 0) {
+    // Сервер хранит 1..200; ноль он поднял бы до 1 молча — для «не публиковать» есть выключатель.
+    if (!Number.isInteger(n) || n < 1) {
+      if (limit !== "" && n < 1) toast.error("Лимит — от 1 в день; чтобы не публиковать, выключите аккаунт переключателем");
       setLimit(String(a.daily_limit));
       return;
     }
@@ -658,6 +664,7 @@ function AccountRow({
           </TooltipTrigger>
           <TooltipContent>
             {rampLabel(a)} · базовый лимит {a.daily_limit}/день
+            {a.window_start && a.window_end ? ` · окно ${a.window_start.slice(0, 5)}–${a.window_end.slice(0, 5)}` : ""}
           </TooltipContent>
         </Tooltip>
       </TableCell>
@@ -682,7 +689,7 @@ function AccountRow({
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={`Действия для ${a.account_name}`}>
-              <MoreHorizontal className="h-4 w-4" />
+              {rowBusy ? <Loader2 className="h-4 w-4 animate-spin" aria-label="Сохраняем" /> : <MoreHorizontal className="h-4 w-4" />}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
@@ -694,14 +701,17 @@ function AccountRow({
             <div className="px-2 pb-1.5">
               <Input
                 type="number"
-                min={0}
+                min={1}
+                max={200}
                 aria-label={`Лимит в день для ${a.account_name}`}
                 className="h-8"
                 value={limit}
                 disabled={disabled}
                 onChange={(e) => setLimit(e.target.value)}
                 onBlur={commitLimit}
-                onKeyDown={(e) => e.key === "Enter" && commitLimit()}
+                // Меню Radix перехватывает стрелки и Home/End для навигации по пунктам —
+                // внутри поля они должны менять число.
+                onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") commitLimit(); }}
               />
             </div>
 
@@ -721,6 +731,9 @@ function AccountRow({
                 Перезапустить разгон
               </DropdownMenuItem>
             )}
+            <DropdownMenuItem disabled={disabled} onSelect={() => setWindowOpen(true)}>
+              Окно публикаций{a.window_start && a.window_end ? `: ${a.window_start.slice(0, 5)}–${a.window_end.slice(0, 5)}` : a.timezone ? `: ${a.timezone}` : "…"}
+            </DropdownMenuItem>
 
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>Персона{persona ? `: ${persona.name}` : ""}</DropdownMenuSubTrigger>
@@ -741,6 +754,15 @@ function AccountRow({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        {windowOpen && (
+          <AccountWindowDialog
+            open
+            account={a}
+            group={group}
+            onClose={() => setWindowOpen(false)}
+            onSave={(patch) => pub.updateAccount(a.id, patch)}
+          />
+        )}
       </TableCell>
     </TableRow>
   );

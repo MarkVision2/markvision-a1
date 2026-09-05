@@ -73,3 +73,14 @@ test("uploadFile: нет файла — понятная ошибка без п�
   await assert.rejects(() => c.uploadFile("/nope/never.mp4"), /файл не найден/);
   assert.equal(calls.length, 0);
 });
+
+test("distribute: POST /publications/distribute с телом как есть", async () => {
+  const { fn, calls } = fakeFetch(() => ({ status: 200, body: { ok: true, created: 2, unassigned: [] } }));
+  const c = new MarkVisionClient({ apiKey: "mv_live_k", baseUrl: "https://x.supabase.co", fetchFn: fn });
+  const body = { videos: [{ id: "3fa85f64-5717-4562-b3fc-2c963f66afa6", topic_key: "A" }], target: { per_day: 3 } };
+  const r = await c.distribute(body);
+  assert.equal(r.created, 2);
+  assert.equal(calls[0].url, "https://x.supabase.co/functions/v1/api/v1/publications/distribute");
+  assert.equal(calls[0].init.method, "POST");
+  assert.deepEqual(JSON.parse(String(calls[0].init.body)), body);
+});

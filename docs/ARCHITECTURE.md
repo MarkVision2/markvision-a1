@@ -46,7 +46,7 @@ MCP: mcp/markvision (stdio) → /api/v1
 | Раздел ТЗ | Состояние | Что есть сейчас | Действие |
 |---|---|---|---|
 | 3. Multi-tenant | **PARTIAL** | Тенант = `project_id` на всех таблицах, RLS через `user_can_access_project`. Слоя Workspace/Organization нет | Оставить `project_id` как tenant id (переименование = переписать 200 миграций ради слова). Organization — Phase 2 как надстройка над проектами |
-| 4–5. Account Registry | **EXISTS, улучшить** | `publish_accounts` (+`publish_accounts_safe`), группы, здоровье 0–100 с причинами, лимиты, окна, разгон, персоны, bulk-панель в UI | Добавлены `capabilities`, `connection_type`, `auth_status` (миграция `20260908100000`) |
+| 4–5. Account Registry | **EXISTS, улучшить** | `publish_accounts` (+`publish_accounts_safe`), группы, здоровье 0–100 с причинами, лимиты, окна, разгон, персоны, bulk-панель в UI | Добавлены `capabilities`, `connection_type`, `auth_status` (миграция `20260908140000`) |
 | 6–7. OAuth flow | **EXISTS** | Meta (facebook-oauth-*), Threads/TikTok/YouTube (`publish-oauth`, одноразовый state TTL 15 мин, token exchange только на сервере) | PKCE для TikTok — Phase 2; универсальный `OAuthProvider` — уже де-факто в `_lib/publishOAuth.ts` (buildAuthorizationUrl / exchange / refresh / identity) |
 | 8. Token management | **EXISTS** | AES‑GCM `v1:` в колонках `*_encrypted`, ключ `PUBLISH_TOKEN_KEY` в секретах; колонки без SELECT для пользователей; refresh перед публикацией и по крону; `reconnect_required` = статус `token_expired` | Отдельная таблица `social_credentials` не заводится: колонки уже изолированы грантами. Ротация ключа (`v2:`) — Phase 2 |
 | 9. Capability system | **MISSING → добавлено** | Возможности были зашиты в код | `_lib/publishCapabilities.ts` + `publish_accounts.capabilities jsonb`; раннер проверяет `publish_video` перед публикацией |
@@ -54,7 +54,7 @@ MCP: mcp/markvision (stdio) → /api/v1
 | 11–14. Content Library | **PARTIAL** | `publish_videos` (медиа для очереди), `content_plan_items` (редплан, варианты через `parent_item_id`), `content_assets` (версии артефактов) | Не сливать в одну таблицу сейчас: три жизненных цикла. Phase 2 — витрина `content_items` (view) + метаданные (`topic`, `hook_type`, `cta_type`) в `publish_videos` |
 | 15. Media processor | **PARTIAL** | Проверка ссылки/типа/веса/длительности при приёме (`publishSchedule.ts`), ffmpeg-нормализация только в content-worker | Phase 2: `MEDIA_PREPARE` как отдельный шаг очереди (ffprobe в worker/) |
 | 16. Object storage | **EXISTS** | Storage + R2, presigned PUT | — |
-| 17. Campaigns | **MISSING → добавлено** | Ближайшее было — группа + персона + режим согласования | `publish_campaigns` + очередь + SQL-планировщик по правилу «N постов в день в заданные часы» (миграция `20260908110000`), вкладка «Кампании», API, MCP |
+| 17. Campaigns | **MISSING → добавлено** | Ближайшее было — группа + персона + режим согласования | `publish_campaigns` + очередь + SQL-планировщик по правилу «N постов в день в заданные часы» (миграция `20260908150000`), вкладка «Кампании», API, MCP |
 | 18. Account groups | **EXISTS** | `publish_account_groups`, bulk-назначение | — |
 | 19–21. Scheduler | **EXISTS, дополнено** | `plan_publish_slots` / `publish_next_slot`: окна, интервалы, дневной лимит с разгоном, джиттер, режимы now/drip/daily | Recurring-правило («3 поста в день по будням в 10/14/19») — правило кампании, крон `publish-campaign-planner-hourly` |
 | 22–24. Job engine | **EXISTS, дополнено** | `publish_jobs`: pending → processing → published/retry/failed/manual_review/cancelled, попытки, аренда, контейнер площадки | Добавлен статус `verifying`, `verification_status`, `trace_id`, журнал шагов `publish_job_events` |
@@ -62,7 +62,7 @@ MCP: mcp/markvision (stdio) → /api/v1
 | 26. Idempotency | **EXISTS, дополнено** | `UNIQUE(video_id, account_id)`, `container_id` до публикации, dispatch не трогает занятое воркером | Ключ идемпотентности клиента на `POST /publications` (`client_ref`) |
 | 27–29. Execution router | **PARTIAL** | Один исполнитель — официальный API | Введён `connectorFor(platform)`; выбор device/human — Phase 3 (когда появится DeviceProvider) |
 | 30–33. Device engine | **MISSING (осознанно)** | Решение проекта: браузерной автоматизации нет | Phase 3 |
-| 34–35. Routines | **MISSING → добавлено** | Кроны как «рутина» были зашиты в миграции | `publish_routines` (шаги относительно публикации) → `publish_tasks` → воркер `publish-tasks`; назначение аккаунту/группе/проекту; секция «Рутины» (миграция `20260908120000`) |
+| 34–35. Routines | **MISSING → добавлено** | Кроны как «рутина» были зашиты в миграции | `publish_routines` (шаги относительно публикации) → `publish_tasks` → воркер `publish-tasks`; назначение аккаунту/группе/проекту; секция «Рутины» (миграция `20260908160000`) |
 | 36–37. Publication model | **PARTIAL** | Публикация = строка `publish_jobs` (external_post_id/url, published_at) | Не дублировать в отдельную таблицу: одна строка = одна публикация на аккаунт; витрина `publish_publications` даёт «модель публикации» без переноса данных |
 | 38–39. Verification | **MISSING → добавлено** | Успех = ответ API площадки | `verifying` → `getPublication()` → `published` только после подтверждения; без подтверждения — `unverified` + уведомление |
 | 40–42. Error classification, retry, DLQ | **PARTIAL → добавлено** | `FailureKind` token/limit/temporary/fatal/unsupported + сырой код площадки | Канонические коды (`AUTH_EXPIRED`, `RATE_LIMIT`, `MEDIA_INVALID`, …) в `publish_jobs.error_class`, retry policy с jitter — `_lib/publishPolicy.ts` |
@@ -110,7 +110,7 @@ MCP: mcp/markvision (stdio) → /api/v1
 
 ## 5. Что сделано в этом заходе (Phase 1: ядро)
 
-Миграция `supabase/migrations/20260908100000_content_factory_core.sql` (идемпотентна):
+Миграция `supabase/migrations/20260908140000_content_factory_core.sql` (идемпотентна):
 
 - `publish_jobs`: статус `verifying`; `verification_status` (`pending|verified|unverified|skipped`), `verified_at`,
   `verify_attempts`, `error_class` (канонический код), `trace_id`, `client_ref` у `publish_videos`
@@ -143,7 +143,7 @@ Backend:
 Frontend: вкладка «Задания» — статус «Проверяется», отметка верификации, панель задания с таймлайном
 шагов; блок уведомлений на странице «Публикации».
 
-## 5a. Второй заход (Phase 2, миграция `20260908110000`)
+## 5a. Второй заход (Phase 2, миграция `20260908150000`)
 
 - **Кампании**: `publish_campaigns` + очередь `publish_campaign_items`; правило «N постов в день в заданные
   часы по дням недели», `fanout` (видео во все аккаунты) / `spread` (по кругу); SQL-планировщик
@@ -153,7 +153,7 @@ Frontend: вкладка «Задания» — статус «Проверяе�
   `publish-webhooks` (HMAC-SHA256, повторы 1→5→15→60→180 мин), секция в настройках, API, MCP.
 - **Ежедневный отчёт** и **feature flags** проекта.
 
-## 5b. Третий заход (миграция `20260908120000`)
+## 5b. Третий заход (миграция `20260908160000`)
 
 - **RBAC**: роль в проекте из владения, `project_members.role` и глобальной роли команды; матрица
   уровней read/operate/publish/manage/admin; гейт каждого действия в `publish-accounts`; управление

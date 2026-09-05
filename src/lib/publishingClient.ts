@@ -231,8 +231,19 @@ export interface PublishVideo {
   title: string | null;
   status: string;
   file_url: string;
+  thumbnail_url?: string | null;
+  base_caption?: string | null;
+  hashtags?: string[] | null;
+  duration_sec?: number | null;
   created_at: string;
   source: string;
+  /** Витрина publish_video_stats — задания по этому видео. */
+  jobs_total?: number;
+  queued?: number;
+  published?: number;
+  failed?: number;
+  last_published_at?: string | null;
+  next_scheduled_at?: string | null;
 }
 
 export interface MetricsResponse {
@@ -520,6 +531,8 @@ export interface PublishVideoInput {
   caption?: string;
   hashtags?: string[];
   start_at?: string;
+  /** Повтор из библиотеки: второе задание в аккаунт, где видео уже выходило. */
+  repost?: boolean;
 }
 
 export const publishingApi = {
@@ -554,7 +567,7 @@ export const publishingApi = {
   settingsUpsert: (project_id: string, input: SettingsUpsertInput) =>
     call<{ ok: true }>("settings_upsert", { project_id, ...input }),
 
-  jobsList: (project_id: string, opts: { status?: PublishJobStatus; limit?: number } = {}) =>
+  jobsList: (project_id: string, opts: { status?: PublishJobStatus; limit?: number; video_id?: string } = {}) =>
     call<{ jobs: PublishJob[] }>("jobs_list", { project_id, ...opts }),
   metrics: (project_id: string) => call<MetricsResponse>("metrics", { project_id }),
   jobGet: (project_id: string, job_id: string) => call<JobDetail>("job_get", { project_id, job_id }),

@@ -1,7 +1,7 @@
 {
-  "git_sha": "e350db8",
-  "git_sha_full": "e350db8f78b210f7c782e25d0c17f58ddaac1c58",
-  "updated_at": "2026-09-05T13:04:02+04:00",
-  "label": "fix(publishing): TikTok через FILE_UPLOAD, короткие токены без штрафа здоровья [vercel-deploy]",
+  "git_sha": "a97eb2c",
+  "git_sha_full": "a97eb2c5a3f120fd4275ea42e83752cfc0eebbcb",
+  "updated_at": "2026-09-05T20:26:25+04:00",
+  "label": "[vercel-deploy] Merge: fix(radar) — вкладки переносятся на телефоне, e2e mobile-layout зелёный (#270)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }

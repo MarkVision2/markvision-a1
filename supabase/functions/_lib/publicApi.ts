@@ -25,6 +25,7 @@ export type ApiRoute =
   | { name: "upload_url" }
   | { name: "publications_list" }
   | { name: "publication_create" }
+  | { name: "publications_distribute" }
   | { name: "publication_get"; id: string }
   | { name: "publication_jobs_create"; id: string }
   | { name: "job_cancel"; id: string }
@@ -112,6 +113,7 @@ export function matchRoute(method: string, pathname: string): ApiRoute | null {
       if (m === "POST") return { name: "publication_create" };
       return null;
     }
+    if (m === "POST" && seg.length === 2 && b === "distribute") return { name: "publications_distribute" };
     if (!UUID.test(b ?? "")) return null;
     if (m === "GET" && seg.length === 2) return { name: "publication_get", id: b };
     if (m === "POST" && seg.length === 3 && c === "jobs") return { name: "publication_jobs_create", id: b };
@@ -305,6 +307,55 @@ export function parseTarget(src: Record<string, unknown>): { ok: true; target: P
       ...(startAt ? { start_at: startAt } : {}),
       ...(perHour ? { per_hour: perHour } : {}),
     },
+  };
+}
+
+/* ───────────── раскладка пачки: один ролик → один аккаунт ───────────── */
+
+export interface DistributeInput {
+  videos: { id: string; topic_key?: string | null }[];
+  batch_id: string | null;
+  target: PublicationTarget & { per_day?: number; max_days?: number };
+}
+
+/**
+ * POST /publications/distribute — пачка принятых видео раскладывается по сети:
+ * каждый ролик в один аккаунт, не больше per_day на аккаунт в сутки, одна
+ * тема (topic_key) — разные дни. Без group_id/account_ids — все аккаунты проекта.
+ */
+export function parseDistributeInput(body: unknown): { ok: true; input: DistributeInput } | { ok: false; error: string } {
+  const b = (body ?? {}) as Record<string, unknown>;
+  const raw: unknown[] = Array.isArray(b.videos) ? b.videos : Array.isArray(b.video_ids) ? b.video_ids : [];
+  const videos: DistributeInput["videos"] = [];
+  for (const item of raw) {
+    const v = typeof item === "string" ? { id: item } : ((item ?? {}) as { id?: unknown; topic_key?: unknown });
+    const id = String(v.id ?? "").trim();
+    if (!UUID.test(id)) return { ok: false, error: "videos[].id — uuid принятого видео" };
+    videos.push({
+      id,
+      ...(v.topic_key !== undefined ? { topic_key: v.topic_key == null ? null : String(v.topic_key).trim().slice(0, 200) || null } : {}),
+    });
+  }
+  if (!videos.length) return { ok: false, error: "videos — непустой список {id, topic_key?} (или video_ids)" };
+  if (videos.length > 500) return { ok: false, error: "за один раз — не больше 500 видео" };
+
+  const t = ((b.target ?? {}) as Record<string, unknown>);
+  const parsedTarget = parseTarget({ ...t, mode: "drip" });
+  if (parsedTarget.ok === false) return { ok: false, error: parsedTarget.error };
+  const target: DistributeInput["target"] = { ...parsedTarget.target };
+  if (t.per_day != null) {
+    const perDay = Number(t.per_day);
+    if (!Number.isInteger(perDay) || perDay < 1 || perDay > 20) return { ok: false, error: "target.per_day — целое число от 1 до 20" };
+    target.per_day = perDay;
+  }
+  if (t.max_days != null) {
+    const maxDays = Number(t.max_days);
+    if (!Number.isInteger(maxDays) || maxDays < 1 || maxDays > 90) return { ok: false, error: "target.max_days — целое число от 1 до 90" };
+    target.max_days = maxDays;
+  }
+  return {
+    ok: true,
+    input: { videos, batch_id: b.batch_id != null ? String(b.batch_id).trim().slice(0, 120) || null : null, target },
   };
 }
 

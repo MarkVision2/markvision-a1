@@ -15,7 +15,7 @@
 
 ## Ключи
 
-- Выдаются в интерфейсе: **Публикации → Настройки → API-ключи**. Ключ показывается один раз.
+- Выдаются в интерфейсе: **Настройки → API и MCP**. Ключ показывается один раз.
 - В базе (`api_keys`) хранится только sha256-хэш; в списке виден префикс `mv_live_XXXX…`.
 - Ключ привязан к **одному проекту**. `project_id` в запросах не передаётся и не принимается.
 - Права: `read` (аккаунты, группы, настройки, статусы), `publish` (загрузка медиа, постановка
@@ -58,6 +58,7 @@ Authorization: Bearer mv_live_…        (или заголовок x-api-key: m
 | `GET /publications?limit=20` | read | последние видео и сводка заданий по статусам |
 | `GET /publications/:id` | read | видео, сводка и задания по аккаунтам |
 | `POST /publications/:id/jobs` | publish | задания на уже принятое видео |
+| `POST /publications/distribute` | publish | пачка принятых видео по сети: один ролик → один аккаунт |
 | `POST /jobs/:id/cancel` | publish | отменить не ушедшее задание |
 | `POST /jobs/:id/retry` | publish | вернуть упавшее задание в очередь |
 | `GET /jobs/:id` | read | задание целиком: статус, верификация, `error_class`, трасса шагов (`events`), журнал площадки (`logs`), снятые метрики |
@@ -119,6 +120,28 @@ curl -X POST "$API/publications" -H "Authorization: Bearer $KEY" -H "Content-Typ
 `per_hour` на верхнем уровне). Без цели видео принимается, задания создаются позже через
 `POST /publications/:id/jobs` с теми же полями.
 
+### Пачка по сети: один ролик → один аккаунт
+
+Для контент-завода (каждый ролик уникален, сеть нужна ради пропускной способности) видео
+сначала принимаются **без цели** (`POST /publications` без `group_id`/`account_ids`), а затем
+раскладываются одним вызовом:
+
+```bash
+curl -X POST "$API/publications/distribute" -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{
+  "videos": [{"id":"<publication id>","topic_key":"сеть-аккаунтов"}, {"id":"<…>","topic_key":"прокси"}],
+  "batch_id": "2026-09-08-1",
+  "target": {"group_id":"<uuid>", "per_day": 3, "start_at":"2026-09-08T09:00:00+05:00", "max_days": 30}
+}'
+# → { "ok": true, "created": 2, "skipped": 0, "unassigned": [],
+#     "assignments": [{ "video_id": "…", "account_id": "…", "account_name": "@a", "day": 0, "scheduled_at": "…" }, …] }
+```
+
+Правила раскладки: аккаунты по кругу, здоровые вперёд; не больше `per_day` (по умолчанию 3)
+роликов на аккаунт в сутки; ролики с одним `topic_key` — в разные дни и, пока есть выбор, в
+разные аккаунты; точное время внутри дня — планировщик слотов (окно, интервалы, разгон).
+`video_ids: […]` вместо `videos` — если ключи тем не нужны. Что не влезло в `max_days`, приходит
+в `unassigned`. Чужие публикации и цели — 404 без постановки заданий. До 500 видео за вызов.
+
 - `mode`: `now` — все сразу; `drip` (по умолчанию) — по слотам планировщика в окне аккаунта
   с минимальным интервалом и дневным лимитом; `daily` — по одному в день.
 - Без `group_id` и `account_ids` задания ставятся на **все активные аккаунты проекта**.
@@ -128,8 +151,10 @@ curl -X POST "$API/publications" -H "Authorization: Bearer $KEY" -H "Content-Typ
   на пару видео + аккаунт.
 - Ответ: `{ ok, video_id, caption_preview, created, skipped, accounts: [{ id, account_name, scheduled_at }] }`.
 
-Проверка входа: `file_url` — https; по ссылке должно лежать видео (`content-type: video/*`)
-не больше 1 ГБ; `mode` — из списка; `group_id`/`account_ids` — uuid; `start_at` — ISO 8601.
+Проверка входа: `file_url` — https на `.mp4/.mov/.m4v`; по ссылке должно лежать видео
+(`content-type: video/*`) не больше 1 ГБ; `duration_sec`, если передан, — от 3 до 900 секунд
+(короче площадки не принимают, ответ `422`); `mode` — из списка; `group_id`/`account_ids` — uuid;
+`start_at` — ISO 8601. Чужая группа или аккаунт — `404` до постановки.
 
 ### Управление аккаунтами, группами и настройками
 
@@ -196,17 +221,17 @@ Cursor. Установка, конфиг и список инструменто�
 | Что | Где |
 |---|---|
 | Таблица ключей | `supabase/migrations/20260907130000_api_keys.sql` |
-| Аудит вызовов, уведомления, витрины аналитики | `supabase/migrations/20260908100000_content_factory_core.sql` |
+| Аудит вызовов, уведомления, витрины аналитики | `supabase/migrations/20260908140000_content_factory_core.sql` |
 | Генерация, хэш, проверка, лимит | `supabase/functions/_lib/apiKeys.ts` |
 | Маршруты и разбор тела | `supabase/functions/_lib/publicApi.ts` |
 | Сама функция | `supabase/functions/api/index.ts` (вход) + `handler.ts` (логика с зависимостями наружу); `verify_jwt = false` в `config.toml` |
 | Выдача и отзыв ключей | `publish-accounts` → `api_key_list / api_key_create / api_key_revoke` |
-| Интерфейс | `src/components/publishing/ApiKeysSection.tsx` (вкладка «Настройки») |
+| Интерфейс | `src/components/settings/ApiKeysSettings.tsx` (Настройки → API и MCP) |
 | MCP-сервер | `mcp/markvision/` |
-| Тесты | `src/test/apiKeys.test.ts`, `src/test/publicApi.test.ts`, `src/test/apiKeysSection.test.tsx` (vitest); `supabase/functions/_tests/api_test.ts` (deno test, обработчик насквозь с подменённой базой и сетью); `mcp/markvision/tests/` (node --test) |
+| Тесты | `src/test/apiKeys.test.ts`, `src/test/publicApi.test.ts`, `src/test/apiKeysSettings.test.tsx` (vitest); `supabase/functions/_tests/api_test.ts` (deno test, обработчик насквозь с подменённой базой и сетью); `mcp/markvision/tests/` (node --test) |
 
 ```bash
-npx vitest run src/test/apiKeys.test.ts src/test/publicApi.test.ts src/test/apiKeysSection.test.tsx
+npx vitest run src/test/apiKeys.test.ts src/test/publicApi.test.ts src/test/apiKeysSettings.test.tsx
 cd supabase/functions && deno test --allow-env _tests/api_test.ts
 cd mcp/markvision && npm test
 ```

@@ -5,7 +5,7 @@
  * поставить публикацию, узнать статус, отменить или повторить задание.
  *
  * Переменные окружения:
- *   MARKVISION_API_KEY — ключ из «Публикации → Настройки → API-ключи» (mv_live_…)
+ *   MARKVISION_API_KEY — ключ из «Настройки → API и MCP» (mv_live_…)
  *   MARKVISION_API_URL — адрес API (https://<проект>.supabase.co/functions/v1/api/v1)
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -16,7 +16,7 @@ import { ApiError, MarkVisionClient } from "./client.js";
 const apiKey = process.env.MARKVISION_API_KEY?.trim();
 const apiUrl = process.env.MARKVISION_API_URL?.trim();
 if (!apiKey) {
-  process.stderr.write("MARKVISION_API_KEY не задан — создайте ключ в MarkVision: Публикации → Настройки → API-ключи\n");
+  process.stderr.write("MARKVISION_API_KEY не задан — создайте ключ в MarkVision: Настройки → API и MCP\n");
   process.exit(1);
 }
 if (!apiUrl) {
@@ -71,14 +71,14 @@ server.registerTool("markvision_list_groups", {
 
 server.registerTool("markvision_upload_media", {
   title: "Загрузить видео",
-  description: "Загружает видеофайл с диска в хранилище MarkVision и возвращает file_url для markvision_create_publication. До 2 ГБ; mp4/mov.",
+  description: "Загружает видеофайл с диска в хранилище MarkVision и возвращает file_url для markvision_create_publication. До 2 ГБ; mp4/mov; длительность 3–900 секунд (короче площадки не принимают).",
   inputSchema: { file_path: z.string().describe("Абсолютный путь к файлу на этой машине.") },
 }, ({ file_path }) => run(() => client.uploadFile(file_path)));
 
 server.registerTool("markvision_create_publication", {
   title: "Поставить публикацию",
   description:
-    "Принимает готовое видео по ссылке и ставит задания публикации по аккаунтам. " +
+    "Принимает готовое видео по ссылке (mp4/mov, 3–900 секунд, до 1 ГБ) и ставит задания публикации по аккаунтам. " +
     "Если не передать ни group_id, ни account_ids — задания не создаются, только принимается видео (потом markvision_create_jobs). " +
     "Возвращает publication id и созданные задания с временем.",
   inputSchema: {
@@ -87,7 +87,7 @@ server.registerTool("markvision_create_publication", {
     caption: z.string().optional().describe("Подпись к посту. Хэштеги передаются отдельно."),
     hashtags: z.array(z.string()).optional().describe("Без решётки или с ней — всё равно."),
     caption_variants: z.array(z.string()).optional().describe("Варианты подписи — раздаются аккаунтам по кругу."),
-    duration_sec: z.number().positive().optional(),
+    duration_sec: z.number().min(3).max(900).optional().describe("Длительность в секундах, если известна: 3–900."),
     ...targetShape,
   },
 }, (input) => run(() => client.createPublication(input)));
@@ -97,6 +97,26 @@ server.registerTool("markvision_create_jobs", {
   description: "Ставит задания публикации на видео, которое уже принято (publication_id из markvision_create_publication или списка).",
   inputSchema: { publication_id: uuid, ...targetShape },
 }, ({ publication_id, ...target }) => run(() => client.createJobs(publication_id, target)));
+
+server.registerTool("markvision_distribute", {
+  title: "Разложить пачку по сети",
+  description:
+    "Пачка контент-завода: каждый принятый ролик уходит ровно в один аккаунт (не копии во все), " +
+    "не больше per_day роликов на аккаунт в сутки (по умолчанию 3), ролики с одним topic_key — в разные дни и разные аккаунты. " +
+    "Без group_id/account_ids берутся все активные аккаунты проекта. Возвращает, какой ролик в какой аккаунт и когда.",
+  inputSchema: {
+    videos: z.array(z.object({
+      id: uuid.describe("publication id из markvision_create_publication (принято без target)."),
+      topic_key: z.string().max(200).optional().describe("Ключ темы, чтобы похожие ролики не вышли в один день."),
+    })).min(1).max(500),
+    batch_id: z.string().max(120).optional().describe("Имя пачки производства для сводной статистики."),
+    group_id: uuid.optional(),
+    account_ids: z.array(uuid).optional(),
+    start_at: z.string().optional().describe("ISO 8601, начало дня 0. По умолчанию сейчас."),
+    per_day: z.number().int().min(1).max(20).optional(),
+    max_days: z.number().int().min(1).max(90).optional(),
+  },
+}, ({ videos, batch_id, ...target }) => run(() => client.distribute(compact({ videos, batch_id, target: compact(target) }))));
 
 server.registerTool("markvision_list_publications", {
   title: "Последние публикации",

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { AlertCircle, ChevronDown, ExternalLink, Instagram, KeyRound, Loader2, PauseCircle, Plus, RefreshCw, Search, Send, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
@@ -31,7 +31,6 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { AccountsTable, PLATFORM_DOT } from "@/components/publishing/AccountsTable";
-import { ApiKeysSection } from "@/components/publishing/ApiKeysSection";
 import { JobsTab } from "@/components/publishing/JobsTab";
 import { NetworkTab } from "@/components/publishing/NetworkTab";
 import { NotificationsPanel } from "@/components/publishing/NotificationsPanel";
@@ -40,6 +39,7 @@ import { WebhooksSection } from "@/components/publishing/WebhooksSection";
 import { RoutinesSection } from "@/components/publishing/RoutinesSection";
 import { ProjectRolesSection } from "@/components/publishing/ProjectRolesSection";
 import { UploadPublishDialog } from "@/components/publishing/UploadPublishDialog";
+import { VideosTab } from "@/components/publishing/VideosTab";
 import { usePublishing, type UsePublishing } from "@/hooks/usePublishing";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import {
@@ -60,6 +60,7 @@ import {
   type PublishGroup,
   type PublishPlatform,
   type PublishStrategy,
+  type PublishVideo,
   type ReviewMode,
   roleAllows,
 } from "@/lib/publishingClient";
@@ -102,6 +103,10 @@ export default function Publishing() {
   const pub = usePublishing();
   const disabled = pub.busy != null;
   const [dialog, setDialog] = useState<"instagram" | "threads" | "video" | null>(null);
+  // Вкладка управляется снаружи: «Задания по видео» из библиотеки переключает на очередь.
+  const [tab, setTab] = useState("accounts");
+  // Повтор ролика из библиотеки — тот же композер без заливки файла.
+  const [repostVideo, setRepostVideo] = useState<PublishVideo | null>(null);
   const [oauthBusy, setOauthBusy] = useState<OAuthPlatform | null>(null);
   const [params, setParams] = useSearchParams();
 
@@ -165,7 +170,8 @@ export default function Publishing() {
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>}
-              {roleAllows(pub.role, "publish") && <Button size="sm" onClick={() => setDialog("video")} disabled={disabled || !projectId}>
+              {/* Пока аккаунты грузятся, композер открылся бы с пустым выбором. */}
+              {roleAllows(pub.role, "publish") && <Button size="sm" onClick={() => setDialog("video")} disabled={disabled || pub.loading || !projectId}>
                 <Upload className="mr-1.5 h-4 w-4" /> Залить видео
               </Button>}
             </>
@@ -191,15 +197,17 @@ export default function Publishing() {
         {projectId && <SummaryBar pub={pub} />}
         <NotificationsPanel projectId={projectId} refreshKey={pub.jobs.length + pub.accounts.length} />
 
-        {/* Пять вкладок вместо семи: статистика по аккаунтам живёт видом внутри
-            «Аккаунтов», сводка по группам — над их настройками. Вкладка аккаунтов
-            не размонтируется при переключении — поиск, фильтры и выделение живут. */}
-        {projectId && <Tabs defaultValue="accounts">
+        {/* Шесть вкладок: статистика по аккаунтам живёт видом внутри «Аккаунтов»,
+            сводка по группам — над их настройками, «Видео» — библиотека роликов с
+            повтором. Вкладка аккаунтов не размонтируется при переключении —
+            поиск, фильтры и выделение живут. */}
+        {projectId && <Tabs value={tab} onValueChange={setTab}>
           <TabsList className="flex-wrap">
             <TabsTrigger value="accounts">Аккаунты</TabsTrigger>
             <TabsTrigger value="groups">Группы</TabsTrigger>
             <TabsTrigger value="personas">Персоны</TabsTrigger>
             <TabsTrigger value="campaigns">Кампании</TabsTrigger>
+            <TabsTrigger value="videos">Видео</TabsTrigger>
             <TabsTrigger value="jobs">Задания</TabsTrigger>
             <TabsTrigger value="settings">Настройки</TabsTrigger>
           </TabsList>
@@ -216,21 +224,36 @@ export default function Publishing() {
             </div>
           </TabsContent>
           <TabsContent value="personas" className="mt-3"><PersonasTab pub={pub} /></TabsContent>
+          <TabsContent value="videos" className="mt-3">
+            <VideosTab
+              pub={pub}
+              onRepost={(v) => setRepostVideo(v)}
+              onShowJobs={(v) => { pub.setJobsVideo(v.id); setTab("jobs"); }}
+            />
+          </TabsContent>
           <TabsContent value="campaigns" className="mt-3"><CampaignsTab pub={pub} /></TabsContent>
           <TabsContent value="jobs" className="mt-3"><JobsTab pub={pub} /></TabsContent>
           <TabsContent value="settings" className="mt-3 space-y-4">
             <SettingsTab pub={pub} />
             <RoutinesSection pub={pub} />
             <ProjectRolesSection projectId={pub.projectId} role={pub.role} />
-            <ApiKeysSection projectId={pub.projectId} />
             <WebhooksSection projectId={pub.projectId} />
+            <div className="max-w-xl rounded-2xl border border-dashed border-border/60 p-4 text-sm text-muted-foreground">
+              Ключи API и подключение Claude через MCP — в{" "}
+              <Link to="/settings?tab=api" className="font-medium text-primary hover:underline">Настройках → API и MCP</Link>.
+            </div>
           </TabsContent>
         </Tabs>}
       </div>
 
       <ConnectInstagramDialog open={dialog === "instagram"} onClose={() => setDialog(null)} pub={pub} />
       <ConnectThreadsDialog open={dialog === "threads"} onClose={() => setDialog(null)} pub={pub} />
-      <UploadPublishDialog open={dialog === "video"} onClose={() => setDialog(null)} pub={pub} />
+      <UploadPublishDialog
+        open={dialog === "video" || repostVideo != null}
+        video={repostVideo}
+        onClose={() => { setDialog(null); setRepostVideo(null); }}
+        pub={pub}
+      />
     </PageContainer>
   );
 }
@@ -788,14 +811,19 @@ function SettingsTab({ pub }: { pub: UsePublishing }) {
   const [monthly, setMonthly] = useState("");
   const [paused, setPaused] = useState(false);
 
+  // Форму заполняем с сервера один раз на проект: любое действие на странице
+  // перечитывает settings, и правка бюджета, ещё не сохранённая, пропадала бы.
+  const seededFor = useRef<string | null>(null);
   useEffect(() => {
-    if (!s) return;
+    if (!s) { seededFor.current = null; return; }
+    if (seededFor.current === pub.projectId) return;
+    seededFor.current = pub.projectId;
     setNotify(s.settings.notify_mode);
     setChat(s.settings.digest_chat_id ?? "");
     setDaily(String(s.budget.daily_usd));
     setMonthly(String(s.budget.monthly_usd));
     setPaused(Boolean(s.settings.paused));
-  }, [s]);
+  }, [s, pub.projectId]);
 
   if (!s) return <EmptyState text="Настройки не загружены — выберите проект или обновите страницу." />;
 

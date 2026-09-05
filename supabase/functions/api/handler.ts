@@ -1,7 +1,7 @@
 /**
  * Публичный API проекта для внешних клиентов (MCP-сервер, агенты, скрипты).
  * Авторизация — API-ключ проекта (Authorization: Bearer mv_live_… или x-api-key),
- * выдаётся в «Публикации → Настройки → API-ключи». Ключ привязан к проекту:
+ * выдаётся в «Настройки → API и MCP». Ключ привязан к проекту:
  * project_id нигде не передаётся, он берётся из ключа.
  *
  *   GET  /api/v1/me                          — проект и права ключа
@@ -44,7 +44,7 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { checkRateLimit, hasScope, type ApiKeyContext, type RateBucket } from "../_lib/apiKeys.ts";
 import { resolveApiKey } from "../_lib/apiKeysDb.ts";
-import { matchRoute, parsePublicationInput, parseTarget, requiredScope, type ApiRoute } from "../_lib/publicApi.ts";
+import { matchRoute, parseDistributeInput, parsePublicationInput, parseTarget, requiredScope, type ApiRoute } from "../_lib/publicApi.ts";
 
 const CORS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -199,10 +199,11 @@ async function groupUpsert(req: Request, deps: Deps, ctx: ApiKeyContext, id: str
   const body = pick(await readJson(req), GROUP_FIELDS);
   if (id) {
     // Частичная правка: недостающие поля берём из текущей группы.
-    const { data } = await admin.from("publish_account_groups").select("name, account_ids").eq("id", id).maybeSingle();
-    const cur = (data ?? {}) as { name?: string; account_ids?: string[] };
+    // platform тоже: group_upsert пишет её всегда, без неё частичная правка обнулила бы площадку группы.
+    const { data } = await admin.from("publish_account_groups").select("name, account_ids, platform").eq("id", id).maybeSingle();
+    const cur = (data ?? {}) as { name?: string; account_ids?: string[]; platform?: string | null };
     return passthrough(await accountsAction(deps, ctx, "group_upsert", {
-      id, name: cur.name, account_ids: cur.account_ids ?? [], ...body,
+      id, name: cur.name, account_ids: cur.account_ids ?? [], platform: cur.platform ?? null, ...body,
     }));
   }
   if (typeof body.name !== "string" || !body.name.trim()) return json({ error: "name обязателен" }, 400);
@@ -365,6 +366,29 @@ async function publicationJobsCreate(req: Request, deps: Deps, ctx: ApiKeyContex
   if (bad) return json({ error: bad }, 404);
   const r = await callInternal(deps, "publish-intake", {
     action: "create_jobs", video_id: id, target: parsed.target,
+  }, { "x-automation-key": await automationKey(admin) });
+  return passthrough(r);
+}
+
+/** Пачка контент-завода: один ролик → один аккаунт, лимит в сутки, разнос тем по дням. */
+async function publicationsDistribute(req: Request, deps: Deps, ctx: ApiKeyContext): Promise<Response> {
+  const admin = deps.admin;
+  const parsed = parseDistributeInput(await readJson(req));
+  if (!parsed.ok) return json({ error: parsed.error }, 400);
+  const { input } = parsed;
+  const bad = await targetError(admin, ctx, input.target);
+  if (bad) return json({ error: bad }, 404);
+  const ids = input.videos.map((v) => v.id);
+  const { data } = await admin.from("publish_videos").select("id").eq("project_id", ctx.projectId).in("id", ids);
+  const known = new Set(((data ?? []) as { id: string }[]).map((r) => r.id));
+  const alien = ids.filter((id) => !known.has(id));
+  if (alien.length) return json({ error: `публикации не найдены: ${alien.join(", ")}` }, 404);
+  const r = await callInternal(deps, "publish-intake", {
+    action: "distribute",
+    project_id: ctx.projectId,
+    videos: input.videos,
+    batch_id: input.batch_id,
+    target: input.target,
   }, { "x-automation-key": await automationKey(admin) });
   return passthrough(r);
 }
@@ -565,6 +589,7 @@ async function dispatch(req: Request, deps: Deps, ctx: ApiKeyContext, route: Api
     case "metrics": return metrics(deps, ctx);
     case "upload_url": return uploadUrl(req, deps);
     case "publication_create": return publicationCreate(req, deps, ctx);
+    case "publications_distribute": return publicationsDistribute(req, deps, ctx);
     case "publications_list": return publicationsList(req, deps, ctx);
     case "publication_get": return publicationGet(deps, ctx, route.id);
     case "publication_jobs_create": return publicationJobsCreate(req, deps, ctx, route.id);
@@ -604,7 +629,14 @@ async function dispatch(req: Request, deps: Deps, ctx: ApiKeyContext, route: Api
 export async function handle(req: Request, deps: Deps): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
-  const route = matchRoute(req.method, new URL(req.url).pathname);
+  // Кривое percent-кодирование в пути бросает URIError из decodeURIComponent —
+  // без этого ответ был бы текстовым 500 без CORS.
+  let route: ReturnType<typeof matchRoute>;
+  try {
+    route = matchRoute(req.method, new URL(req.url).pathname);
+  } catch {
+    return json({ error: "некорректный путь запроса" }, 400);
+  }
   if (!route) return json({ error: "маршрут не найден — см. docs/PUBLIC-API.md" }, 404);
 
   const auth = await resolveApiKey(req, deps.admin, deps.now());

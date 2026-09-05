@@ -47,7 +47,7 @@ export interface PublishJob {
   poll_count?: number;
   status?: string;
   locked_at?: string | null;
-  /** Ядро Phase 1 (миграция 20260908100000): верификация и трасса. */
+  /** Ядро Phase 1 (миграция 20260908140000): верификация и трасса. */
   external_post_id?: string | null;
   external_post_url?: string | null;
   verification_status?: "pending" | "verified" | "unverified" | "skipped";

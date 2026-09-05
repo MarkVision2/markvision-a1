@@ -77,5 +77,5 @@
 ## Локальная проверка миграций
 
 Postgres 16 со стабами (`auth.uid`, `cron`, `net`, `projects`, `user_can_access_project`) применяет цепочку
-`20260901160000 → … → 20260908100000` дважды без ошибок; сценарий: план 3 аккаунтов → claim → verifying →
+`20260901160000 → … → 20260908160000` дважды без ошибок; сценарий: план 3 аккаунтов → claim → verifying →
 claim_publish_verifications → published (учёт аккаунта) → `post_metrics_due` (h1) → витрины → GC.

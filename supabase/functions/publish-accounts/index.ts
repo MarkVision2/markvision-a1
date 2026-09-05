@@ -71,6 +71,16 @@ interface MetaPage {
   instagram_business_account?: IgBusinessAccount;
 }
 
+/** Пояс из списка IANA: иначе опечатка всплывёт не здесь, а в AT TIME ZONE при планировании слотов. */
+function validTimeZone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function metaPages(token: string): Promise<{ pages: MetaPage[]; error?: string }> {
   // Токен кодируется: символы вроде «|» или пробел в сыром виде ломают разбор
   // на стороне Graph («Cannot parse access token»).
@@ -346,7 +356,11 @@ Deno.serve(async (req) => {
         if (!r.ok) return json({ error: "рутина не из этого проекта" }, 400);
         patch.routine_id = r.value;
       }
-      if (body?.timezone === null || typeof body?.timezone === "string") patch.timezone = body.timezone?.trim() || null;
+      if (body?.timezone === null || typeof body?.timezone === "string") {
+        const tz = body.timezone?.trim() || null;
+        if (tz && !validTimeZone(tz)) return json({ error: `неизвестный часовой пояс: ${tz}` }, 400);
+        patch.timezone = tz;
+      }
       if (body?.window_start === null || typeof body?.window_start === "string") patch.window_start = body.window_start || null;
       if (body?.window_end === null || typeof body?.window_end === "string") patch.window_end = body.window_end || null;
       if (typeof body?.ramp_enabled === "boolean") patch.ramp_enabled = body.ramp_enabled;
@@ -426,8 +440,11 @@ Deno.serve(async (req) => {
         row.review_mode = body.review_mode;
       }
       // Пустое значение — «стереть»: часовой пояс и окно возвращаются к умолчаниям колонки.
-      if (typeof body?.timezone === "string") row.timezone = body.timezone.trim() || "Asia/Almaty";
-      else if (body?.timezone === null) row.timezone = "Asia/Almaty";
+      if (typeof body?.timezone === "string") {
+        const tz = body.timezone.trim() || "Asia/Almaty";
+        if (!validTimeZone(tz)) return json({ error: `неизвестный часовой пояс: ${tz}` }, 400);
+        row.timezone = tz;
+      } else if (body?.timezone === null) row.timezone = "Asia/Almaty";
       const timeRe = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
       for (const k of ["window_start", "window_end"] as const) {
         if (typeof body?.[k] === "string" && body[k]) {
@@ -1065,16 +1082,31 @@ Deno.serve(async (req) => {
       const results = await Promise.all([
         admin.from("publish_metrics").select("*").eq("project_id", projectId).maybeSingle(),
         admin.from("radar_metrics").select("*").eq("project_id", projectId).maybeSingle(),
-        admin.from("publish_videos").select("id, title, status, file_url, created_at, source").eq("project_id", projectId).order("created_at", { ascending: false }).limit(50),
+        admin.from("publish_videos").select("id, title, status, file_url, thumbnail_url, base_caption, hashtags, duration_sec, created_at, source").eq("project_id", projectId).order("created_at", { ascending: false }).limit(100),
         admin.from("publish_group_metrics").select("*").eq("project_id", projectId).order("name"),
         // Витрина по каждому аккаунту — вид «Статистика» во вкладке «Аккаунты».
         admin.from("publish_account_metrics").select("*").eq("project_id", projectId).order("account_name"),
+        // Задания по каждому видео — вкладка «Видео» (библиотека и повтор).
+        admin.from("publish_video_stats").select("*").eq("project_id", projectId),
       ]);
-      const [{ data: pm }, { data: rm }, { data: videos }, { data: gm }, { data: am }] = results;
+      const [{ data: pm }, { data: rm }, { data: videos }, { data: gm }, { data: am }, { data: vs }] = results;
       // Ошибка витрины (нет миграции, нет гранта) не должна выглядеть как пустой проект.
-      const errors = results.map((r, i) => (r.error ? `${["publish_metrics", "radar_metrics", "publish_videos", "publish_group_metrics", "publish_account_metrics"][i]}: ${r.error.message}` : null)).filter(Boolean);
+      const errors = results.map((r, i) => (r.error ? `${["publish_metrics", "radar_metrics", "publish_videos", "publish_group_metrics", "publish_account_metrics", "publish_video_stats"][i]}: ${r.error.message}` : null)).filter(Boolean);
       if (errors.length) return json({ error: errors.join("; ") }, 500);
-      return json({ ok: true, publish: pm ?? null, radar: rm ?? null, videos: videos ?? [], groups: gm ?? [], accounts: am ?? [] });
+      const statsByVideo = new Map(((vs ?? []) as { video_id: string }[]).map((s) => [s.video_id, s]));
+      const videosWithStats = ((videos ?? []) as { id: string }[]).map((v) => {
+        const s = (statsByVideo.get(v.id) ?? {}) as Record<string, unknown>;
+        return {
+          ...v,
+          jobs_total: Number(s.jobs_total ?? 0),
+          queued: Number(s.queued ?? 0),
+          published: Number(s.published ?? 0),
+          failed: Number(s.failed ?? 0),
+          last_published_at: (s.last_published_at as string | null | undefined) ?? null,
+          next_scheduled_at: (s.next_scheduled_at as string | null | undefined) ?? null,
+        };
+      });
+      return json({ ok: true, publish: pm ?? null, radar: rm ?? null, videos: videosWithStats, groups: gm ?? [], accounts: am ?? [] });
     }
 
     /* ── «Залить видео в группу»: библиотека + планировщик слотов ── */
@@ -1097,6 +1129,17 @@ Deno.serve(async (req) => {
         if (error) return json({ error: error.message }, 500);
         if (!data) return json({ error: "видео не сохранилось" }, 500);
         videoId = (data as { id: string }).id;
+      } else if (body?.repost === true) {
+        // Повтор из библиотеки с правкой текста: обновляем карточку видео —
+        // задания берут подпись и хэштеги из неё.
+        const patch: Record<string, unknown> = {};
+        if (typeof body?.title === "string") patch.title = body.title.trim() || null;
+        if (typeof body?.caption === "string") patch.base_caption = body.caption.trim() || null;
+        if (Array.isArray(body?.hashtags)) patch.hashtags = body.hashtags.map(String);
+        if (Object.keys(patch).length) {
+          const { error } = await admin.from("publish_videos").update(patch).eq("id", videoId).eq("project_id", projectId);
+          if (error) return json({ error: error.message }, 500);
+        }
       }
       const mode = ["now", "drip", "daily"].includes(String(body?.mode)) ? String(body.mode) : "drip";
       const accountIds = Array.isArray(body?.account_ids) && body.account_ids.length ? body.account_ids.map(String) : null;
@@ -1110,6 +1153,9 @@ Deno.serve(async (req) => {
         p_account_ids: accountIds,
         p_start: startAt,
         p_mode: mode,
+        // Повтор из библиотеки: второе задание в аккаунт, где видео уже выходило.
+        // Без флага планировщик идемпотентен — вернёт существующее задание.
+        p_repost: body?.repost === true,
       });
       if (planErr) return json({ error: planErr.message }, 500);
       const rows = (planned ?? []) as { job_id: string; account_id: string; scheduled_at: string; created: boolean }[];
@@ -1133,9 +1179,9 @@ Deno.serve(async (req) => {
       const jobId = String(body?.job_id ?? "");
       if (!jobId) return json({ error: "job_id обязателен" }, 400);
       const { data: job } = await admin.from("publish_jobs")
-        .select("id, status, account_id, locked_at").eq("id", jobId).eq("project_id", projectId).maybeSingle();
+        .select("id, status, account_id, locked_at, container_id, error_code").eq("id", jobId).eq("project_id", projectId).maybeSingle();
       if (!job) return json({ error: "задание не найдено" }, 404);
-      const j = job as { id: string; status: string; account_id: string; locked_at: string | null };
+      const j = job as { id: string; status: string; account_id: string; locked_at: string | null; container_id: string | null; error_code: string | null };
       // processing без живой аренды — воркер умер; claim освободит его через 10 минут,
       // а оператору нечего было нажать. Считаем такое зависшим и даём повтор/отмену.
       const stale = j.status === "processing" && (!j.locked_at || Date.now() - Date.parse(j.locked_at) > 10 * 60_000);
@@ -1145,20 +1191,30 @@ Deno.serve(async (req) => {
         if (!["failed", "cancelled", "manual_review", "retry"].includes(j.status) && !stale) {
           return json({ error: `задание в статусе «${j.status}» повторять нечего` }, 400);
         }
+        // retry с живым контейнером и без ошибки — это не отказ, а ожидание обработки
+        // видео площадкой (раннер опрашивает контейнер раз в минуту). Сброс контейнера
+        // здесь = повторная заливка = два поста.
+        if (j.status === "retry" && j.container_id && !j.error_code) {
+          return json({ error: "площадка ещё обрабатывает загруженное видео — задание вернётся само; повторять не нужно" }, 409);
+        }
         const now = new Date().toISOString();
         const { error } = await admin.from("publish_jobs").update({
           status: "pending",
           // Новый заход с чистого листа: счётчик попыток и контейнер площадки
           // (мёртвый контейнер повторно опрашивать бессмысленно), слот — сейчас,
-          // иначе claim ждал бы старого scheduled_at.
+          // иначе claim ждал бы старого scheduled_at. Зависший processing — исключение:
+          // его контейнер раннер добьёт, а не зальёт видео снова.
           attempts: 0,
-          container_id: null,
+          container_id: stale ? j.container_id : null,
           scheduled_at: now,
           next_attempt_at: now,
           locked_at: null,
           error_code: null,
           error_message: null,
         }).eq("id", j.id);
+        // Частичная уникальность: пока в аккаунт стоит новое активное задание с этим
+        // видео (повтор из библиотеки), старое повторять нечего.
+        if (error?.code === "23505") return json({ error: "в этот аккаунт уже стоит новое задание с этим видео — повторять старое не нужно" }, 409);
         if (error) return json({ error: error.message }, 500);
         return json({ ok: true, job_id: j.id, status: "pending" });
       }

@@ -122,6 +122,19 @@ export const RADAR_ANALYSIS_SCHEMA = {
   },
 } as const;
 
+/** Поля ответа модели — единый текст для промпта (схема RADAR_ANALYSIS_SCHEMA словами). */
+export const ANALYSIS_FIELDS_SPEC = [
+  '{"hook": "первая фраза/крючок публикации своими словами, 1 предложение",',
+  ' "niche": "ниша/тема публикации, 1–3 слова",',
+  ' "structure": {"problem": "какую боль поднимает", "solution": "что предлагает", "cta": "к чему призывает"},',
+  ' "triggers": ["до 6 психологических триггеров: страх, любопытство, выгода…"],',
+  ' "why_it_works": "почему публикация сработала, 1–2 предложения",',
+  ' "score": 0-100 (целое число),',
+  ' "idea_title": "название НАШЕЙ идеи в той же нише, до 80 символов",',
+  ' "idea_angle": "угол подачи нашей идеи, 1–2 предложения",',
+  ' "script_outline": "план нашего ролика: хук → 2–3 блока → призыв, 3–6 строк"}',
+].join("\n");
+
 export function buildAnalysisPrompt(input: {
   platform: string;
   caption: string | null;
@@ -136,7 +149,8 @@ export function buildAnalysisPrompt(input: {
     "Разбираешь чужую публикацию: что цепляет, как устроена, почему сработала — и предлагаешь СВОЮ идею в той же нише для нашего проекта.",
     "Не копируй текст оригинала, не упоминай чужие бренды и имена. Не выдумывай цифры и обещания.",
     "score — вероятность, что адаптация этой идеи зайдёт у нас (0–100), с учётом реакции аудитории оригинала.",
-    "Отвечай строго JSON по схеме.",
+    "Отвечай строго одним JSON-объектом с полями (все обязательны, на русском):",
+    ANALYSIS_FIELDS_SPEC,
   ].join("\n");
   const m = input.metrics;
   const user = [
@@ -169,7 +183,12 @@ export function parseAnalysis(raw: unknown): RadarAnalysis | null {
     }
   }
   if (!obj || typeof obj !== "object") return null;
-  const o = obj as Record<string, unknown>;
+  let o = obj as Record<string, unknown>;
+  // Модель иногда заворачивает ответ: {"analysis": {...}} или {"result": {...}} — берём вложенный объект с hook.
+  if (typeof o.hook !== "string") {
+    const nested = Object.values(o).find((v) => v && typeof v === "object" && !Array.isArray(v) && typeof (v as Record<string, unknown>).hook === "string");
+    if (nested) o = nested as Record<string, unknown>;
+  }
   const s = (o.structure ?? {}) as Record<string, unknown>;
   const text = (v: unknown) => (typeof v === "string" ? v.trim() : "");
   const hook = text(o.hook);

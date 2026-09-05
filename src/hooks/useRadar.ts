@@ -27,6 +27,8 @@ export function useRadar() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const alive = useRef(true);
+  // Номер запроса: медленный ответ по прошлому проекту не должен перетереть свежий.
+  const seqRef = useRef(0);
 
   const refetch = useCallback(async () => {
     if (!projectId) {
@@ -34,9 +36,10 @@ export function useRadar() {
       return;
     }
     setLoading(true);
+    const seq = ++seqRef.current;
     try {
       const d = await radarApi.overview(projectId);
-      if (alive.current) {
+      if (alive.current && seq === seqRef.current) {
         setData({
           sources: d.sources ?? [],
           metrics: d.metrics ?? null,
@@ -49,9 +52,9 @@ export function useRadar() {
         setError(null);
       }
     } catch (e) {
-      if (alive.current) setError(e instanceof Error ? e.message : "Ошибка загрузки");
+      if (alive.current && seq === seqRef.current) setError(e instanceof Error ? e.message : "Ошибка загрузки");
     } finally {
-      if (alive.current) setLoading(false);
+      if (alive.current && seq === seqRef.current) setLoading(false);
     }
   }, [projectId]);
 

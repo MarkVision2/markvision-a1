@@ -203,6 +203,35 @@ Deno.test("публикация: плохой вход — 400 без поход
   assertMatch(String((await json(res)).error), /не видео/);
 });
 
+Deno.test("раскладка пачки: свои видео и цель уходят в intake как distribute; чужое видео — 404", async () => {
+  const OTHER_VIDEO = "77777777-7777-4777-8777-777777777777";
+  const { deps, calls } = await setup({
+    publish_videos: [{ id: VIDEO, project_id: PROJECT }, { id: OTHER_VIDEO, project_id: OTHER }],
+  });
+  const ok = await handle(req("POST", "/publications/distribute", {
+    body: { videos: [{ id: VIDEO, topic_key: "Тема А" }], batch_id: "b-2026-09-08", target: { group_id: GROUP, per_day: 2, start_at: "2026-09-08T09:00:00Z" } },
+  }), deps);
+  assertEquals(ok.status, 200);
+  assertEquals(calls.length, 1);
+  assertEquals(calls[0].headers["x-automation-key"], "cron-secret");
+  assertEquals(calls[0].body, {
+    action: "distribute",
+    project_id: PROJECT,
+    videos: [{ id: VIDEO, topic_key: "Тема А" }],
+    batch_id: "b-2026-09-08",
+    target: { mode: "drip", group_id: GROUP, start_at: "2026-09-08T09:00:00.000Z", per_day: 2 },
+  });
+
+  const alien = await handle(req("POST", "/publications/distribute", { body: { video_ids: [VIDEO, OTHER_VIDEO] } }), deps);
+  assertEquals(alien.status, 404);
+  assertMatch(String((await json(alien)).error), new RegExp(OTHER_VIDEO));
+  const bad = await handle(req("POST", "/publications/distribute", { body: { videos: [] } }), deps);
+  assertEquals(bad.status, 400);
+  const ro = await handle(req("POST", "/publications/distribute", { key: READ_KEY, body: { video_ids: [VIDEO] } }), deps);
+  assertEquals(ro.status, 403);
+  assertEquals(calls.length, 1);
+});
+
 Deno.test("ссылка на загрузку: presign с x-app-key, ответ переименован", async () => {
   const { deps, calls } = await setup();
   deps.fetchFn = fakeFetch(calls, () => ({ status: 200, body: { ok: true, uploadUrl: "https://r2/put", publicUrl: "https://cdn/posts/a.mp4" } }));
