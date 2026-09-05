@@ -1,7 +1,7 @@
 {
-  "git_sha": "75db226",
-  "git_sha_full": "75db2262fd036d2dd4fec97597078a2d1d9793a3",
-  "updated_at": "2026-09-05T20:38:06+04:00",
-  "label": "[vercel-deploy] Merge: Публикации — варианты подписи в композере и группа при OAuth-подключении (#273)",
+  "git_sha": "12c4bf8",
+  "git_sha_full": "12c4bf8a97e734ea1649e9a4b411272a991580cd",
+  "updated_at": "2026-09-05T20:39:36+04:00",
+  "label": "[vercel-deploy] Merge: fix(radar) — превью из Storage и карточка тренда без обрезанного ника (#272)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
