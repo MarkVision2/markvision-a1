@@ -1,7 +1,7 @@
 {
-  "git_sha": "3231d13",
-  "git_sha_full": "3231d137b0792894e62dbeea1bc2605de0e1ea74",
-  "updated_at": "2026-09-05T15:31:22+04:00",
-  "label": "[vercel-deploy] Merge: раздел «API и MCP» переехал в Настройки (#264)",
+  "git_sha": "43db685",
+  "git_sha_full": "43db68525e713720916052e65edce22ef47e428d",
+  "updated_at": "2026-09-05T15:38:12+04:00",
+  "label": "feat(factory): контент-завод на субагентах — раскладка «один ролик → один аккаунт», скилл content-factory, ТЗ и аудит",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
