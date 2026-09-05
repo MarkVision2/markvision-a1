@@ -68,6 +68,8 @@ export function UploadPublishDialog({ open, onClose, pub }: { open: boolean; onC
   const [caption, setCaption] = useState("");
   const [hashtags, setHashtags] = useState("");
   const [mode, setMode] = useState<PublishMode>("drip");
+  // Пусто — «с этой минуты»; иначе локальное время Алматы из <input type=datetime-local>.
+  const [startAt, setStartAt] = useState("");
   const [device, setDevice] = useState<"mobile" | "desktop">("mobile");
   const [err, setErr] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -91,6 +93,7 @@ export function UploadPublishDialog({ open, onClose, pub }: { open: boolean; onC
     setCaption("");
     setHashtags("");
     setMode("drip");
+    setStartAt("");
     setErr(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -115,7 +118,15 @@ export function UploadPublishDialog({ open, onClose, pub }: { open: boolean; onC
 
   const selectedAccounts = useMemo(() => pub.accounts.filter((a) => selected.has(a.id)), [pub.accounts, selected]);
   const group = useMemo(() => pub.groups.find((g) => g.id === groupId) ?? null, [pub.groups, groupId]);
-  const preview = useMemo(() => planPreview(selectedAccounts, mode, group), [selectedAccounts, mode, group]);
+  const startDate = useMemo(() => {
+    if (!startAt) return null;
+    const d = new Date(startAt);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }, [startAt]);
+  const preview = useMemo(
+    () => planPreview(selectedAccounts, mode, group, startDate ?? new Date()),
+    [selectedAccounts, mode, group, startDate],
+  );
 
   const content: PreviewContent = {
     mediaUrl: previewUrl,
@@ -179,6 +190,12 @@ export function UploadPublishDialog({ open, onClose, pub }: { open: boolean; onC
       toast.error(m);
       return;
     }
+    if (startAt && !startDate) {
+      const m = "Не понял время старта — выберите дату и время заново";
+      setErr(m);
+      toast.error(m);
+      return;
+    }
 
     // Файл заливаем прямо здесь, если это ещё не сделано вручную.
     const url = source === "url" ? fileUrl.trim() : uploadedUrl ?? (await startUpload());
@@ -193,6 +210,7 @@ export function UploadPublishDialog({ open, onClose, pub }: { open: boolean; onC
         mode,
         account_ids: preview.eligible.map((a) => a.id),
         ...(group ? { group_id: group.id } : {}),
+        ...(startDate ? { start_at: startDate.toISOString() } : {}),
       });
       toast.success(`Создано заданий: ${r.created}${r.skipped ? `, пропущено: ${r.skipped}` : ""}`);
       onClose();
@@ -358,6 +376,24 @@ export function UploadPublishDialog({ open, onClose, pub }: { open: boolean; onC
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+              </section>
+
+              <section className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Старт раскладки</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="datetime-local"
+                    value={startAt}
+                    aria-label="Время старта"
+                    className="max-w-[240px]"
+                    onChange={(e) => setStartAt(e.target.value)}
+                  />
+                  {startAt ? (
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setStartAt("")}>Сейчас</Button>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">пусто — с этой минуты</span>
+                  )}
                 </div>
               </section>
 

@@ -6,7 +6,8 @@
  * Ошибка живёт в подсказке, а не третьей строкой в ячейке.
  */
 import { useMemo } from "react";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, RotateCcw, XCircle } from "lucide-react";
+import { toast } from "sonner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { initials } from "@/components/publishing/PostPreview";
 import type { UsePublishing } from "@/hooks/usePublishing";
-import { JOB_STATUS_META, PLATFORM_META, type PublishJobStatus } from "@/lib/publishingClient";
+import { JOB_ACTIONS, JOB_STATUS_META, PLATFORM_META, type PublishJobStatus } from "@/lib/publishingClient";
 import { fmtExact, fmtRelative } from "@/lib/publishingFormat";
 import { cn } from "@/lib/utils";
 
@@ -22,6 +23,15 @@ import { cn } from "@/lib/utils";
 const ORDER: PublishJobStatus[] = ["failed", "manual_review", "retry", "processing", "pending", "published", "cancelled"];
 
 export function JobsTab({ pub }: { pub: UsePublishing }) {
+  const busy = pub.busy != null;
+  const act = async (label: string, fn: () => Promise<unknown>) => {
+    try {
+      await fn();
+      toast.success(label);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Ошибка");
+    }
+  };
   // Счётчики по загруженной выборке — подсказка, а не точная статистика:
   // при фильтре по статусу видно только его, поэтому «все» показываем всегда.
   const counts = useMemo(() => {
@@ -80,6 +90,7 @@ export function JobsTab({ pub }: { pub: UsePublishing }) {
                   <TableHead className="h-9 w-[130px]">Запланировано</TableHead>
                   <TableHead className="h-9 w-[70px] text-right">Попыток</TableHead>
                   <TableHead className="h-9 w-[90px]">Пост</TableHead>
+                  <TableHead className="h-9 w-[90px]" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -147,6 +158,26 @@ export function JobsTab({ pub }: { pub: UsePublishing }) {
                             Открыть <ExternalLink className="h-3 w-3" />
                           </a>
                         ) : <span className="text-muted-foreground">—</span>}
+                      </TableCell>
+                      <TableCell className="py-2 text-right">
+                        {JOB_ACTIONS[j.status]?.retry && (
+                          <Button
+                            size="sm" variant="ghost" className="h-7 px-2" disabled={busy}
+                            aria-label={`Повторить ${acc?.account_name ?? ""}`}
+                            onClick={() => void act("Задание поставлено в очередь", () => pub.jobRetry(j.id))}
+                          >
+                            <RotateCcw className="mr-1 h-3.5 w-3.5" /> Повторить
+                          </Button>
+                        )}
+                        {JOB_ACTIONS[j.status]?.cancel && (
+                          <Button
+                            size="sm" variant="ghost" className="h-7 px-2 text-muted-foreground" disabled={busy}
+                            aria-label={`Отменить ${acc?.account_name ?? ""}`}
+                            onClick={() => void act("Задание отменено", () => pub.jobCancel(j.id))}
+                          >
+                            <XCircle className="mr-1 h-3.5 w-3.5" /> Отменить
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   );

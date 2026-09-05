@@ -59,7 +59,8 @@ async function presignR2(filename: string, contentType: string, size: number): P
   if (!CLIENT_URL) throw new Error("VITE_CLIENT_SUPABASE_URL не задан");
   const res = await fetchWithRetry(`${CLIENT_URL}/functions/v1/r2-presign-upload`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "x-app-key": CLIENT_KEY },
+    // Authorization обязателен: шлюз с verify_jwt=true режет запрос до функции.
+    headers: { "Content-Type": "application/json", "x-app-key": CLIENT_KEY, apikey: CLIENT_KEY, Authorization: `Bearer ${CLIENT_KEY}` },
     body: JSON.stringify({ filename, contentType, size }),
   });
   const j = await res.json().catch(() => ({}));
