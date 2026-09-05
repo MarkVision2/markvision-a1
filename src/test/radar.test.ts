@@ -9,8 +9,13 @@ import {
   estimateAnalysisCostUsd,
   IDEA_SCORE_THRESHOLD,
   ideaFromAnalysis,
+  isStoredThumbnail,
+  needsThumbnailCache,
   normalizeIngestItem,
   parseAnalysis,
+  RADAR_THUMBS_BUCKET,
+  thumbnailMime,
+  thumbnailObjectPath,
   transcribableVideoUrl,
 } from "../../supabase/functions/_lib/radar.ts";
 import { classifyThreadsError, threadsText, THREADS_TEXT_LIMIT } from "../../supabase/functions/_lib/publishers/threads.ts";
@@ -154,5 +159,39 @@ describe("Threads publisher", () => {
     expect(t.endsWith("…")).toBe(true);
     expect(t).not.toMatch(/слово\d*…$/.test(t) ? /$^/ : /\s…$/);
     expect(threadsText("короткий текст")).toBe("короткий текст");
+  });
+});
+
+describe("превью: кэш в Storage", () => {
+  const supabaseUrl = "https://abc.supabase.co";
+  const stored = `${supabaseUrl}/storage/v1/object/public/${RADAR_THUMBS_BUCKET}/proj-1/post-1.jpg`;
+
+  it("thumbnailMime: image/* → расширение, jpg-синонимы → image/jpeg, остальное — null", () => {
+    expect(thumbnailMime("image/jpeg; charset=binary")).toEqual({ mime: "image/jpeg", ext: "jpg" });
+    expect(thumbnailMime("image/jpg")).toEqual({ mime: "image/jpeg", ext: "jpg" });
+    expect(thumbnailMime("IMAGE/WEBP")).toEqual({ mime: "image/webp", ext: "webp" });
+    expect(thumbnailMime("text/html")).toBeNull();
+    expect(thumbnailMime("video/mp4")).toBeNull();
+    expect(thumbnailMime(null)).toBeNull();
+  });
+
+  it("thumbnailObjectPath: один пост — один объект", () => {
+    expect(thumbnailObjectPath("proj-1", "post-1", "jpg")).toBe("proj-1/post-1.jpg");
+  });
+
+  it("isStoredThumbnail: только ссылки в наш bucket на нашем хосте", () => {
+    expect(isStoredThumbnail(stored, supabaseUrl)).toBe(true);
+    expect(isStoredThumbnail(`${supabaseUrl}/storage/v1/object/public/other/x.jpg`, supabaseUrl)).toBe(false);
+    expect(isStoredThumbnail("https://scontent.cdninstagram.com/t.jpg?oe=1", supabaseUrl)).toBe(false);
+    expect(isStoredThumbnail(stored, "")).toBe(false);
+    expect(isStoredThumbnail(null, supabaseUrl)).toBe(false);
+    expect(isStoredThumbnail("не ссылка", supabaseUrl)).toBe(false);
+  });
+
+  it("needsThumbnailCache: внешний https — да; наш Storage, http, пусто — нет", () => {
+    expect(needsThumbnailCache("https://scontent.cdninstagram.com/t.jpg", supabaseUrl)).toBe(true);
+    expect(needsThumbnailCache(stored, supabaseUrl)).toBe(false);
+    expect(needsThumbnailCache("http://example.com/t.jpg", supabaseUrl)).toBe(false);
+    expect(needsThumbnailCache(null, supabaseUrl)).toBe(false);
   });
 });

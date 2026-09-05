@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { IDEA_STATUS_META, type Idea, type IdeaStatus, type RadarGroup, type RadarPost } from "@/lib/radarClient";
 import { cn } from "@/lib/utils";
-import { Chip, PlatformChip, ScoreBadge, XBadge } from "./RadarBits";
+import { Chip, PlatformChip, PostThumb, ScoreBadge, XBadge } from "./RadarBits";
 
 const NO_GROUP = "__none__";
 
@@ -56,11 +56,9 @@ export function IdeaCard({ idea, groups, sourcePost, busy, onPromote, onStatus, 
             title={`Исходный пост @${sourcePost.author_handle ?? ""}`}
             aria-label="Открыть исходный пост"
           >
-            {sourcePost.thumbnail_url ? (
-              <img src={sourcePost.thumbnail_url} alt="" className="aspect-[4/5] w-full object-cover transition-transform group-hover:scale-105" loading="lazy" />
-            ) : (
-              <div className="aspect-[4/5]" />
-            )}
+            <div className="aspect-[4/5] w-full">
+              <PostThumb post={sourcePost} compact imgClassName="transition-transform group-hover:scale-105" />
+            </div>
             <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-black/70 px-1 py-0.5">
               <PlatformChip platform={sourcePost.platform} short className="h-4 px-1 text-[10px]" />
               <XBadge x={sourcePost.x_factor} className="h-4 px-1 text-[10px]" />
