@@ -1,7 +1,7 @@
 {
-  "git_sha": "1fb7749",
-  "git_sha_full": "1fb77499bda02d5fbddaab84c6a339afba7fc3dc",
-  "updated_at": "2026-09-05T14:34:44+04:00",
-  "label": "Merge: fix(migrations) — post_metrics_unavailable на свободный номер версии (#265)",
+  "git_sha": "007fe1b",
+  "git_sha_full": "007fe1bed354a6b5d4ceae887f0279997dc7702f",
+  "updated_at": "2026-09-05T15:16:20+04:00",
+  "label": "[vercel-deploy] Merge: Публикации — библиотека видео с повтором, поиск и подгрузка заданий, окно аккаунта (#266)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
