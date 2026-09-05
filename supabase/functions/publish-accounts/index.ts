@@ -631,16 +631,31 @@ Deno.serve(async (req) => {
       const results = await Promise.all([
         admin.from("publish_metrics").select("*").eq("project_id", projectId).maybeSingle(),
         admin.from("radar_metrics").select("*").eq("project_id", projectId).maybeSingle(),
-        admin.from("publish_videos").select("id, title, status, file_url, created_at, source").eq("project_id", projectId).order("created_at", { ascending: false }).limit(50),
+        admin.from("publish_videos").select("id, title, status, file_url, thumbnail_url, base_caption, hashtags, duration_sec, created_at, source").eq("project_id", projectId).order("created_at", { ascending: false }).limit(100),
         admin.from("publish_group_metrics").select("*").eq("project_id", projectId).order("name"),
         // Витрина по каждому аккаунту — вид «Статистика» во вкладке «Аккаунты».
         admin.from("publish_account_metrics").select("*").eq("project_id", projectId).order("account_name"),
+        // Задания по каждому видео — вкладка «Видео» (библиотека и повтор).
+        admin.from("publish_video_stats").select("*").eq("project_id", projectId),
       ]);
-      const [{ data: pm }, { data: rm }, { data: videos }, { data: gm }, { data: am }] = results;
+      const [{ data: pm }, { data: rm }, { data: videos }, { data: gm }, { data: am }, { data: vs }] = results;
       // Ошибка витрины (нет миграции, нет гранта) не должна выглядеть как пустой проект.
-      const errors = results.map((r, i) => (r.error ? `${["publish_metrics", "radar_metrics", "publish_videos", "publish_group_metrics", "publish_account_metrics"][i]}: ${r.error.message}` : null)).filter(Boolean);
+      const errors = results.map((r, i) => (r.error ? `${["publish_metrics", "radar_metrics", "publish_videos", "publish_group_metrics", "publish_account_metrics", "publish_video_stats"][i]}: ${r.error.message}` : null)).filter(Boolean);
       if (errors.length) return json({ error: errors.join("; ") }, 500);
-      return json({ ok: true, publish: pm ?? null, radar: rm ?? null, videos: videos ?? [], groups: gm ?? [], accounts: am ?? [] });
+      const statsByVideo = new Map(((vs ?? []) as { video_id: string }[]).map((s) => [s.video_id, s]));
+      const videosWithStats = ((videos ?? []) as { id: string }[]).map((v) => {
+        const s = (statsByVideo.get(v.id) ?? {}) as Record<string, unknown>;
+        return {
+          ...v,
+          jobs_total: Number(s.jobs_total ?? 0),
+          queued: Number(s.queued ?? 0),
+          published: Number(s.published ?? 0),
+          failed: Number(s.failed ?? 0),
+          last_published_at: (s.last_published_at as string | null | undefined) ?? null,
+          next_scheduled_at: (s.next_scheduled_at as string | null | undefined) ?? null,
+        };
+      });
+      return json({ ok: true, publish: pm ?? null, radar: rm ?? null, videos: videosWithStats, groups: gm ?? [], accounts: am ?? [] });
     }
 
     /* ── «Залить видео в группу»: библиотека + планировщик слотов ── */
@@ -663,6 +678,17 @@ Deno.serve(async (req) => {
         if (error) return json({ error: error.message }, 500);
         if (!data) return json({ error: "видео не сохранилось" }, 500);
         videoId = (data as { id: string }).id;
+      } else if (body?.repost === true) {
+        // Повтор из библиотеки с правкой текста: обновляем карточку видео —
+        // задания берут подпись и хэштеги из неё.
+        const patch: Record<string, unknown> = {};
+        if (typeof body?.title === "string") patch.title = body.title.trim() || null;
+        if (typeof body?.caption === "string") patch.base_caption = body.caption.trim() || null;
+        if (Array.isArray(body?.hashtags)) patch.hashtags = body.hashtags.map(String);
+        if (Object.keys(patch).length) {
+          const { error } = await admin.from("publish_videos").update(patch).eq("id", videoId).eq("project_id", projectId);
+          if (error) return json({ error: error.message }, 500);
+        }
       }
       const mode = ["now", "drip", "daily"].includes(String(body?.mode)) ? String(body.mode) : "drip";
       const accountIds = Array.isArray(body?.account_ids) && body.account_ids.length ? body.account_ids.map(String) : null;
@@ -676,6 +702,9 @@ Deno.serve(async (req) => {
         p_account_ids: accountIds,
         p_start: startAt,
         p_mode: mode,
+        // Повтор из библиотеки: второе задание в аккаунт, где видео уже выходило.
+        // Без флага планировщик идемпотентен — вернёт существующее задание.
+        p_repost: body?.repost === true,
       });
       if (planErr) return json({ error: planErr.message }, 500);
       const rows = (planned ?? []) as { job_id: string; account_id: string; scheduled_at: string; created: boolean }[];
@@ -725,6 +754,9 @@ Deno.serve(async (req) => {
           error_code: null,
           error_message: null,
         }).eq("id", j.id);
+        // Частичная уникальность: пока в аккаунт стоит новое активное задание с этим
+        // видео (повтор из библиотеки), старое повторять нечего.
+        if (error?.code === "23505") return json({ error: "в этот аккаунт уже стоит новое задание с этим видео — повторять старое не нужно" }, 409);
         if (error) return json({ error: error.message }, 500);
         return json({ ok: true, job_id: j.id, status: "pending" });
       }

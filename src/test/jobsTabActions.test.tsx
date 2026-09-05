@@ -58,3 +58,34 @@ describe("действия над заданиями", () => {
     await waitFor(() => expect(jobCancel).toHaveBeenCalledWith("p"));
   });
 });
+
+describe("поиск, фильтр по видео и подгрузка", () => {
+  const setJobsVideo = vi.fn();
+  const loadMoreJobs = vi.fn();
+  const pub2 = {
+    ...pub,
+    jobsVideo: "v",
+    metrics: { publish: null, radar: null, videos: [{ id: "v", title: "Ролик", file_url: "https://x/v.mp4", status: "queued", created_at: "", source: "manual" }] },
+    jobsHasMore: true,
+    setJobsVideo,
+    loadMoreJobs,
+  } as unknown as UsePublishing;
+
+  it("строка поиска сужает выборку по имени аккаунта", () => {
+    render(<JobsTab pub={pub2} />);
+    fireEvent.change(screen.getByLabelText("Поиск по заданиям"), { target: { value: "упав" } });
+    expect(screen.getByText("Упавший")).toBeTruthy();
+    expect(screen.queryByText("Ждущий")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Поиск по заданиям"), { target: { value: "нет такого" } });
+    expect(screen.getByText(/Ничего не найдено/)).toBeTruthy();
+  });
+
+  it("чип видео снимается крестиком, «Показать ещё» зовёт подгрузку", () => {
+    render(<JobsTab pub={pub2} />);
+    expect(screen.getByText("Только видео:")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Снять фильтр по видео" }));
+    expect(setJobsVideo).toHaveBeenCalledWith(null);
+    fireEvent.click(screen.getByRole("button", { name: "Показать ещё" }));
+    expect(loadMoreJobs).toHaveBeenCalled();
+  });
+});

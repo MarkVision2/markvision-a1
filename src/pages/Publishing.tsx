@@ -35,6 +35,7 @@ import { ApiKeysSection } from "@/components/publishing/ApiKeysSection";
 import { JobsTab } from "@/components/publishing/JobsTab";
 import { NetworkTab } from "@/components/publishing/NetworkTab";
 import { UploadPublishDialog } from "@/components/publishing/UploadPublishDialog";
+import { VideosTab } from "@/components/publishing/VideosTab";
 import { usePublishing, type UsePublishing } from "@/hooks/usePublishing";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import {
@@ -55,6 +56,7 @@ import {
   type PublishGroup,
   type PublishPlatform,
   type PublishStrategy,
+  type PublishVideo,
   type ReviewMode,
 } from "@/lib/publishingClient";
 import { fmtRelative } from "@/lib/publishingFormat";
@@ -96,6 +98,10 @@ export default function Publishing() {
   const pub = usePublishing();
   const disabled = pub.busy != null;
   const [dialog, setDialog] = useState<"instagram" | "threads" | "video" | null>(null);
+  // Вкладка управляется снаружи: «Задания по видео» из библиотеки переключает на очередь.
+  const [tab, setTab] = useState("accounts");
+  // Повтор ролика из библиотеки — тот же композер без заливки файла.
+  const [repostVideo, setRepostVideo] = useState<PublishVideo | null>(null);
   const [oauthBusy, setOauthBusy] = useState<OAuthPlatform | null>(null);
   const [params, setParams] = useSearchParams();
 
@@ -183,14 +189,16 @@ export default function Publishing() {
 
         {projectId && <SummaryBar pub={pub} />}
 
-        {/* Пять вкладок вместо семи: статистика по аккаунтам живёт видом внутри
-            «Аккаунтов», сводка по группам — над их настройками. Вкладка аккаунтов
-            не размонтируется при переключении — поиск, фильтры и выделение живут. */}
-        {projectId && <Tabs defaultValue="accounts">
+        {/* Шесть вкладок: статистика по аккаунтам живёт видом внутри «Аккаунтов»,
+            сводка по группам — над их настройками, «Видео» — библиотека роликов с
+            повтором. Вкладка аккаунтов не размонтируется при переключении —
+            поиск, фильтры и выделение живут. */}
+        {projectId && <Tabs value={tab} onValueChange={setTab}>
           <TabsList className="flex-wrap">
             <TabsTrigger value="accounts">Аккаунты</TabsTrigger>
             <TabsTrigger value="groups">Группы</TabsTrigger>
             <TabsTrigger value="personas">Персоны</TabsTrigger>
+            <TabsTrigger value="videos">Видео</TabsTrigger>
             <TabsTrigger value="jobs">Задания</TabsTrigger>
             <TabsTrigger value="settings">Настройки</TabsTrigger>
           </TabsList>
@@ -207,6 +215,13 @@ export default function Publishing() {
             </div>
           </TabsContent>
           <TabsContent value="personas" className="mt-3"><PersonasTab pub={pub} /></TabsContent>
+          <TabsContent value="videos" className="mt-3">
+            <VideosTab
+              pub={pub}
+              onRepost={(v) => setRepostVideo(v)}
+              onShowJobs={(v) => { pub.setJobsVideo(v.id); setTab("jobs"); }}
+            />
+          </TabsContent>
           <TabsContent value="jobs" className="mt-3"><JobsTab pub={pub} /></TabsContent>
           <TabsContent value="settings" className="mt-3 space-y-4">
             <SettingsTab pub={pub} />
@@ -217,7 +232,12 @@ export default function Publishing() {
 
       <ConnectInstagramDialog open={dialog === "instagram"} onClose={() => setDialog(null)} pub={pub} />
       <ConnectThreadsDialog open={dialog === "threads"} onClose={() => setDialog(null)} pub={pub} />
-      <UploadPublishDialog open={dialog === "video"} onClose={() => setDialog(null)} pub={pub} />
+      <UploadPublishDialog
+        open={dialog === "video" || repostVideo != null}
+        video={repostVideo}
+        onClose={() => { setDialog(null); setRepostVideo(null); }}
+        pub={pub}
+      />
     </PageContainer>
   );
 }
