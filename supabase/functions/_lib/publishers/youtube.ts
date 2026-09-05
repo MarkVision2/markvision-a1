@@ -85,7 +85,7 @@ export async function publishYouTube(req: PublishRequest): Promise<PublishOutcom
   let uploadUrl = req.containerId ?? null;
   let offset = 0;
   if (uploadUrl) {
-    const probe = await fetch(uploadUrl, { method: "PUT", headers: { "Content-Range": `bytes */${total}` } });
+    const probe = await fetch(uploadUrl, { method: "PUT", headers: { Authorization: `Bearer ${token}`, "Content-Range": `bytes */${total}` } });
     if (probe.status === 308) {
       const range = probe.headers.get("Range"); // bytes=0-12345
       offset = range ? Number(range.split("-")[1]) + 1 : 0;
@@ -138,8 +138,9 @@ export async function publishYouTube(req: PublishRequest): Promise<PublishOutcom
     put = await fetch(uploadUrl, {
       method: "PUT",
       headers: {
+        // Google требует Authorization и на самой передаче, не только на инициализации сессии.
+        Authorization: `Bearer ${token}`,
         "Content-Type": "video/mp4",
-        "Content-Length": String(total - offset),
         ...(offset ? { "Content-Range": `bytes ${offset}-${total - 1}/${total}` } : {}),
       },
       body,

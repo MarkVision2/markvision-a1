@@ -25,15 +25,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { AccountPicker } from "@/components/publishing/AccountPicker";
-import { BulkAccountsBar } from "@/components/publishing/BulkAccountsBar";
 import { AccountsTable, PLATFORM_DOT } from "@/components/publishing/AccountsTable";
 import { JobsTab } from "@/components/publishing/JobsTab";
 import { NetworkTab } from "@/components/publishing/NetworkTab";
@@ -41,48 +37,31 @@ import { UploadPublishDialog } from "@/components/publishing/UploadPublishDialog
 import { usePublishing, type UsePublishing } from "@/hooks/usePublishing";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import {
-  ACCOUNT_STATUS_META,
   ENGINE_META,
-  JOB_STATUS_META,
   NOTIFY_MODE_META,
   PLATFORM_META,
-  PUBLISH_MODE_META,
   REVIEW_MODE_META,
   STRATEGY_META,
-  effectiveDailyLimit,
   formatFollowers,
-  healthTone,
-  rampStage,
   readOAuthResult,
   startPublishOAuth,
   type AvailablePage,
-  type GroupMetrics,
   type OAuthPlatform,
   type NotifyMode,
   type Persona,
   type PersonaEngine,
   type PublishAccount,
   type PublishGroup,
-  type PublishJobStatus,
-  type PublishMode,
   type PublishPlatform,
   type PublishStrategy,
   type ReviewMode,
 } from "@/lib/publishingClient";
-import { ANY, EMPTY_FILTERS, filterAccounts, type AccountFilters } from "@/lib/publishingSelection";
 import { fmtRelative } from "@/lib/publishingFormat";
 import { cn } from "@/lib/utils";
 
 /* ───────────────────────────── утилиты ───────────────────────────── */
 
 const NONE = "__none"; // Radix Select не принимает пустое значение — сентинел для «не выбрано».
-
-function fmtDate(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString("ru-RU", { timeZone: "Asia/Almaty" });
-}
 
 function errMsg(e: unknown, fallback = "Ошибка"): string {
   return e instanceof Error ? e.message : fallback;
@@ -92,27 +71,11 @@ function splitCsv(s: string): string[] {
   return s.split(",").map((x) => x.trim()).filter(Boolean);
 }
 
-function numOrUndef(s: string): number | undefined {
+/** Пустое поле — null («вернуть умолчание»), иначе число; мусор — undefined («не трогать»). */
+function numOrNull(s: string): number | null | undefined {
+  if (s.trim() === "") return null;
   const n = Number(s);
-  return s.trim() === "" || Number.isNaN(n) ? undefined : n;
-}
-
-const HEALTH_CLS = {
-  good: "[&>div]:bg-emerald-500",
-  warn: "[&>div]:bg-amber-500",
-  bad: "[&>div]:bg-destructive",
-} as const;
-
-/** TikTok, подключённый до появления права video.list, метрик не отдаёт — нужен reconnect. */
-function metricsScopeHint(a: Pick<PublishAccount, "platform" | "oauth_scope">): string | null {
-  if (a.platform !== "tiktok" || !a.oauth_scope) return null;
-  return a.oauth_scope.split(/[,\s]+/).includes("video.list") ? null : "без права video.list — метрики не собираются, переподключите аккаунт";
-}
-
-function rampLabel(a: Pick<PublishAccount, "ramp_enabled" | "ramp_started_at">): string {
-  const st = rampStage(a.ramp_enabled, a.ramp_started_at);
-  if (st.stage === 4) return a.ramp_enabled ? "Полный лимит" : "Без разгона";
-  return `Ступень ${st.stage} · ${st.limit}/день · ещё ${st.daysLeft} дн.`;
+  return Number.isNaN(n) ? undefined : n;
 }
 
 function EmptyState({ text }: { text: string }) {
@@ -203,7 +166,7 @@ export default function Publishing() {
 
         {!projectId && <EmptyState text="Выберите проект, чтобы управлять публикациями." />}
 
-        {pub.error && (
+        {projectId && pub.error && (
           <div className="flex items-start gap-2 rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
             <span>{pub.error}</span>
@@ -217,11 +180,12 @@ export default function Publishing() {
           </div>
         )}
 
-        <SummaryBar pub={pub} />
+        {projectId && <SummaryBar pub={pub} />}
 
         {/* Пять вкладок вместо семи: статистика по аккаунтам живёт видом внутри
-            «Аккаунтов», сводка по группам — над их настройками. */}
-        <Tabs defaultValue="accounts">
+            «Аккаунтов», сводка по группам — над их настройками. Вкладка аккаунтов
+            не размонтируется при переключении — поиск, фильтры и выделение живут. */}
+        {projectId && <Tabs defaultValue="accounts">
           <TabsList className="flex-wrap">
             <TabsTrigger value="accounts">Аккаунты</TabsTrigger>
             <TabsTrigger value="groups">Группы</TabsTrigger>
@@ -229,7 +193,7 @@ export default function Publishing() {
             <TabsTrigger value="jobs">Задания</TabsTrigger>
             <TabsTrigger value="settings">Настройки</TabsTrigger>
           </TabsList>
-          <TabsContent value="accounts" className="mt-3"><AccountsTable pub={pub} /></TabsContent>
+          <TabsContent value="accounts" forceMount className="mt-3 data-[state=inactive]:hidden"><AccountsTable pub={pub} /></TabsContent>
           <TabsContent value="groups" className="mt-3">
             <div className="space-y-4">
               {(pub.metrics?.groups?.length ?? 0) > 0 && (
@@ -244,7 +208,7 @@ export default function Publishing() {
           <TabsContent value="personas" className="mt-3"><PersonasTab pub={pub} /></TabsContent>
           <TabsContent value="jobs" className="mt-3"><JobsTab pub={pub} /></TabsContent>
           <TabsContent value="settings" className="mt-3"><SettingsTab pub={pub} /></TabsContent>
-        </Tabs>
+        </Tabs>}
       </div>
 
       <ConnectInstagramDialog open={dialog === "instagram"} onClose={() => setDialog(null)} pub={pub} />
@@ -422,14 +386,14 @@ function GroupsTab({ pub }: { pub: UsePublishing }) {
         account_ids: draft.account_ids,
         platform: draft.platform === NONE ? null : draft.platform,
         publish_strategy: draft.publish_strategy,
-        per_hour: numOrUndef(draft.per_hour),
+        per_hour: numOrNull(draft.per_hour),
         persona_id: draft.persona_id === NONE ? null : draft.persona_id,
         review_mode: draft.review_mode,
         timezone: draft.timezone.trim() || null,
         window_start: draft.window_start || null,
         window_end: draft.window_end || null,
-        min_gap_minutes: numOrUndef(draft.min_gap_minutes),
-        jitter_minutes: numOrUndef(draft.jitter_minutes),
+        min_gap_minutes: numOrNull(draft.min_gap_minutes),
+        jitter_minutes: numOrNull(draft.jitter_minutes),
       });
       toast.success("Группа сохранена");
       setDraft(null);
@@ -823,8 +787,8 @@ function SettingsTab({ pub }: { pub: UsePublishing }) {
       await pub.settingsUpsert({
         notify_mode: notify,
         digest_chat_id: chat.trim() || null,
-        daily_usd: numOrUndef(daily),
-        monthly_usd: numOrUndef(monthly),
+        daily_usd: numOrNull(daily),
+        monthly_usd: numOrNull(monthly),
       });
       toast.success("Настройки сохранены");
     } catch (e) {
@@ -893,7 +857,8 @@ function initials(name: string): string {
 }
 
 function PageAvatar({ page }: { page: AvailablePage }) {
-  const label = page.ig_username ?? page.ig_name ?? page.page_name;
+  // Страница без имени у Meta бывает — не падаем на initials(null).
+  const label = page.ig_username ?? page.ig_name ?? page.page_name ?? "?";
   return (
     <Avatar className="h-9 w-9 shrink-0 ring-1 ring-border">
       {page.ig_avatar_url && <AvatarImage src={page.ig_avatar_url} alt="" />}
@@ -960,9 +925,16 @@ function ConnectInstagramDialog({ open, onClose, pub }: { open: boolean; onClose
     if (!picked.length) return;
     try {
       const r = await pub.connect(picked, usedToken, groupId === NONE ? null : groupId);
-      const skipped = r.skipped?.length ? `, пропущено: ${r.skipped.length}` : "";
-      toast.success(`Подключено: ${r.connected?.length ?? 0}${skipped}`);
-      onClose();
+      const connected = r.connected?.length ?? 0;
+      if (r.skipped?.length) {
+        // Причину пропуска называем — «пропущено: 2» ничего не объясняет.
+        const names = new Map(pages.map((p) => [p.page_id, p.ig_username ? `@${p.ig_username}` : p.page_name ?? p.page_id]));
+        const detail = r.skipped.slice(0, 3).map((x) => `${names.get(x.page_id) ?? x.page_id}: ${x.reason}`).join("; ");
+        toast.warning(`Подключено ${connected}, пропущено ${r.skipped.length} — ${detail}${r.skipped.length > 3 ? " …" : ""}`);
+      } else {
+        toast.success(`Подключено: ${connected}`);
+      }
+      if (connected) onClose();
     } catch (e) {
       setErr(errMsg(e));
     }
@@ -975,7 +947,7 @@ function ConnectInstagramDialog({ open, onClose, pub }: { open: boolean; onClose
         <PageAvatar page={p} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <span className="truncate text-sm font-medium">{p.ig_username ? `@${p.ig_username}` : p.ig_name ?? p.page_name}</span>
+            <span className="truncate text-sm font-medium">{p.ig_username ? `@${p.ig_username}` : p.ig_name ?? p.page_name ?? "Страница без имени"}</span>
             {p.ig_followers != null && p.ig_followers > 0 && (
               <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{formatFollowers(p.ig_followers)}</span>
             )}
@@ -1001,7 +973,7 @@ function ConnectInstagramDialog({ open, onClose, pub }: { open: boolean; onClose
         type="button"
         role="checkbox"
         aria-checked={on}
-        aria-label={p.ig_username ? `@${p.ig_username}` : p.page_name}
+        aria-label={p.ig_username ? `@${p.ig_username}` : p.page_name ?? p.page_id}
         onClick={() => toggle(p.page_id)}
         className={cn(
           "flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition-colors",

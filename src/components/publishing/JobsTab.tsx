@@ -15,7 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { initials } from "@/components/publishing/PostPreview";
 import type { UsePublishing } from "@/hooks/usePublishing";
-import { JOB_ACTIONS, JOB_STATUS_META, PLATFORM_META, type PublishJobStatus } from "@/lib/publishingClient";
+import { jobActions, JOB_STATUS_META, PLATFORM_META, type PublishJobStatus } from "@/lib/publishingClient";
 import { fmtExact, fmtRelative } from "@/lib/publishingFormat";
 import { cn } from "@/lib/utils";
 
@@ -90,7 +90,7 @@ export function JobsTab({ pub }: { pub: UsePublishing }) {
                   <TableHead className="h-9 w-[130px]">Запланировано</TableHead>
                   <TableHead className="h-9 w-[70px] text-right">Попыток</TableHead>
                   <TableHead className="h-9 w-[90px]">Пост</TableHead>
-                  <TableHead className="h-9 w-[90px]" />
+                  <TableHead className="h-9 w-[190px]" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -160,7 +160,10 @@ export function JobsTab({ pub }: { pub: UsePublishing }) {
                         ) : <span className="text-muted-foreground">—</span>}
                       </TableCell>
                       <TableCell className="py-2 text-right">
-                        {JOB_ACTIONS[j.status]?.retry && (
+                        {jobActions(j).stale && (
+                          <span className="mr-1 text-xs text-amber-600 dark:text-amber-400" title="Воркер не отвечает больше 10 минут">зависло</span>
+                        )}
+                        {jobActions(j).retry && (
                           <Button
                             size="sm" variant="ghost" className="h-7 px-2" disabled={busy}
                             aria-label={`Повторить ${acc?.account_name ?? ""}`}
@@ -169,7 +172,7 @@ export function JobsTab({ pub }: { pub: UsePublishing }) {
                             <RotateCcw className="mr-1 h-3.5 w-3.5" /> Повторить
                           </Button>
                         )}
-                        {JOB_ACTIONS[j.status]?.cancel && (
+                        {jobActions(j).cancel && (
                           <Button
                             size="sm" variant="ghost" className="h-7 px-2 text-muted-foreground" disabled={busy}
                             aria-label={`Отменить ${acc?.account_name ?? ""}`}

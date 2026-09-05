@@ -304,7 +304,7 @@ describe("страница «Публикации»", () => {
     // Оба годных аккаунта выбраны по умолчанию — снимаем TikTok в списке аккаунтов (он в popover).
     expect(screen.getByRole("button", { name: /Отправить на публикацию \(2\)/ })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Выбрано аккаунтов: 2/ }));
-    fireEvent.click(await screen.findByRole("button", { name: /aiva.tt — TikTok/ }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Выбрать Клиника TikTok" }));
 
     fireEvent.click(screen.getByRole("button", { name: /Отправить на публикацию \(1\)/ }));
     await waitFor(() =>

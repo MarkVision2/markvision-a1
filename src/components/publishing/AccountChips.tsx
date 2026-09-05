@@ -3,34 +3,34 @@
  * Негодные (выключены, не активны, здоровье < 20) показываются приглушённо и
  * не выбираются — планировщик их всё равно пропустит.
  */
-import { Check, ChevronDown, Users } from "lucide-react";
+import { ChevronDown, Users } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { PLATFORM_META, type PublishAccount } from "@/lib/publishingClient";
-import { accountEligibility, isPublishable } from "@/lib/publishingSelection";
+import { AccountPicker } from "@/components/publishing/AccountPicker";
+import { type PublishAccount, type PublishGroup } from "@/lib/publishingClient";
+import { isPublishable } from "@/lib/publishingSelection";
 import { initials } from "@/components/publishing/PostPreview";
-import { cn } from "@/lib/utils";
 
 interface Props {
   accounts: PublishAccount[];
+  groups?: PublishGroup[];
   selected: Set<string>;
   onChange: (next: Set<string>) => void;
 }
 
-export function AccountChips({ accounts, selected, onChange }: Props) {
+export function AccountChips({ accounts, groups = [], selected, onChange }: Props) {
   const usable = accounts.filter(isPublishable);
   const allChosen = usable.length > 0 && usable.every((a) => selected.has(a.id));
 
-  const toggle = (id: string) => {
+  /** «Все» трогает только годные аккаунты — не сбрасывает то, что выбрано иначе. */
+  const toggleAll = () => {
     const next = new Set(selected);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
+    if (allChosen) usable.forEach((a) => next.delete(a.id));
+    else usable.forEach((a) => next.add(a.id));
     onChange(next);
   };
-
-  const toggleAll = () => onChange(allChosen ? new Set() : new Set(usable.map((a) => a.id)));
 
   if (!accounts.length) {
     return <p className="text-sm text-muted-foreground">Аккаунтов пока нет — подключите их кнопками в шапке раздела.</p>;
@@ -49,48 +49,9 @@ export function AccountChips({ accounts, selected, onChange }: Props) {
               <ChevronDown className="h-4 w-4 text-muted-foreground" />
             </Button>
           </PopoverTrigger>
-          <PopoverContent align="start" className="w-[min(34rem,calc(100vw-2rem))] border-border/80 bg-popover p-2 shadow-elevated">
-            <div className="max-h-72 space-y-1 overflow-y-auto pr-1">
-              {accounts.map((a) => {
-        const e = accountEligibility(a);
-        const chosen = selected.has(a.id);
-        const meta = PLATFORM_META[a.platform];
-        return (
-          <Button
-            key={a.id}
-            type="button"
-            variant="ghost"
-            disabled={!e.ok}
-            onClick={() => toggle(a.id)}
-            title={e.hint ?? `${a.account_name} · ${meta?.label ?? a.platform}`}
-            aria-pressed={chosen}
-            aria-label={`${a.handle ?? a.account_name} — ${meta?.label ?? a.platform}`}
-            className={cn(
-              "group relative flex h-auto w-full justify-start gap-3 rounded-lg border px-2.5 py-2 text-left",
-              chosen ? "border-primary/40 bg-primary/10" : "border-transparent hover:border-border hover:bg-muted",
-              !e.ok && "cursor-not-allowed opacity-40",
-            )}
-          >
-            <span className="relative">
-              <Avatar className="h-7 w-7">
-                <AvatarFallback className="text-[10px]">{initials(a.account_name)}</AvatarFallback>
-              </Avatar>
-              {chosen && (
-                <span className="absolute -left-0.5 -top-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                  <Check className="h-2.5 w-2.5" />
-                </span>
-              )}
-            </span>
-            <span className="min-w-0">
-              <span className="block truncate text-xs font-medium leading-tight">{a.handle ?? a.account_name}</span>
-              <span className={cn("block truncate text-[10px] leading-tight", meta ? "text-muted-foreground" : "")}>
-                {meta?.label ?? a.platform}
-              </span>
-            </span>
-          </Button>
-        );
-              })}
-            </div>
+          <PopoverContent align="start" className="w-[min(40rem,calc(100vw-2rem))] border-border/80 bg-popover p-3 shadow-elevated">
+            {/* Тот же выбор с поиском, фильтрами и пресетами, что и в таблице — сотня аккаунтов иначе не листается. */}
+            <AccountPicker accounts={accounts} groups={groups} selected={selected} onChange={onChange} maxHeight="18rem" />
           </PopoverContent>
         </Popover>
         <label className="flex h-10 shrink-0 cursor-pointer items-center gap-2 rounded-lg border border-border/80 bg-secondary/40 px-3 text-sm">

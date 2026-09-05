@@ -77,13 +77,13 @@ async function containerStatus(
 ): Promise<{ code: string; detail: string; raw: unknown }> {
   // status_code — машинный статус (FINISHED/ERROR/IN_PROGRESS), status —
   // человекочитаемая причина от Instagram при ERROR (например 2207052).
-  const { body } = await call(`${graph}/${containerId}?fields=status_code,status&access_token=${token}`);
+  const { body } = await call(`${graph}/${containerId}?fields=status_code,status&access_token=${encodeURIComponent(token)}`);
   const j = (body ?? {}) as { status_code?: string; status?: string };
   return { code: j.status_code ?? "", detail: typeof j.status === "string" ? j.status : "", raw: body };
 }
 
 async function permalinkOf(graph: string, token: string, mediaId: string): Promise<string | null> {
-  const { body } = await call(`${graph}/${mediaId}?fields=permalink&access_token=${token}`);
+  const { body } = await call(`${graph}/${mediaId}?fields=permalink&access_token=${encodeURIComponent(token)}`);
   return (body as { permalink?: string } | null)?.permalink ?? null;
 }
 
@@ -137,7 +137,7 @@ export async function publishInstagram(req: PublishRequest): Promise<PublishOutc
 
   // 3. Публикация.
   const { body: pub } = await call(
-    `${graph}/${igUserId}/media_publish?creation_id=${containerId}&access_token=${token}`,
+    `${graph}/${igUserId}/media_publish?creation_id=${containerId}&access_token=${encodeURIComponent(token)}`,
     { method: "POST" },
   );
   const mediaId = (pub as { id?: string } | null)?.id;

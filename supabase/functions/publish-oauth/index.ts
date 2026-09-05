@@ -249,6 +249,7 @@ async function callback(url: URL, platform: OAuthPlatform, admin: SupabaseClient
 
   const denied = url.searchParams.get("error_description") ?? url.searchParams.get("error");
   if (!code) return fail(denied ?? "Площадка не вернула code");
+  if (!tokenKeyConfigured()) return fail("PUBLISH_TOKEN_KEY не задан — токены сохранять некуда");
   const creds = appCredentials(platform);
   if (!creds) return fail(`OAuth ${platform} не настроен`);
 
@@ -292,6 +293,10 @@ async function callback(url: URL, platform: OAuthPlatform, admin: SupabaseClient
     publish_enabled: true,
     consecutive_errors: 0,
     last_error: null,
+    // Свежее подключение — здоровый аккаунт: формула пересчитает при следующей проверке.
+    health_score: 100,
+    health_reasons: ["аккаунт переподключён, токен свежий"],
+    last_checked_at: new Date().toISOString(),
     ...(st.group_id ? { group_id: st.group_id } : {}),
   }, { onConflict: "project_id,platform,external_account_id" }).select("id, account_name").maybeSingle();
   if (error) return fail(`сохранение аккаунта: ${error.message}`);
