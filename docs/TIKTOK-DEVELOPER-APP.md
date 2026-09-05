@@ -6,7 +6,7 @@ Developers и показать интеграцию в демо-видео: чт
 
 ```
 Сайт (React)                  Supabase Edge                    TikTok
-/marketing/tiktok  ──start──▶ publish-oauth/start ──302──▶ tiktok.com/v2/auth/authorize
+/settings?tab=tiktok ──start──▶ publish-oauth/start ──302──▶ tiktok.com/v2/auth/authorize
                    ◀─return── publish-oauth/callback/tiktok ◀── code → open.tiktokapis.com/v2/oauth/token
                    ──action─▶ tiktok-connect ─────────────▶ /v2/user/info, /v2/video/list,
                                                             /v2/post/publish/*, /v2/oauth/revoke
@@ -23,8 +23,9 @@ Developers и показать интеграцию в демо-видео: чт
 | Отключение | — | Кнопка «Отключить» у аккаунта → `/v2/oauth/revoke/` + удаление токенов | `tiktok-connect` action `disconnect` |
 | **Share Kit** | — | **Не используем** (продукт для мобильных приложений). Перед подачей удалите его из списка продуктов приложения, иначе ревью задержат | — |
 
-Страница: `src/pages/TikTokConnect.tsx` (маршрут `/marketing/tiktok`, пункт
-меню «TikTok» в разделе «Маркетинг», модуль `content_plan`). Интерфейс
+Раздел: `src/components/settings/TikTokConnect.tsx` — таб «TikTok» в
+«Настройки → Подключения» (`/settings?tab=tiktok`, модуль `settings`); старый
+адрес `/marketing/tiktok` редиректит туда же. Интерфейс
 двуязычный — переключатель RU/EN в шапке; для демо-видео включите **EN**.
 Каждый блок пронумерован (1–6), по номерам удобно вести ролик.
 
@@ -150,8 +151,8 @@ node scripts/tiktok-doctor.mjs --key <cron_secret>
 пользователя. Снимайте экран с адресной строкой `www.markvision.kz`, язык
 интерфейса — EN (переключатель в шапке страницы), длительность 3–5 минут.
 
-1. **Вход в MarkVision** (`/login`) → меню «Маркетинг» → **TikTok**. В кадре
-   адресная строка `https://www.markvision.kz/marketing/tiktok`.
+1. **Вход в MarkVision** (`/login`) → **Настройки** → «Подключения» → **TikTok**.
+   В кадре адресная строка `https://www.markvision.kz/settings?tab=tiktok`.
 2. **Блок 1 — Login Kit.** Нажать «Continue with TikTok» → страница согласия
    TikTok: показать список запрашиваемых прав → Authorize → возврат на
    страницу, тост «TikTok connected», аккаунт появился в списке со статусом
@@ -189,7 +190,7 @@ node scripts/tiktok-doctor.mjs --key <cron_secret>
 ## Чеклист перед подачей
 
 - [ ] Ветка влита в `main` — только так деплоятся функции (`tiktok-connect`,
-      обновлённый `publish-oauth`) и фронт с `/marketing/tiktok`, `/terms`, `/privacy`.
+      обновлённый `publish-oauth`) и фронт с `/settings?tab=tiktok`, `/terms`, `/privacy`.
 - [ ] `node scripts/tiktok-doctor.mjs --key <cron_secret>` — без красных строк:
       секреты `TIKTOK_CLIENT_KEY` / `TIKTOK_CLIENT_SECRET` (для демо — песочница) и
       `PUBLISH_TOKEN_KEY` заданы, ключ без `shape_problem`, страницы открываются.

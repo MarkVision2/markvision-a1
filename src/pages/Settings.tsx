@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
-import { Camera, CheckCircle2, Edit2, Eye, Globe, GitBranch, KeyRound, Loader2, MessageCircle, Phone, Plus, RefreshCw, Search, TableProperties, Trash2, UserCircle2, Users2, XCircle } from "lucide-react";
+import { Camera, CheckCircle2, Edit2, Eye, Globe, GitBranch, KeyRound, Loader2, MessageCircle, Music2, Phone, Plus, RefreshCw, Search, TableProperties, Trash2, UserCircle2, Users2, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +29,8 @@ import { MetaTokensSettings } from "@/components/settings/MetaTokensSettings";
 import { FacebookConnect } from "@/components/settings/FacebookConnect";
 import { GoogleAdsConnect } from "@/components/settings/GoogleAdsConnect";
 import { SiteIntakeCard } from "@/pages/SettingsConnection";
+// Раздел TikTok тяжёлый (форма публикации, превью) — грузим только на своём табе.
+const TikTokConnect = lazy(() => import("@/components/settings/TikTokConnect"));
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Settings as SettingsIcon } from "lucide-react";
@@ -53,7 +55,7 @@ const ROLE_COLOR: Record<string, string> = {
 
 const SETTINGS_TABS = [
   "team", "profile", "pipelines", "loss", "metrics-labels",
-  "telephony", "whatsapp", "site", "inbound", "ig-organic", "meta-tokens", "google-ads", "clientview",
+  "telephony", "whatsapp", "site", "inbound", "ig-organic", "meta-tokens", "google-ads", "tiktok", "clientview",
 ] as const;
 
 type SettingsTab = (typeof SETTINGS_TABS)[number];
@@ -110,6 +112,12 @@ const CONNECTION_NAV: Array<{
     icon: Search,
   },
   {
+    tab: "tiktok",
+    title: "TikTok",
+    desc: "Вход через TikTok, профиль и видео аккаунта, публикация роликов — официальные TikTok for Developers API.",
+    icon: Music2,
+  },
+  {
     tab: "clientview",
     title: "Доступ клиента",
     desc: "Read-only ссылка клиента на дашборд.",
@@ -164,6 +172,7 @@ export default function Settings() {
     "ig-organic": "checking",
     "meta-tokens": "checking",
     "google-ads": "checking",
+    tiktok: "checking",
     clientview: "checking",
   });
 
@@ -207,6 +216,7 @@ export default function Settings() {
             "ig-organic": "disconnected",
             "meta-tokens": "disconnected",
             "google-ads": "disconnected",
+            tiktok: "disconnected",
             clientview: "disconnected",
           }));
         }
@@ -222,10 +232,11 @@ export default function Settings() {
         "ig-organic": "checking",
         "meta-tokens": "checking",
         "google-ads": "checking",
+        tiktok: "checking",
         clientview: "checking",
       }));
 
-      const [telephonyRes, waRes, waWebRes, igRes, metaRes, googleRes, clientViewRes] = await Promise.all([
+      const [telephonyRes, waRes, waWebRes, igRes, metaRes, googleRes, tiktokRes, clientViewRes] = await Promise.all([
         supabase
           .from("automation_settings" as never)
           .select("sipuni_enabled,sipuni_token_present,binotel_enabled,binotel_credentials_present")
@@ -258,6 +269,13 @@ export default function Settings() {
           .eq("project_id", activeId)
           .eq("provider", "google")
           .limit(1),
+        supabase
+          .from("publish_accounts" as never)
+          .select("id")
+          .eq("project_id", activeId)
+          .eq("platform", "tiktok")
+          .eq("status", "active")
+          .limit(1),
         clientConfigSupabase
           ? clientConfigSupabase
               .from("client_dashboard_tokens")
@@ -286,6 +304,7 @@ export default function Settings() {
       const igConnected = !!(igRes.data?.ig_user_id && igRes.data?.active);
       const metaConnected = !!(metaRes.data && metaRes.data.length > 0);
       const googleConnected = !!((googleRes.data as unknown[] | null) && (googleRes.data as unknown[]).length > 0);
+      const tiktokConnected = !!((tiktokRes.data as unknown[] | null) && (tiktokRes.data as unknown[]).length > 0);
       const clientViewConnected = !!(clientViewRes.data && clientViewRes.data.length > 0);
 
       setConnectionStatus((prev) => ({
@@ -297,6 +316,7 @@ export default function Settings() {
         "ig-organic": igConnected ? "connected" : "disconnected",
         "meta-tokens": metaConnected ? "connected" : "disconnected",
         "google-ads": googleConnected ? "connected" : "disconnected",
+        tiktok: tiktokConnected ? "connected" : "disconnected",
         clientview: clientViewConnected ? "connected" : "disconnected",
       }));
     };
@@ -571,6 +591,12 @@ export default function Settings() {
           )}
 
           {activeTab === "google-ads" && <GoogleAdsConnect />}
+
+          {activeTab === "tiktok" && (
+            <Suspense fallback={<div className="flex items-center gap-2 py-10 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Загрузка…</div>}>
+              <TikTokConnect />
+            </Suspense>
+          )}
 
           {activeTab === "clientview" && <ClientDashTokensSettings />}
         </div>

@@ -1,5 +1,5 @@
 /**
- * Клиент раздела «Подключение TikTok» (страница /marketing/tiktok).
+ * Клиент раздела «Подключение TikTok» (Настройки → Подключения → TikTok, /settings?tab=tiktok).
  * Контракт — supabase/functions/tiktok-connect/index.ts; каталог прав и
  * чистые проверки формы — supabase/functions/_lib/tiktokApi.ts (переиспользуем
  * прямо оттуда, чтобы интерфейс и бэкенд не разъезжались).

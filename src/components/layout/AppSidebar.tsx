@@ -19,7 +19,6 @@ import {
   Crosshair,
   Radar,
   Share2,
-  Music2,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
@@ -60,7 +59,6 @@ const marketing: NavItem[] = [
   { title: "Контент-план", url: "/marketing/content-plan", icon: ClipboardList, module: "content_plan" },
   { title: "Радар идей", url: "/marketing/radar", icon: Radar, module: "content_plan" },
   { title: "Публикации", url: "/marketing/publishing", icon: Share2, module: "content_plan" },
-  { title: "TikTok", url: "/marketing/tiktok", icon: Music2, module: "content_plan" },
 ];
 
 // Marketing OS — собирается динамически в компоненте, т.к. URL зависит от активного проекта

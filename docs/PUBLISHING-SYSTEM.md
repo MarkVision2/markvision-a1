@@ -326,7 +326,8 @@ pending ──claim──► processing ──► published
 
 Все четыре площадки публикуют: Instagram, Threads, TikTok (Direct Post по ссылке), YouTube
 (resumable upload). Подключение Threads / TikTok / YouTube — OAuth через `publish-oauth`.
-TikTok дополнительно имеет собственный раздел «Подключение TikTok» (`/marketing/tiktok`):
+TikTok дополнительно имеет собственный раздел «Подключение TikTok» (Настройки → Подключения →
+TikTok, `/settings?tab=tiktok`; старый `/marketing/tiktok` редиректит):
 Login Kit, Display API, Content Posting API с загрузкой файлом (без верификации домена),
 отключение с отзывом токена — витрина для App review, см. `docs/TIKTOK-DEVELOPER-APP.md`.
 

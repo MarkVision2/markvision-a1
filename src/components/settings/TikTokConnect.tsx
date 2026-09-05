@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { AlertCircle, CheckCircle2, ExternalLink, FlaskConical, Languages, Loader2, LogOut, RefreshCw, ShieldCheck, Unplug } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
@@ -9,8 +8,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { PageContainer } from "@/components/layout/PageContainer";
-import { PageHeader } from "@/components/layout/PageHeader";
 import { ContinueWithTikTokButton, TikTokLogo } from "@/components/tiktok/TikTokBrand";
 import { TikTokPostComposer } from "@/components/tiktok/TikTokPostComposer";
 import { TikTokProfileCard } from "@/components/tiktok/TikTokProfileCard";
@@ -21,7 +18,7 @@ import { readOAuthResult, startPublishOAuth } from "@/lib/publishingClient";
 import { errorText, type Lang, t, tiktokApi, type TikTokAccount, type TikTokStatusResponse, type TikTokUser, type TikTokVideo } from "@/lib/tiktokClient";
 import { cn } from "@/lib/utils";
 
-const RETURN_PATH = "/marketing/tiktok";
+const RETURN_PATH = "/settings?tab=tiktok";
 const LANG_KEY = "mv.tiktok.lang";
 
 function readLang(): Lang {
@@ -29,10 +26,11 @@ function readLang(): Lang {
 }
 
 /**
- * Раздел «Подключение TikTok» — витрина интеграции для App review TikTok for
- * Developers и рабочий инструмент: вход (Login Kit), профиль и видео (Display
- * API), публикация (Content Posting API), отключение с отзывом токена.
- * Интерфейс двуязычный (RU/EN) — ревьюеры площадки читают по-английски.
+ * Раздел «Подключение TikTok» (Настройки → Подключения → TikTok) — витрина
+ * интеграции для App review TikTok for Developers и рабочий инструмент: вход
+ * (Login Kit), профиль и видео (Display API), публикация (Content Posting API),
+ * отключение с отзывом токена. Интерфейс двуязычный (RU/EN) — ревьюеры
+ * площадки читают по-английски. Возврат с согласия TikTok — на этот же таб.
  */
 export default function TikTokConnect() {
   const { activeId: projectId } = useProjectsStore();
@@ -164,30 +162,31 @@ export default function TikTokConnect() {
   const app = status?.app ?? null;
 
   return (
-    <PageContainer wide>
+    <>
       <div className="space-y-8">
-        <PageHeader
-          icon={TikTokLogo as unknown as LucideIcon}
-          iconAccent="pink"
-          title={t("pageTitle", lang)}
-          description={t("pageDesc", lang)}
-          actions={
-            <>
-              {app && (
-                <Badge variant="outline" className={cn("border-transparent", app.sandbox ? "bg-amber-500/10 text-amber-700 dark:text-amber-300" : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300")}>
-                  {app.sandbox ? <FlaskConical className="mr-1 h-3 w-3" /> : <ShieldCheck className="mr-1 h-3 w-3" />}
-                  {app.sandbox ? t("sandbox", lang) : t("production", lang)}
-                </Badge>
-              )}
-              <Button variant="ghost" size="sm" onClick={() => void refetch()} disabled={loading} aria-label={t("refresh", lang)}>
-                <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
-              </Button>
-              <Button variant="outline" size="sm" onClick={toggleLang} aria-label="Language">
-                <Languages className="mr-1.5 h-4 w-4" />{t("langToggle", lang)}
-              </Button>
-            </>
-          }
-        />
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-pink-500/10 text-pink-600 dark:text-pink-300"><TikTokLogo className="h-5 w-5" /></span>
+            <div>
+              <h3 className="text-base font-semibold">{t("pageTitle", lang)}</h3>
+              <p className="max-w-2xl text-sm text-muted-foreground">{t("pageDesc", lang)}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {app && (
+              <Badge variant="outline" className={cn("border-transparent", app.sandbox ? "bg-amber-500/10 text-amber-700 dark:text-amber-300" : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300")}>
+                {app.sandbox ? <FlaskConical className="mr-1 h-3 w-3" /> : <ShieldCheck className="mr-1 h-3 w-3" />}
+                {app.sandbox ? t("sandbox", lang) : t("production", lang)}
+              </Badge>
+            )}
+            <Button variant="ghost" size="sm" onClick={() => void refetch()} disabled={loading} aria-label={t("refresh", lang)}>
+              <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+            </Button>
+            <Button variant="outline" size="sm" onClick={toggleLang} aria-label="Language">
+              <Languages className="mr-1.5 h-4 w-4" />{t("langToggle", lang)}
+            </Button>
+          </div>
+        </div>
 
         {!projectId && <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">{t("noProject", lang)}</div>}
 
@@ -359,7 +358,7 @@ export default function TikTokConnect() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </PageContainer>
+    </>
   );
 }
 

@@ -40,7 +40,6 @@ const ContentPlan = lazy(routeImports.ContentPlan);
 const ContentPlanDetail = lazy(routeImports.ContentPlanDetail);
 const Radar = lazy(routeImports.Radar);
 const Publishing = lazy(routeImports.Publishing);
-const TikTokConnect = lazy(routeImports.TikTokConnect);
 const Legal = lazy(routeImports.Legal);
 const Finance = lazy(routeImports.Finance);
 const Reports = lazy(routeImports.Reports);
@@ -106,7 +105,8 @@ const App = () => (
               <Route path="/marketing/content-plan/:id" element={<RequireAuth><AppLayout><RequireModule module="content_plan"><ContentPlanDetail /></RequireModule></AppLayout></RequireAuth>} />
               <Route path="/marketing/radar" element={<RequireAuth><AppLayout><RequireModule module="content_plan"><Radar /></RequireModule></AppLayout></RequireAuth>} />
               <Route path="/marketing/publishing" element={<RequireAuth><AppLayout><RequireModule module="content_plan"><Publishing /></RequireModule></AppLayout></RequireAuth>} />
-              <Route path="/marketing/tiktok" element={<RequireAuth><AppLayout><RequireModule module="content_plan"><TikTokConnect /></RequireModule></AppLayout></RequireAuth>} />
+              {/* Раздел TikTok переехал в Настройки → Подключения; старую ссылку (в TikTok for Developers, документах) держим. */}
+              <Route path="/marketing/tiktok" element={<RequireAuth><Navigate to="/settings?tab=tiktok" replace /></RequireAuth>} />
               <Route path="/marketing/autopost" element={<RequireAuth><Navigate to="/marketing/content-plan?view=calendar" replace /></RequireAuth>} />
               <Route path="/finance" element={<RequireAuth><AppLayout><RequireModule module="finance"><Finance /></RequireModule></AppLayout></RequireAuth>} />
               <Route path="/reports" element={<RequireAuth><AppLayout><RequireModule module="reports"><Reports /></RequireModule></AppLayout></RequireAuth>} />

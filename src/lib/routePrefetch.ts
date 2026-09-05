@@ -30,7 +30,6 @@ export const routeImports = {
   ContentPlanDetail: () => import("@/pages/ContentPlanDetail"),
   Radar: () => import("@/pages/Radar"),
   Publishing: () => import("@/pages/Publishing"),
-  TikTokConnect: () => import("@/pages/TikTokConnect"),
   Legal: () => import("@/pages/Legal"),
   AutoPost: () => import("@/pages/AutoPost"),
   Finance: () => import("@/pages/Finance"),
@@ -94,9 +93,6 @@ export function prefetchRoute(path: string) {
       break;
     case "/marketing/publishing":
       loaders.push(routeImports.Publishing);
-      break;
-    case "/marketing/tiktok":
-      loaders.push(routeImports.TikTokConnect);
       break;
     case "/analytics/creatives":
       loaders.push(routeImports.CreativeFunnel);
