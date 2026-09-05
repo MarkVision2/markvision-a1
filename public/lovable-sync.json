@@ -1,7 +1,7 @@
 {
-  "git_sha": "0e97e4c",
-  "git_sha_full": "0e97e4cf535fb9082862ce51f8348fc126648c38",
-  "updated_at": "2026-09-05T09:51:53+04:00",
-  "label": "[vercel-deploy] Merge: страница «Публикации» — сводка полосой, пять вкладок, аккаунты в двух видах (#258)",
+  "git_sha": "e497ceb",
+  "git_sha_full": "e497ceb5a23d7b513e45f8cf82f483931c66f86f",
+  "updated_at": "2026-09-05T10:00:22+04:00",
+  "label": "Merge: previewAuthStorage — таймер объявляется в точке присваивания (#259)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
