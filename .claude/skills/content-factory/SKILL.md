@@ -75,6 +75,13 @@ work/factory/<project>/batches/<YYYY-MM-DD>-<n>/
    (без target) на каждый ролик, затем один `markvision_distribute` на всю пачку с `topic_key`.
 5. Итог: сколько роликов, стоимость, что ушло в какие аккаунты, что осталось в `unassigned`.
 
+## Композиция
+`remotion/src/ReelsAvatar.tsx` — аватар поверх анимации, 1080×1920, четыре раскладки
+(`avatar_full`, `avatar_bottom`, `avatar_circle`, `content_full`). Одно видео аватара
+смонтировано на всю композицию и меняет только геометрию — звук не рвётся на стыках сцен.
+Геометрия и проверки — `remotion/src/avatarLayout.ts` (тесты `src/test/avatarLayout.test.ts`),
+образец пропсов — `remotion/props/reels-avatar.example.json`.
+
 ## Скрипты
 - `scripts/factory-cut.mjs <long.mp4> <outdir>` — режет длинное видео аватара по паузам ≥ 3 с.
 - `scripts/factory-check.mjs <video.mp4>` — длительность видео = звук (±0,1 с), 1080×1920, 
