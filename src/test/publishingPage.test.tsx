@@ -167,21 +167,26 @@ describe("страница «Публикации»", () => {
     toastSuccess.mockClear();
   });
 
-  it("плитки показывают числа из metrics", () => {
+  it("сводка: активные аккаунты с разбивкой по площадкам, очередь, сутки, здоровье, расход", () => {
     renderPage();
     expect(screen.getByText("4 / 7")).toBeTruthy();
+    // Разбивка по площадкам считается по списку аккаунтов: 1 Instagram + 1 TikTok, остальные — по нулям, но видны.
+    expect(screen.getByTitle("Instagram").textContent).toMatch(/Instagram 1$/);
+    expect(screen.getByTitle("YouTube").textContent).toMatch(/YouTube 0$/);
     expect(screen.getByText("13")).toBeTruthy();
     expect(screen.getByText("9")).toBeTruthy();
-    expect(screen.getByText("2")).toBeTruthy();
+    expect(screen.getByText(/ошибок 2/)).toBeTruthy();
     expect(screen.getByText("81%")).toBeTruthy();
-    expect(screen.getByText("3")).toBeTruthy();
+    expect(screen.getByText(/токены истекают 3/)).toBeTruthy();
     expect(screen.getByText("$12.34")).toBeTruthy();
   });
 
-  it("вкладка «Сеть»: строка группы с составом, здоровьем и публикациями за неделю", async () => {
+  it("сводка по группам живёт во вкладке «Группы»: состав, здоровье, публикации за неделю", async () => {
     renderPage();
-    fireEvent.mouseDown(screen.getByRole("tab", { name: "Сеть" }));
-    fireEvent.click(screen.getByRole("tab", { name: "Сеть" }));
+    expect(screen.queryByRole("tab", { name: "Сеть" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Подключённые" })).toBeNull();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Группы" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Группы" }));
     await waitFor(() => expect(screen.getByText("Алматы · IG")).toBeTruthy());
     expect(screen.getByText("8 / 10")).toBeTruthy();
     expect(screen.getByText("77%")).toBeTruthy();
