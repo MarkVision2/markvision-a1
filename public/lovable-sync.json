@@ -1,7 +1,7 @@
 {
-  "git_sha": "5356a0b",
-  "git_sha_full": "5356a0bcf8c8b0cc7b4dbb1d2df6b4d85bd8d32d",
-  "updated_at": "2026-09-05T10:40:17+04:00",
-  "label": "[vercel-deploy] Merge: Публикации — аудит кода, безопасность publish-accounts, планировщик, раннер, монитор, композер (#261)",
+  "git_sha": "f7739ab",
+  "git_sha_full": "f7739ab79f6f0af1bc74f2d79082bacfd9822d87",
+  "updated_at": "2026-09-05T10:52:15+04:00",
+  "label": "[vercel-deploy] Merge: публичный API по ключу проекта и MCP-сервер для автопостинга (#262)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
