@@ -1,7 +1,7 @@
 {
-  "git_sha": "d2f2d12",
-  "git_sha_full": "d2f2d12f9cd8626670e0966986f4082d6b386da7",
-  "updated_at": "2026-09-05T15:45:11+04:00",
-  "label": "fix(radar): разбор постов — схема полей в промпте, распаковка вложенного JSON, текст ответа в ошибке",
+  "git_sha": "b577b65",
+  "git_sha_full": "b577b6590c0fb7095ddf2b8771880ccf97991163",
+  "updated_at": "2026-09-05T16:06:36+04:00",
+  "label": "Merge: отметка «использован» у API-ключа пишется с ожиданием (#267)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
