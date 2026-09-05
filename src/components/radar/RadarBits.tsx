@@ -1,10 +1,13 @@
 /**
  * Радар идей: мелкие общие элементы — чипы, бейджи оценки и X-фактора,
- * плитка метрики, подпись секции, пустое состояние, форматы дат и денег.
+ * превью поста с заглушкой, плитка метрики, подпись секции, пустое состояние,
+ * форматы дат и денег.
  */
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { ScanSearch } from "lucide-react";
+import { looksLikeVideoUrl } from "@/components/autopost/MediaThumb";
 import { Badge } from "@/components/ui/badge";
-import { PLATFORM_META, SCORE_TONE_CLS, scoreTone, type RadarPlatform } from "@/lib/radarClient";
+import { PLATFORM_META, SCORE_TONE_CLS, scoreTone, type RadarPlatform, type RadarPost } from "@/lib/radarClient";
 import { formatX, xTone, type XTone } from "@/lib/radarStats";
 import { cn } from "@/lib/utils";
 
@@ -23,7 +26,7 @@ export const errMsg = (e: unknown, fallback: string) => (e instanceof Error ? e.
 
 export function Chip({ label, cls, title, className }: { label: ReactNode; cls?: string; title?: string; className?: string }) {
   return (
-    <Badge variant="outline" className={cn("border-transparent font-medium", cls, className)} title={title}>
+    <Badge variant="outline" className={cn("whitespace-nowrap border-transparent font-medium", cls, className)} title={title}>
       {label}
     </Badge>
   );
@@ -33,6 +36,75 @@ export function PlatformChip({ platform, short = false, className }: { platform:
   const m = PLATFORM_META[platform];
   if (!m) return <Chip label={platform} cls="bg-muted text-muted-foreground" className={className} />;
   return <Chip label={short ? m.short : m.label} cls={m.cls} title={m.label} className={className} />;
+}
+
+/** Фон заглушки превью — оттенок площадки, чтобы карточка без картинки не была «дыркой». */
+const PLATFORM_GRADIENT: Record<RadarPlatform, string> = {
+  instagram: "from-pink-500/25 via-fuchsia-500/10 to-amber-400/15",
+  tiktok: "from-slate-400/25 via-cyan-400/10 to-rose-400/15",
+  youtube: "from-red-500/25 via-red-500/10 to-zinc-500/10",
+  threads: "from-zinc-400/25 via-zinc-500/10 to-zinc-800/20",
+  facebook: "from-blue-500/25 via-blue-500/10 to-sky-400/15",
+};
+
+/**
+ * Превью поста. Ссылки CDN площадок подписаны и протухают, а с чужим referrer
+ * отдают 403 — поэтому грузим без referrer и при ошибке рисуем заглушку с
+ * началом подписи, а не битую картинку. Сервер параллельно кладёт копию в Storage.
+ */
+export function PostThumb({
+  post, className, imgClassName, compact = false,
+}: {
+  post: Pick<RadarPost, "thumbnail_url" | "platform" | "caption" | "author_handle">;
+  className?: string;
+  imgClassName?: string;
+  /** Маленькое превью (≈ 72 px): в заглушке только иконка, без подписи и водяного знака. */
+  compact?: boolean;
+}) {
+  const src = post.thumbnail_url && !looksLikeVideoUrl(post.thumbnail_url) ? post.thumbnail_url : null;
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [src]);
+  const meta = PLATFORM_META[post.platform];
+  const snippet = (post.caption ?? "").replace(/\s+/g, " ").trim().slice(0, 90);
+
+  if (src && !failed) {
+    return (
+      <img
+        src={src}
+        alt=""
+        className={cn("h-full w-full object-cover", imgClassName, className)}
+        loading="lazy"
+        decoding="async"
+        referrerPolicy="no-referrer"
+        onError={() => setFailed(true)}
+      />
+    );
+  }
+  const gradient = PLATFORM_GRADIENT[post.platform] ?? "from-muted to-background";
+  if (compact) {
+    return (
+      <div className={cn("grid h-full w-full place-items-center bg-gradient-to-br", gradient, className)} data-testid="post-thumb-fallback" aria-hidden>
+        <ScanSearch className="h-5 w-5 text-foreground/40" />
+      </div>
+    );
+  }
+  return (
+    <div
+      className={cn("relative flex h-full w-full flex-col items-center justify-center overflow-hidden bg-gradient-to-br p-4 text-center", gradient, className)}
+      data-testid="post-thumb-fallback"
+      aria-hidden
+    >
+      <span className="pointer-events-none absolute -right-2 -top-3 select-none text-[88px] font-black leading-none tracking-tighter text-foreground/[0.06]">
+        {meta?.short ?? "•"}
+      </span>
+      <ScanSearch className="h-7 w-7 text-foreground/35" />
+      {snippet ? (
+        <p className="mt-3 line-clamp-4 text-xs italic leading-snug text-foreground/60">«{snippet}{(post.caption ?? "").length > 90 ? "…" : ""}»</p>
+      ) : (
+        <p className="mt-3 text-xs text-foreground/50">{post.author_handle ? `@${post.author_handle}` : meta?.label ?? "Пост"}</p>
+      )}
+    </div>
+  );
 }
 
 export function ScoreBadge({ score, size = "sm" }: { score: number | null | undefined; size?: "sm" | "lg" }) {

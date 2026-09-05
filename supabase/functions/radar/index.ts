@@ -22,9 +22,9 @@
  *     POST /radar/internal/ingest  { project_id, source_id?, provider, cost_usd?, items: [...] }
  *
  *   Обслуживание (x-automation-key, pg_cron каждые 15 минут):
- *     POST /radar/maintenance  — дозагрузка запусков Apify, разбор накопившихся
- *       постов (Whisper + LLM через _lib/aiProvider), идеи в банк, запуск сбора
- *       источников по расписанию, GC.
+ *     POST /radar/maintenance  — дозагрузка запусков Apify, копии превью в Storage
+ *       (bucket radar-thumbs), разбор накопившихся постов (Whisper + LLM через
+ *       _lib/aiProvider), идеи в банк, запуск сбора источников по расписанию, GC.
  */
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { requireUser, userHasAnyRole } from "../_lib/auth.ts";
@@ -36,10 +36,16 @@ import {
   estimateAnalysisCostUsd,
   IDEA_SCORE_THRESHOLD,
   ideaFromAnalysis,
+  isStoredThumbnail,
+  needsThumbnailCache,
   normalizeIngestItem,
   parseAnalysis,
   RADAR_ANALYSIS_SCHEMA,
   RADAR_PLATFORMS,
+  RADAR_THUMBS_BUCKET,
+  THUMB_MAX_BYTES,
+  thumbnailMime,
+  thumbnailObjectPath,
   transcribableVideoUrl,
   WHISPER_MAX_BYTES,
 } from "../_lib/radar.ts";
@@ -79,6 +85,10 @@ const CRAWL_PER_TICK = 10;
 /** Фоновый разбор новых постов после обзора (сверх крона). */
 const ANALYZE_ON_OVERVIEW = 2;
 const APIFY_BASE = "https://api.apify.com/v2";
+/** Сколько превью копировать в Storage за один заход (обзор — фоном, крон — в бюджете тика). */
+const THUMBS_PER_BATCH = 12;
+const THUMBS_PER_TICK = 40;
+const THUMB_FETCH_TIMEOUT_MS = 12_000;
 
 const hasDirectCrawler = () => Boolean(env("APIFY_TOKEN"));
 const hasN8nCrawler = () => Boolean(env("N8N_RADAR_WEBHOOK_URL"));
@@ -153,7 +163,7 @@ async function ingestItems(
   for (const rawItem of input.items) {
     const item = normalizeIngestItem(String((rawItem as Json)?.platform ?? input.platformDefault), (rawItem ?? {}) as Json);
     if (!item) { out.skipped++; continue; }
-    const { data: existing } = await db.from("radar_posts").select("id")
+    const { data: existing } = await db.from("radar_posts").select("id, thumbnail_url")
       .eq("project_id", input.projectId).eq("platform", item.platform).eq("external_id", item.external_id).maybeSingle();
     const row = {
       project_id: input.projectId,
@@ -173,9 +183,15 @@ async function ingestItems(
       ...(item.transcript ? { transcript: item.transcript } : {}),
     };
     if (existing) {
-      const id = (existing as { id: string }).id;
+      const { id, thumbnail_url: oldThumb } = existing as { id: string; thumbnail_url: string | null };
       // Источник не перетираем: пост мог прийти по ссылке, а потом из сбора аккаунта.
-      const { error } = await db.from("radar_posts").update({ ...row, ...(input.sourceId ? {} : { source_id: undefined }) }).eq("id", id);
+      // Превью из нашего Storage тоже: свежая ссылка CDN снова протухнет, а копия — нет.
+      const keepThumb = isStoredThumbnail(oldThumb, env("SUPABASE_URL"));
+      const { error } = await db.from("radar_posts").update({
+        ...row,
+        ...(keepThumb ? { thumbnail_url: oldThumb } : {}),
+        ...(input.sourceId ? {} : { source_id: undefined }),
+      }).eq("id", id);
       if (error) { out.skipped++; continue; }
       out.ids.push(id);
       if (item.author_handle) out.authors.set(id, { platform: item.platform, handle: item.author_handle });
@@ -202,6 +218,85 @@ async function ingestItems(
   return out;
 }
 
+/* ───────────────────────────── превью ───────────────────────────── */
+
+interface ThumbRow {
+  id: string;
+  project_id: string;
+  thumbnail_url: string | null;
+}
+
+/**
+ * Скачать превью с CDN площадки и положить в bucket radar-thumbs. Ссылки CDN
+ * подписаны и живут дни, а из браузера с чужим referrer часто отдают 403 —
+ * поэтому в ленте держим только свои постоянные ссылки. Возвращает публичную
+ * ссылку; null — картинки нет (4xx, не image/*, слишком большая). Сетевые
+ * сбои бросают исключение — такой пост попробуем в следующий раз.
+ */
+async function mirrorThumbnail(db: SupabaseClient, row: ThumbRow): Promise<string | null> {
+  const src = row.thumbnail_url!;
+  const res = await fetch(src, {
+    headers: {
+      Accept: "image/avif,image/webp,image/jpeg,image/png,image/*;q=0.8",
+      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+    },
+    redirect: "follow",
+    signal: AbortSignal.timeout(THUMB_FETCH_TIMEOUT_MS),
+  });
+  if (!res.ok) {
+    if (res.status >= 500 || res.status === 429) throw new Error(`thumbnail HTTP ${res.status}`);
+    return null;
+  }
+  const mime = thumbnailMime(res.headers.get("content-type"));
+  if (!mime) return null;
+  const declared = Number(res.headers.get("content-length") ?? 0);
+  if (declared > THUMB_MAX_BYTES) return null;
+  const buf = new Uint8Array(await res.arrayBuffer());
+  if (buf.byteLength === 0 || buf.byteLength > THUMB_MAX_BYTES) return null;
+  const path = thumbnailObjectPath(row.project_id, row.id, mime.ext);
+  const { error } = await db.storage.from(RADAR_THUMBS_BUCKET).upload(path, buf, {
+    contentType: mime.mime, upsert: true, cacheControl: "31536000",
+  });
+  if (error) throw new Error(`thumbnail upload: ${error.message}`);
+  return db.storage.from(RADAR_THUMBS_BUCKET).getPublicUrl(path).data.publicUrl;
+}
+
+/**
+ * Скопировать в Storage превью постов с внешними ссылками. Мёртвая ссылка
+ * (4xx, не картинка) обнуляется — интерфейс покажет заглушку вместо битой
+ * картинки, а следующий сбор принесёт свежую. Ошибки сети — в лог, без правок.
+ */
+async function cacheThumbnails(db: SupabaseClient, opts: { postIds?: string[]; projectId?: string; limit: number; deadline?: number }): Promise<{ cached: number; dropped: number }> {
+  const out = { cached: 0, dropped: 0 };
+  const supabaseUrl = env("SUPABASE_URL");
+  let q = db.from("radar_posts").select("id, project_id, thumbnail_url")
+    .like("thumbnail_url", "https://%")
+    .not("thumbnail_url", "like", `${supabaseUrl}/storage/v1/object/public/${RADAR_THUMBS_BUCKET}/%`);
+  if (opts.postIds) {
+    if (opts.postIds.length === 0) return out;
+    q = q.in("id", opts.postIds);
+  }
+  if (opts.projectId) q = q.eq("project_id", opts.projectId);
+  const { data } = await q.order("created_at", { ascending: false }).limit(opts.limit);
+  const rows = ((data ?? []) as ThumbRow[]).filter((r) => needsThumbnailCache(r.thumbnail_url, supabaseUrl));
+  for (const row of rows) {
+    if (opts.deadline && Date.now() > opts.deadline) break;
+    try {
+      const url = await mirrorThumbnail(db, row);
+      // Пока качали, пост могли обновить (новая ссылка CDN) — переписываем только внешнюю.
+      const { data: cur } = await db.from("radar_posts").select("thumbnail_url").eq("id", row.id).maybeSingle();
+      const curUrl = (cur as { thumbnail_url: string | null } | null)?.thumbnail_url ?? null;
+      if (isStoredThumbnail(curUrl, supabaseUrl)) continue;
+      await db.from("radar_posts").update({ thumbnail_url: url }).eq("id", row.id);
+      if (url) out.cached++;
+      else out.dropped++;
+    } catch (e) {
+      console.error("radar thumbnail", row.id, safeTechMessage(e));
+    }
+  }
+  return out;
+}
+
 /** Подписанный callback n8n-сборщика. */
 async function ingest(db: SupabaseClient, body: Json) {
   const projectId = String(body.project_id ?? "");
@@ -211,6 +306,7 @@ async function ingest(db: SupabaseClient, body: Json) {
   const startedAt = new Date().toISOString();
   const items = Array.isArray(body.items) ? body.items : [];
   const r = await ingestItems(db, { projectId, sourceId, platformDefault: String(body.platform ?? "instagram"), items });
+  if (r.ids.length) background(cacheThumbnails(db, { postIds: r.ids, limit: THUMBS_PER_TICK }));
   const errorText = body.error ? String(body.error).slice(0, 500) : null;
 
   await db.from("radar_runs").insert({
@@ -367,6 +463,7 @@ async function syncRuns(db: SupabaseClient, opts: { projectId?: string; limit: n
       if (cost > 0) {
         await db.from("usage_ledger").insert({ project_id: run.project_id, engine: "apify", ref: run.source_id ?? run.id, cost_usd: cost, note: `radar ${run.mode}` });
       }
+      if (r.ids.length) background(cacheThumbnails(db, { postIds: r.ids, limit: THUMBS_PER_TICK }));
       out.newPostIds.push(...r.newIds);
       out.finished++;
     } catch (e) {
@@ -532,6 +629,11 @@ async function maintenance(db: SupabaseClient) {
   // Завершившиеся запуски Apify → посты (до разбора, чтобы новые попали в очередь).
   out.runs_finished = (await syncRuns(db, { limit: 20 })).finished;
 
+  // Превью с внешних CDN → наш Storage (то, что фон после сбора не успел).
+  const thumbs = await cacheThumbnails(db, { limit: THUMBS_PER_TICK, deadline: Date.now() + 15_000 });
+  out.thumbs_cached = thumbs.cached;
+  out.thumbs_dropped = thumbs.dropped;
+
   if (hasAiProvider()) {
     const { data: pending } = await db.from("radar_posts")
       .select("id, project_id, platform, caption, transcript, video_url, media_type, metrics, followers, score, analysis, raw")
@@ -622,6 +724,13 @@ async function handleUser(req: Request, segments: string[], url: URL): Promise<R
     ]);
     const hasPending = synced.newPostIds.length > 0 || (posts ?? []).some((p) => (p as { analysis_status: string }).analysis_status === "pending");
     if (hasPending) background(analyzePending(db, projectId!, ANALYZE_ON_OVERVIEW));
+    // Превью, которые ещё ведут на CDN площадки, копируем в Storage фоном —
+    // так лента чинится сама при следующем обновлении, не дожидаясь крона.
+    const supabaseUrl = env("SUPABASE_URL");
+    const externalThumbs = (posts ?? []).filter((p) => needsThumbnailCache((p as { thumbnail_url: string | null }).thumbnail_url, supabaseUrl));
+    if (externalThumbs.length) {
+      background(cacheThumbnails(db, { postIds: externalThumbs.slice(0, THUMBS_PER_BATCH).map((p) => (p as { id: string }).id), limit: THUMBS_PER_BATCH }));
+    }
     return json({
       ok: true, sources: sources ?? [], metrics: metrics ?? null, ideas: ideas ?? [], posts: posts ?? [], groups: groups ?? [], runs: runs ?? [],
       crawler: { direct: hasDirectCrawler(), n8n: hasN8nCrawler(), ai: hasAiProvider() },

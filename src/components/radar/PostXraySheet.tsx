@@ -13,7 +13,7 @@ import {
 } from "@/lib/radarClient";
 import { formatAge, formatCompact, primaryMetric, usualMetric, VIRAL_X_FACTOR } from "@/lib/radarStats";
 import { cn } from "@/lib/utils";
-import { Chip, errMsg, PlatformChip, ScoreBadge, SectionLabel, XBadge } from "./RadarBits";
+import { Chip, errMsg, PlatformChip, PostThumb, ScoreBadge, SectionLabel, XBadge } from "./RadarBits";
 
 type PostIdea = Pick<Idea, "id" | "title" | "status" | "content_item_id" | "score">;
 const NO_GROUP = "__none__";
@@ -82,7 +82,9 @@ export function PostXraySheet({ post, groups, busy, onClose, onAnalyze, onPromot
             <XBadge x={p.x_factor} size="lg" className="ml-auto" />
           </div>
           <SheetTitle className="flex flex-wrap items-center gap-2 text-lg">
-            {p.author_handle ? `@${p.author_handle}` : "Публикация"}
+            <span className="min-w-0 max-w-full truncate" title={p.author_handle ? `@${p.author_handle}` : undefined}>
+              {p.author_handle ? `@${p.author_handle}` : "Публикация"}
+            </span>
             <PlatformChip platform={p.platform} />
             {a?.niche && <Chip label={a.niche} cls="bg-muted text-muted-foreground" />}
             <Chip label={st.label} cls={st.cls} />
@@ -95,8 +97,8 @@ export function PostXraySheet({ post, groups, busy, onClose, onAnalyze, onPromot
         {error && <div className="mt-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{error}</div>}
 
         <div className="mt-4 grid gap-4 sm:grid-cols-[160px_1fr]">
-          <div className="overflow-hidden rounded-xl bg-muted">
-            {p.thumbnail_url ? <img src={p.thumbnail_url} alt="" className="aspect-[4/5] w-full object-cover" /> : <div className="aspect-[4/5]" />}
+          <div className="aspect-[4/5] overflow-hidden rounded-xl bg-muted">
+            <PostThumb post={p} />
           </div>
           <div className="grid gap-3">
             <div>

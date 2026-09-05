@@ -18,7 +18,7 @@ post_metrics ◀──── publish-metrics ◀──── publish_jobs ◀─
 |---|---|
 | Схема радара | `supabase/migrations/20260905100000_radar.sql` — `radar_sources`, `radar_posts`, `radar_runs`, `idea_bank`, `radar_post_score()`, `radar_recompute_post()`, `radar_due_sources()`, витрина `radar_metrics`, крон `radar-maintenance` |
 | Схема дистрибуции и связки | `supabase/migrations/20260905110000_publishing_scale.sql` — `personas`, колонки `content_plan_items` (`parent_item_id`, `target_group_id`, `persona_id`, `engine`, `idea_id`, `publish_video_id`), колонки групп и аккаунтов, `publish_slots` + `publish_next_slot()` + `plan_publish_slots()`, `claim_publish_jobs` v2 (счётчики, здоровье, партиции), `post_metrics` + `post_metrics_due()` + `idea_recompute_outcomes()`, `publish_project_settings`, `project_budgets` + `usage_ledger` + `project_budget_ok()`, витрина `publish_metrics`, `radar_promote_idea()`, `claim_next_content_job` с фильтром по движку, кроны |
-| Радар | `supabase/functions/radar/index.ts`, чистая логика `supabase/functions/_lib/radar.ts` (нормализация, разбор), `supabase/functions/_lib/radarCrawl.ts` (прямой сборщик Apify: акторы, вход, разворачивание ответа, стоимость); миграция `20260907110000_radar_crawler.sql` (статус и id запуска в `radar_runs`) |
+| Радар | `supabase/functions/radar/index.ts`, чистая логика `supabase/functions/_lib/radar.ts` (нормализация, разбор, превью), `supabase/functions/_lib/radarCrawl.ts` (прямой сборщик Apify: акторы, вход, разворачивание ответа, стоимость); миграции `20260907110000_radar_crawler.sql` (статус и id запуска в `radar_runs`), `20260909100000_radar_thumbnails.sql` (bucket `radar-thumbs` — копии превью) |
 | Конвейер: варианты, персоны, автопередача | `supabase/functions/content-pipeline/index.ts` (маршрут `/items/:id/variants`, `handoffToPublishing`, автоодобрение доверенных групп) |
 | Дистрибуция | `publish-intake` (планировщик слотов, стратегия группы), `publish-worker` (партиции), `_lib/publishers/threads.ts`, `publish-monitor` (обновление токенов, дайджест), `publish-metrics` (новая), `publish-accounts` (персоны, настройки, задания, Threads, «залить в группу»), `_lib/publishRunner.ts` (режим уведомлений) |
 | Интерфейс | `src/pages/Radar.tsx` + компоненты `src/components/radar/*` (строка статуса и поле ссылки `RadarHero`, лента `TrendsTab`/`TrendCard`, «рентген» поста `PostXraySheet`, `IdeaCard`, рейтинг `AuthorsTab`, `SourcesTab`, `RunsTab`) + `src/lib/radarClient.ts` + чистые вычисления `src/lib/radarStats.ts` + `src/hooks/useRadar.ts`; `src/pages/Publishing.tsx` + `src/lib/publishingClient.ts` + `src/hooks/usePublishing.ts`; блок вариантов в `src/components/content-plan/ContentPipelinePanel.tsx` |
@@ -70,6 +70,17 @@ Facebook-акторов сопоставлены по полям GraphQL/акт�
 скорость, оценка `radar_post_score()` (насыщение около 5 % ER, 200 взаимодействий/час, оценка
 модели даёт половину веса). Пост с оценкой ≥ 55 становится идеей в `idea_bank`. Бюджет проекта
 (`project_budget_ok`) проверяется перед каждым разбором и сбором.
+
+**Превью постов (миграция `20260909100000_radar_thumbnails.sql`).** Сборщики отдают ссылки на CDN
+площадок (`displayUrl` Instagram и т.п.): они подписаны, живут дни и из браузера с чужим referrer
+часто отдают 403 — в ленте были битые картинки. После ingest (фоном), при `GET /radar` (для постов,
+чьё превью ещё ведёт на CDN) и по крону `radar-maintenance` (до 40 за тик) `cacheThumbnails()`
+скачивает картинку (`image/*`, ≤ 5 МБ), кладёт в публичный bucket `radar-thumbs` по пути
+`<project>/<post>.<ext>` и переписывает `radar_posts.thumbnail_url` на постоянную ссылку
+(исходная остаётся в `raw`). Мёртвая ссылка (4xx, не картинка) обнуляется — интерфейс рисует
+заглушку. Повторный сбор того же поста не перетирает нашу копию свежей ссылкой CDN
+(`isStoredThumbnail`). На клиенте `PostThumb` грузит `<img referrerPolicy="no-referrer">` и при
+ошибке показывает заглушку в цвете площадки с началом подписи.
 
 **X-фактор (миграция `20260908120000_radar_xfactor.sql`, идея — viralex.ai «обычно / сейчас / ×N»).**
 `radar_recompute_author()` считает по каждому автору медиану просмотров и лайков за 90 дней
