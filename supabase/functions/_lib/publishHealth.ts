@@ -16,8 +16,18 @@ export const MIN_PUBLISHABLE = 20;
 
 const DAY = 86_400_000;
 
+/**
+ * Площадки, у которых access-token по замыслу короткий (TikTok — 24 ч, YouTube —
+ * 1 ч) и монитор продлевает его refresh-токеном сам. Штрафовать их за «истекает
+ * через 24 ч» — значит держать здоровье на 65 вечно; настоящий сигнал у них —
+ * провал обновления, а это уже status = token_expired.
+ */
+export const SHORT_LIVED_TOKEN_PLATFORMS: ReadonlySet<string> = new Set(["tiktok", "youtube"]);
+
 export interface HealthInput {
   status: "active" | "token_expired" | "limited" | "error" | "disabled";
+  /** Площадка аккаунта — нужна, чтобы не штрафовать короткие токены за срок. */
+  platform?: string | null;
   /** Итог живой проверки токена у площадки; null — проверка не делалась. */
   tokenAlive: boolean | null;
   tokenExpiresAt: string | null;
@@ -64,7 +74,8 @@ export function computeHealth(i: HealthInput): HealthResult {
 
   /* ── срок токена ── */
   const left = daysUntil(i.tokenExpiresAt, now);
-  if (left != null && i.tokenAlive !== false && i.status !== "token_expired") {
+  const shortLived = SHORT_LIVED_TOKEN_PLATFORMS.has(String(i.platform ?? ""));
+  if (left != null && i.tokenAlive !== false && i.status !== "token_expired" && !shortLived) {
     if (left <= 0) {
       cap = Math.min(cap, MIN_PUBLISHABLE - 5);
       reasons.push("срок токена истёк — переподключите аккаунт");

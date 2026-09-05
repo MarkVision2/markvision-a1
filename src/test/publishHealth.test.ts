@@ -74,3 +74,31 @@ describe("computeHealth", () => {
     expect(r.reasons.length).toBe(4);
   });
 });
+
+describe("короткие токены площадок", () => {
+  const base: HealthInput = {
+    status: "active", tokenAlive: true, lastCheckedAt: new Date().toISOString(),
+    consecutiveErrors: 0, failed30d: 0, published30d: 0,
+    tokenExpiresAt: new Date(Date.now() + 20 * 3_600_000).toISOString(), // через 20 ч
+  };
+
+  it("TikTok с 24-часовым токеном не штрафуется за срок — монитор продлит сам", () => {
+    const h = computeHealth({ ...base, platform: "tiktok" });
+    expect(h.score).toBe(100);
+    expect(h.reasons.join(" ")).not.toMatch(/истекает/);
+  });
+
+  it("YouTube с часовым токеном — тоже", () => {
+    expect(computeHealth({ ...base, platform: "youtube", tokenExpiresAt: new Date(Date.now() + 3_600_000).toISOString() }).score).toBe(100);
+  });
+
+  it("Instagram/Threads со скорым сроком — штраф остаётся: там истечение значит, что продление не удалось", () => {
+    const h = computeHealth({ ...base, platform: "instagram" });
+    expect(h.score).toBe(65);
+    expect(h.reasons.join(" ")).toMatch(/истекает через \d+ ч/);
+  });
+
+  it("но провал обновления короткого токена по-прежнему валит здоровье", () => {
+    expect(computeHealth({ ...base, platform: "tiktok", status: "token_expired" }).score).toBeLessThan(MIN_PUBLISHABLE);
+  });
+});

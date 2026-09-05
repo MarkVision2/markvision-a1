@@ -197,6 +197,7 @@ async function checkHealth(admin: SupabaseClient, projectId: string | null, acco
       : probe.alive === true && account.status === "token_expired" ? "active" : account.status;
     const o = stats.get(account.id) ?? { failed: 0, published: 0 };
     const h = computeHealth({
+      platform: account.platform,
       status: nextStatus,
       tokenAlive: probe.alive,
       tokenExpiresAt: account.token_expires_at,
@@ -304,6 +305,7 @@ async function checkTokens(admin: SupabaseClient) {
     const isDead = deadIds.has(account.id);
     const o = stats.get(account.id) ?? { failed: 0, published: 0 };
     const h = computeHealth({
+      platform: account.platform,
       status: isDead ? "token_expired" : account.status,
       tokenAlive: !isDead,
       tokenExpiresAt: account.token_expires_at,
