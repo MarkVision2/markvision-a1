@@ -5,23 +5,39 @@
  *
  * Текст описывает реальную платформу: модули, интеграции и данные, которые
  * она обрабатывает (инвентаризация — docs/TIKTOK-DEVELOPER-APP.md, раздел
- * «Юридические страницы»). Реквизиты оператора — в LEGAL_ORG: проверьте и
- * дополните перед подачей заявок.
+ * «Юридические страницы»). Реквизиты оператора — LEGAL_ORG (по справке о
+ * госрегистрации ТОО); при смене адреса или email править только там.
  */
 
 export type LegalLang = "ru" | "en";
 export type LegalDoc = "terms" | "privacy";
 
-/** Реквизиты оператора платформы. */
+/**
+ * Реквизиты оператора платформы — по справке о государственной регистрации
+ * юридического лица (egov.kz, 10.02.2026).
+ */
 export const LEGAL_ORG = {
   brand: "MarkVision AI",
-  /** Юридическое лицо — заполните официальным названием (ТОО/ИП) и БИН/ИИН. */
-  entity: { ru: "MarkVision AI (оператор платформы)", en: "MarkVision AI (platform operator)" },
+  entity: { ru: "ТОО «MarkVision AI»", en: "MarkVision AI LLP" },
+  bin: "260240010690",
+  address: {
+    ru: "Республика Казахстан, Павлодарская область, город Павлодар, улица Камзина, дом 41/1, кв. 82, 140011",
+    en: "41/1 Kamzin Street, apt. 82, Pavlodar, Pavlodar Region, 140011, Republic of Kazakhstan",
+  },
+  director: { ru: "Запойнов Юрий Валерьевич", en: "Yuriy Zapoynov" },
+  registered: { ru: "10 февраля 2026 г.", en: "10 February 2026" },
   site: "https://www.markvision.kz",
-  email: "support@markvision.kz",
+  email: "admin@markvision.kz",
   jurisdiction: { ru: "Республика Казахстан", en: "Republic of Kazakhstan" },
   effectiveDate: "2026-09-05",
 };
+
+/** Строка с полными реквизитами для разделов «Контакты». */
+export function legalRequisites(lang: LegalLang): string {
+  return lang === "ru"
+    ? `${LEGAL_ORG.entity.ru}, БИН ${LEGAL_ORG.bin}. Адрес: ${LEGAL_ORG.address.ru}. Руководитель: ${LEGAL_ORG.director.ru}. Сайт: ${LEGAL_ORG.site}. Email: ${LEGAL_ORG.email}.`
+    : `${LEGAL_ORG.entity.en}, Business Identification Number (BIN) ${LEGAL_ORG.bin}. Address: ${LEGAL_ORG.address.en}. Director: ${LEGAL_ORG.director.en}. Website: ${LEGAL_ORG.site}. Email: ${LEGAL_ORG.email}.`;
+}
 
 export interface LegalSection {
   id: string;
@@ -51,7 +67,7 @@ const PRIVACY_RU: LegalDocument = {
       id: "scope",
       title: "1. О чём эта политика",
       body: [
-        `Политика описывает обработку данных на платформе ${LEGAL_ORG.brand} (сайт ${LEGAL_ORG.site} и все его страницы, включая личный кабинет, публичные страницы и клиентские дашборды). Оператор — ${LEGAL_ORG.entity.ru}, контакт: ${LEGAL_ORG.email}.`,
+        `Политика описывает обработку данных на платформе ${LEGAL_ORG.brand} (сайт ${LEGAL_ORG.site} и все его страницы, включая личный кабинет, публичные страницы и клиентские дашборды). Оператор — ${LEGAL_ORG.entity.ru} (БИН ${LEGAL_ORG.bin}, ${LEGAL_ORG.address.ru}), контакт: ${LEGAL_ORG.email}.`,
         "MarkVision AI — B2B-платформа для бизнеса и маркетинговых агентств: запуск рекламы, CRM, сквозная аналитика, производство контента с помощью ИИ, автопубликация в социальные сети и автоматизация продаж. Пользователи платформы — компании (наши клиенты) и их сотрудники.",
         "В отношении данных сотрудников клиента (учётные записи) мы выступаем оператором. В отношении данных, которые клиент загружает или получает через интеграции (его лиды, переписки, звонки, медиа), клиент — оператор данных, а MarkVision AI обрабатывает их по его поручению и только для оказания услуг.",
       ],
@@ -178,7 +194,7 @@ const PRIVACY_RU: LegalDocument = {
     {
       id: "contacts",
       title: "14. Контакты",
-      body: [`${LEGAL_ORG.entity.ru}. Сайт: ${LEGAL_ORG.site}. Email по вопросам данных: ${LEGAL_ORG.email}. Юрисдикция: ${LEGAL_ORG.jurisdiction.ru}.`],
+      body: [legalRequisites("ru"), `Юрисдикция: ${LEGAL_ORG.jurisdiction.ru}. Запросы по персональным данным принимаются на ${LEGAL_ORG.email}.`],
     },
   ],
 };
@@ -192,7 +208,7 @@ const PRIVACY_EN: LegalDocument = {
       id: "scope",
       title: "1. What this policy covers",
       body: [
-        `This policy describes data processing on the ${LEGAL_ORG.brand} platform (the website ${LEGAL_ORG.site} and all of its pages, including the workspace, public pages and client dashboards). The operator is ${LEGAL_ORG.entity.en}; contact: ${LEGAL_ORG.email}.`,
+        `This policy describes data processing on the ${LEGAL_ORG.brand} platform (the website ${LEGAL_ORG.site} and all of its pages, including the workspace, public pages and client dashboards). The operator is ${LEGAL_ORG.entity.en} (BIN ${LEGAL_ORG.bin}, ${LEGAL_ORG.address.en}); contact: ${LEGAL_ORG.email}.`,
         "MarkVision AI is a B2B platform for businesses and marketing agencies: ad launch, CRM, end-to-end analytics, AI content production, auto-publishing to social networks and sales automation. Platform users are companies (our customers) and their employees.",
         "For employee accounts of a customer we act as the data controller. For data a customer uploads or receives through integrations (their leads, conversations, calls, media) the customer is the controller and MarkVision AI processes that data on the customer's behalf, only to provide the service.",
       ],
@@ -319,7 +335,7 @@ const PRIVACY_EN: LegalDocument = {
     {
       id: "contacts",
       title: "14. Contacts",
-      body: [`${LEGAL_ORG.entity.en}. Website: ${LEGAL_ORG.site}. Data requests: ${LEGAL_ORG.email}. Jurisdiction: ${LEGAL_ORG.jurisdiction.en}.`],
+      body: [legalRequisites("en"), `Jurisdiction: ${LEGAL_ORG.jurisdiction.en}. Personal data requests are accepted at ${LEGAL_ORG.email}.`],
     },
   ],
 };
@@ -335,7 +351,7 @@ const TERMS_RU: LegalDocument = {
       id: "acceptance",
       title: "1. Принятие условий",
       body: [
-        `Настоящие условия регулируют использование платформы ${LEGAL_ORG.brand} (${LEGAL_ORG.site}), которую предоставляет ${LEGAL_ORG.entity.ru} («мы»). Входя в платформу или используя её функции, вы принимаете эти условия и Политику конфиденциальности (${LEGAL_ORG.site}/privacy).`,
+        `Настоящие условия регулируют использование платформы ${LEGAL_ORG.brand} (${LEGAL_ORG.site}), которую предоставляет ${LEGAL_ORG.entity.ru}, БИН ${LEGAL_ORG.bin} («мы»). Входя в платформу или используя её функции, вы принимаете эти условия и Политику конфиденциальности (${LEGAL_ORG.site}/privacy).`,
         "Если вы используете платформу от имени компании, вы подтверждаете, что уполномочены принять условия от её имени; «клиент» в этом документе — такая компания.",
       ],
     },
@@ -448,7 +464,7 @@ const TERMS_RU: LegalDocument = {
     {
       id: "contacts",
       title: "14. Контакты",
-      body: [`${LEGAL_ORG.entity.ru}. Сайт: ${LEGAL_ORG.site}. Email: ${LEGAL_ORG.email}.`],
+      body: [legalRequisites("ru")],
     },
   ],
 };
@@ -462,7 +478,7 @@ const TERMS_EN: LegalDocument = {
       id: "acceptance",
       title: "1. Acceptance",
       body: [
-        `These terms govern the use of the ${LEGAL_ORG.brand} platform (${LEGAL_ORG.site}) provided by ${LEGAL_ORG.entity.en} (“we”). By signing in to the platform or using its features you accept these terms and the Privacy Policy (${LEGAL_ORG.site}/privacy).`,
+        `These terms govern the use of the ${LEGAL_ORG.brand} platform (${LEGAL_ORG.site}) provided by ${LEGAL_ORG.entity.en}, BIN ${LEGAL_ORG.bin} (“we”). By signing in to the platform or using its features you accept these terms and the Privacy Policy (${LEGAL_ORG.site}/privacy).`,
         "If you use the platform on behalf of a company, you confirm that you are authorised to accept the terms on its behalf; “customer” in this document means that company.",
       ],
     },
@@ -575,7 +591,7 @@ const TERMS_EN: LegalDocument = {
     {
       id: "contacts",
       title: "14. Contacts",
-      body: [`${LEGAL_ORG.entity.en}. Website: ${LEGAL_ORG.site}. Email: ${LEGAL_ORG.email}.`],
+      body: [legalRequisites("en")],
     },
   ],
 };

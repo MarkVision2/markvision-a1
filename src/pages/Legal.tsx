@@ -97,9 +97,14 @@ export default function Legal({ doc }: { doc: LegalDoc }) {
               </section>
             ))}
 
-            <footer className={cn("border-t pt-6 text-xs text-muted-foreground")}>
-              © {new Date().getFullYear()} {LEGAL_ORG.brand}. {lang === "ru" ? "Все права защищены." : "All rights reserved."}{" "}
-              <a href={LEGAL_ORG.site} className="underline underline-offset-2">{LEGAL_ORG.site.replace(/^https?:\/\//, "")}</a>
+            <footer className={cn("space-y-1 border-t pt-6 text-xs text-muted-foreground")}>
+              <div>© {new Date().getFullYear()} {LEGAL_ORG.entity[lang]}. {lang === "ru" ? "Все права защищены." : "All rights reserved."}</div>
+              <div>{lang === "ru" ? "БИН" : "BIN"} {LEGAL_ORG.bin} · {LEGAL_ORG.address[lang]}</div>
+              <div>
+                <a href={`mailto:${LEGAL_ORG.email}`} className="underline underline-offset-2">{LEGAL_ORG.email}</a>
+                {" · "}
+                <a href={LEGAL_ORG.site} className="underline underline-offset-2">{LEGAL_ORG.site.replace(/^https?:\/\//, "")}</a>
+              </div>
             </footer>
           </article>
         </div>

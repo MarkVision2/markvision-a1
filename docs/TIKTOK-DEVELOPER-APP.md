@@ -35,8 +35,9 @@ Developers и показать интеграцию в демо-видео: чт
 Юридические страницы (общие для всей платформы, RU/EN):
 `https://www.markvision.kz/terms` и `https://www.markvision.kz/privacy`
 (`src/pages/Legal.tsx`, тексты — `src/data/legalContent.ts`). Реквизиты
-оператора — `LEGAL_ORG` в том же файле: **впишите юридическое лицо (ТОО/ИП,
-БИН) и проверьте email поддержки** до подачи.
+оператора — `LEGAL_ORG` в том же файле, заполнены по справке о госрегистрации:
+ТОО «MarkVision AI», БИН 260240010690, Павлодар, ул. Камзина 41/1, кв. 82,
+140011; email `admin@markvision.kz`. При смене адреса/почты править только там.
 
 ## Секреты и настройка
 
@@ -61,6 +62,18 @@ Redirect URI на домене Supabase допустим: TikTok требует 
 совпадение с зарегистрированным, а не совпадение с доменом сайта. Домен сайта
 (`www.markvision.kz`) указывается отдельно в поле Web/Desktop URL и должен
 совпадать с тем, что видно в демо-видео.
+
+Проверка одной командой (ничего не меняет; ключ — `automation_settings.cron_secret`,
+тот же, что у `publishing-doctor`):
+
+```bash
+node scripts/tiktok-doctor.mjs --key <cron_secret>
+```
+
+Показывает: задеплоены ли `publish-oauth` и `tiktok-connect`, заданы ли
+`TIKTOK_CLIENT_KEY` / `TIKTOK_CLIENT_SECRET` / `PUBLISH_TOKEN_KEY`, похож ли ключ
+на ключ TikTok (`aw…` / `sbaw…`, не числовой App ID), что отвечает TikTok на
+наш client key, открываются ли `/terms` и `/privacy` на боевом домене.
 
 Деплой: функции `publish-oauth` и `tiktok-connect` (`verify_jwt = false` уже в
 `supabase/config.toml`, JWT проверяется внутри). Миграций новых нет —
@@ -94,6 +107,8 @@ Redirect URI на домене Supabase допустим: TikTok требует 
 **App name:** MarkVision AI
 **Category:** Business / Marketing tools
 **Web/Desktop URL:** `https://www.markvision.kz`
+**Developer / company:** MarkVision AI LLP (ТОО «MarkVision AI»), BIN 260240010690, Pavlodar, Kazakhstan
+**Contact email:** `admin@markvision.kz`
 **Terms of Service URL:** `https://www.markvision.kz/terms`
 **Privacy Policy URL:** `https://www.markvision.kz/privacy`
 **Platforms:** Web
@@ -173,11 +188,11 @@ Redirect URI на домене Supabase допустим: TikTok требует 
 
 ## Чеклист перед подачей
 
-- [ ] `LEGAL_ORG` (юрлицо, email) заполнены, `/terms` и `/privacy` открываются с
-      прод-домена без входа.
-- [ ] Секреты `TIKTOK_CLIENT_KEY` / `TIKTOK_CLIENT_SECRET` заданы (для демо —
-      песочница), `PUBLISH_TOKEN_KEY` задан; `GET /publish-oauth/diag` без
-      `shape_problem`.
+- [ ] Ветка влита в `main` — только так деплоятся функции (`tiktok-connect`,
+      обновлённый `publish-oauth`) и фронт с `/marketing/tiktok`, `/terms`, `/privacy`.
+- [ ] `node scripts/tiktok-doctor.mjs --key <cron_secret>` — без красных строк:
+      секреты `TIKTOK_CLIENT_KEY` / `TIKTOK_CLIENT_SECRET` (для демо — песочница) и
+      `PUBLISH_TOKEN_KEY` заданы, ключ без `shape_problem`, страницы открываются.
 - [ ] Redirect URI зарегистрирован в Login Kit (и в песочнице).
 - [ ] В приложении оставлены только Login Kit, Display API, Content Posting
       API; Share Kit удалён; список scopes совпадает с `TIKTOK_SCOPES`.
