@@ -12,7 +12,8 @@
  * google-oauth-callback. Токены шифруются PUBLISH_TOKEN_KEY, scope сохраняется в
  * publish_accounts.oauth_scope. Секреты приложений:
  *   THREADS_APP_ID / THREADS_APP_SECRET
- *   TIKTOK_CLIENT_KEY / TIKTOK_CLIENT_SECRET
+ *   TIKTOK_CLIENT_KEY / TIKTOK_CLIENT_SECRET (+ необязательный TIKTOK_SCOPES — урезать права
+ *   под песочницу; по умолчанию каталог _lib/tiktokApi.ts: Login Kit + Display API + Content Posting API)
  *   GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET (тот же клиент, что у Google Ads;
  *   в консоли Google Cloud включить YouTube Data API и добавить redirect URI этой функции)
  */
@@ -224,7 +225,14 @@ async function start(req: Request, admin: SupabaseClient): Promise<Response> {
   }).select("id").single();
   if (error || !state) return json({ error: error?.message ?? "state" }, 500);
 
-  return json({ url: authorizeUrl(platform, { clientId: creds.clientId, redirectUri: redirectUri(platform), state: (state as { id: string }).id }) });
+  return json({
+    url: authorizeUrl(platform, {
+      clientId: creds.clientId,
+      redirectUri: redirectUri(platform),
+      state: (state as { id: string }).id,
+      ...(platform === "tiktok" && Deno.env.get("TIKTOK_SCOPES")?.trim() ? { scope: Deno.env.get("TIKTOK_SCOPES")!.trim() } : {}),
+    }),
+  });
 }
 
 async function callback(url: URL, platform: OAuthPlatform, admin: SupabaseClient): Promise<Response> {

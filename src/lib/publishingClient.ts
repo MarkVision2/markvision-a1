@@ -551,10 +551,13 @@ export async function runHealthCheck(projectId: string, accountIds?: string[]): 
 
 export type OAuthPlatform = "threads" | "tiktok" | "youtube";
 
-/** Ссылка на согласие площадки (edge publish-oauth/start); открывать в новом окне. */
-export async function startPublishOAuth(projectId: string, platform: OAuthPlatform, groupId?: string | null): Promise<string> {
+/**
+ * Ссылка на согласие площадки (edge publish-oauth/start); открывать в новом окне.
+ * returnPath — куда вернуть пользователя после согласия (по умолчанию «Публикации»).
+ */
+export async function startPublishOAuth(projectId: string, platform: OAuthPlatform, groupId?: string | null, returnPath = "/marketing/publishing"): Promise<string> {
   const { data, error } = await supabase.functions.invoke("publish-oauth/start", {
-    body: { project_id: projectId, platform, return_url: `${window.location.origin}/marketing/publishing`, group_id: groupId ?? null },
+    body: { project_id: projectId, platform, return_url: `${window.location.origin}${returnPath}`, group_id: groupId ?? null },
   });
   if (error) {
     const ctx = (error as { context?: Response }).context;

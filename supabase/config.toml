@@ -253,3 +253,8 @@ verify_jwt = false
 # UNAUTHORIZED_NO_AUTH_HEADER — заливка >45 МБ из композера и монтажа не работала.
 [functions.r2-presign-upload]
 verify_jwt = false
+
+# Раздел «Подключение TikTok» (docs/TIKTOK-DEVELOPER-APP.md): Display API и
+# Content Posting API поверх аккаунтов publish_accounts; JWT проверяется внутри.
+[functions.tiktok-connect]
+verify_jwt = false
