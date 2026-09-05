@@ -118,10 +118,23 @@ export default function Radar() {
   };
 
   const deleteSource = async (s: RadarSource) => {
-    if (!window.confirm(`Удалить источник ${sourceTitle(s)}? Собранные посты останутся.`)) return;
+    // Сначала показываем, что именно исчезнет: посты уходят из «Трендов»,
+    // идеи из банка — тоже, кроме уже отправленных в контент-план.
+    let impact = { posts: 0, ideas: 0 };
     try {
-      await r.deleteSource(s.id);
-      toast.success("Источник удалён");
+      impact = await r.sourceImpact(s.id);
+    } catch {
+      /* не смогли посчитать — спросим без чисел */
+    }
+    const details = impact.posts || impact.ideas
+      ? `\n\nБудут удалены: постов — ${impact.posts}, идей — ${impact.ideas}. Идеи, ставшие темами контент-плана, останутся.`
+      : "";
+    if (!window.confirm(`Удалить источник ${sourceTitle(s)}?${details}`)) return;
+    try {
+      const res = await r.deleteSource(s.id);
+      toast.success("Источник удалён", {
+        description: res.posts || res.ideas ? `Удалено постов — ${res.posts}, идей — ${res.ideas}` : undefined,
+      });
     } catch (e) {
       toast.error(errMsg(e, "Не удалось удалить источник"));
     }

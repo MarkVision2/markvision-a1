@@ -4,7 +4,7 @@
  * оценка) и сетка карточек постов.
  */
 import { useMemo, useState } from "react";
-import { Flame, Search } from "lucide-react";
+import { Flame, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -43,6 +43,16 @@ export function TrendsTab({ posts, ownSourceIds, busy, onOpen, onAnalyze, onAddS
   const platformsPresent = useMemo(() => new Set(posts.map((p) => p.platform)), [posts]);
   const visible = useMemo(() => filterTrends(posts, filter), [posts, filter]);
   const viralCount = useMemo(() => posts.filter((p) => Number(p.x_factor) >= VIRAL_X_FACTOR).length, [posts]);
+  const activeFilters = useMemo(() => {
+    const list: { key: string; label: string; clear: () => void }[] = [];
+    if (filter.viralOnly) list.push({ key: "viral", label: `только залетевшие (×${VIRAL_X_FACTOR} и выше)`, clear: () => set({ viralOnly: false }) });
+    if (filter.platform !== "all") list.push({ key: "platform", label: PLATFORM_META[filter.platform]?.label ?? filter.platform, clear: () => set({ platform: "all" }) });
+    if (filter.period !== "all") list.push({ key: "period", label: TREND_PERIODS.find((p) => p.value === filter.period)?.label ?? filter.period, clear: () => set({ period: "all" }) });
+    if (filter.niche) list.push({ key: "niche", label: `ниша «${filter.niche}»`, clear: () => set({ niche: null }) });
+    if (filter.query.trim()) list.push({ key: "query", label: `поиск «${filter.query.trim()}»`, clear: () => set({ query: "" }) });
+    return list;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter]);
 
   if (posts.length === 0) {
     return (
@@ -105,6 +115,23 @@ export function TrendsTab({ posts, ownSourceIds, busy, onOpen, onAnalyze, onAddS
         ))}
         <span className="ml-auto text-xs text-muted-foreground">{visible.length} из {posts.length}</span>
       </div>
+
+      {activeFilters.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-xs" role="status">
+          <span className="font-semibold text-foreground">Показаны {visible.length} из {posts.length}</span>
+          {activeFilters.map((f) => (
+            <span key={f.key} className="inline-flex items-center gap-1 rounded-full bg-background/70 px-2 py-0.5 text-muted-foreground">
+              {f.label}
+              <button type="button" aria-label={`Снять фильтр: ${f.label}`} className="text-muted-foreground hover:text-foreground" onClick={f.clear}>
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+          <Button size="sm" variant="ghost" className="ml-auto h-7 px-2 text-xs" onClick={() => setFilter(DEFAULT_TREND_FILTER)}>
+            Сбросить всё
+          </Button>
+        </div>
+      )}
 
       {visible.length === 0 ? (
         <Empty>Под эти фильтры постов нет — снимите период или нишу.</Empty>

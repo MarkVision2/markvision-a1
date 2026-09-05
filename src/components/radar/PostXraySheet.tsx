@@ -13,6 +13,7 @@ import {
 } from "@/lib/radarClient";
 import { formatAge, formatCompact, primaryMetric, usualMetric, VIRAL_X_FACTOR } from "@/lib/radarStats";
 import { cn } from "@/lib/utils";
+import { PostVideo } from "./PostVideo";
 import { Chip, errMsg, PlatformChip, PostThumb, ScoreBadge, SectionLabel, XBadge } from "./RadarBits";
 
 type PostIdea = Pick<Idea, "id" | "title" | "status" | "content_item_id" | "score">;
@@ -97,8 +98,8 @@ export function PostXraySheet({ post, groups, busy, onClose, onAnalyze, onPromot
         {error && <div className="mt-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{error}</div>}
 
         <div className="mt-4 grid gap-4 sm:grid-cols-[160px_1fr]">
-          <div className="aspect-[4/5] overflow-hidden rounded-xl bg-muted">
-            <PostThumb post={p} />
+          <div className="relative aspect-[4/5] overflow-hidden rounded-xl bg-muted">
+            <PostVideo post={p} poster={<PostThumb post={p} className="absolute inset-0" />} />
           </div>
           <div className="grid gap-3">
             <div>

@@ -55,6 +55,8 @@ export interface RadarPost {
   media_type: string | null;
   caption: string | null;
   thumbnail_url: string | null;
+  /** Прямая ссылка на файл видео у площадки — для просмотра прямо на странице. */
+  video_url?: string | null;
   metrics: Partial<RadarPostMetrics> | null;
   followers: number | null;
   engagement_rate: number | null;
@@ -125,6 +127,7 @@ export interface RadarMetrics {
   sources_total: number;
   posts_total: number;
   posts_7d: number;
+  posts_today: number;
   /** В очереди на разбор (pending + failed). */
   posts_unanalyzed: number;
   posts_analyzed: number;
@@ -132,6 +135,11 @@ export interface RadarMetrics {
   posts_viral: number;
   /** Постов, у которых X-фактор вообще посчитан — знаменатель «залетевших». */
   posts_scored: number;
+  /** Рекорд проекта: самый «залетевший» пост и его автор. */
+  best_x_factor: number | null;
+  best_x_author: string | null;
+  /** Ниша, которая чаще всего встречается в разборах. */
+  top_niche: string | null;
   ideas_total: number;
   ideas_new: number;
   ideas_approved: number;
@@ -293,7 +301,8 @@ export const radarApi = {
     call<RadarOverview>(`radar?project_id=${encodeURIComponent(projectId)}`, "GET"),
   upsertSource: (input: UpsertSourceInput) =>
     call<{ source: RadarSource; kicked: boolean; kick_error?: string | null; run_id?: string | null }>("radar/sources", "POST", { ...input }),
-  deleteSource: (id: string) => call<{ ok: true }>(`radar/sources/${id}/delete`, "POST", {}),
+  sourceImpact: (id: string) => call<{ posts: number; ideas: number }>(`radar/sources/${id}/impact`, "POST", {}),
+  deleteSource: (id: string) => call<{ ok: true; posts: number; ideas: number }>(`radar/sources/${id}/delete`, "POST", {}),
   crawlSource: (id: string) => call<{ kicked: boolean; run_id?: string | null }>(`radar/sources/${id}/crawl`, "POST", {}),
   analyzeUrl: (projectId: string, url: string) =>
     call<{ kicked: boolean; run_id?: string | null; message: string }>("radar/analyze-url", "POST", { project_id: projectId, url }),

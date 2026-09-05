@@ -166,7 +166,7 @@ export function Empty({ children, action }: { children: ReactNode; action?: Reac
  * цифра на странице выглядит взятой с потолка.
  */
 export function MetricTile({
-  label, value, sub, hint, accent = false,
+  label, value, sub, hint, accent = false, valueSize = "lg",
 }: {
   label: string;
   value: string | number;
@@ -174,6 +174,8 @@ export function MetricTile({
   sub?: ReactNode;
   hint?: string;
   accent?: boolean;
+  /** Текстовое значение (ниша, название) не помещается крупным кеглем. */
+  valueSize?: "lg" | "sm";
 }) {
   return (
     <div
@@ -184,7 +186,16 @@ export function MetricTile({
       title={hint}
     >
       <div className="truncate text-xs text-muted-foreground" title={label}>{label}</div>
-      <div className={cn("mt-1 text-2xl font-semibold leading-none tabular-nums", accent && "text-success")}>{value}</div>
+      <div
+        className={cn(
+          "mt-1 font-semibold leading-tight",
+          valueSize === "lg" ? "text-2xl leading-none tabular-nums" : "line-clamp-2 text-base",
+          accent && "text-success",
+        )}
+        title={valueSize === "sm" && typeof value === "string" ? value : undefined}
+      >
+        {value}
+      </div>
       <div className="mt-1.5 min-h-[1rem] truncate text-[11px] leading-4 text-muted-foreground" title={typeof sub === "string" ? sub : undefined}>
         {sub}
       </div>

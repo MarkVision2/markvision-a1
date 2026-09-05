@@ -7,7 +7,7 @@ import { HelpCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { RadarMetrics } from "@/lib/radarClient";
-import { formatUsd, VIRAL_X_FACTOR } from "@/lib/radarStats";
+import { formatUsd, formatX, VIRAL_X_FACTOR } from "@/lib/radarStats";
 import { MetricTile, SectionLabel } from "./RadarBits";
 
 interface MetricsRowProps {
@@ -89,6 +89,10 @@ export function MetricsRow({ metrics, sourcesFallback }: MetricsRowProps) {
   const ideasTotal = num(metrics?.ideas_total);
   const ideasApproved = num(metrics?.ideas_approved);
   const ideasUsed = num(metrics?.ideas_used);
+  const postsToday = num(metrics?.posts_today);
+  const bestX = metrics?.best_x_factor == null ? null : Number(metrics.best_x_factor);
+  const bestAuthor = metrics?.best_x_author ?? null;
+  const topNiche = metrics?.top_niche ?? null;
   const crawlUsd = num(metrics?.spent_month_crawl_usd);
   const aiUsd = num(metrics?.spent_month_ai_usd);
   const totalUsd = num(metrics?.spent_month_usd);
@@ -110,7 +114,7 @@ export function MetricsRow({ metrics, sourcesFallback }: MetricsRowProps) {
         <MetricTile
           label="Постов за 7 дней"
           value={posts7d}
-          sub={`всего собрано ${postsTotal}`}
+          sub={postsToday ? `сегодня +${postsToday} · всего ${postsTotal}` : `всего собрано ${postsTotal}`}
           hint="Публикации, попавшие в базу радара за последние 7 дней"
         />
         <MetricTile
@@ -119,6 +123,12 @@ export function MetricsRow({ metrics, sourcesFallback }: MetricsRowProps) {
           sub={scored ? `из ${scored} с X-фактором` : "X-фактор ещё не посчитан"}
           hint={`Постов с X-фактором ≥ ${VIRAL_X_FACTOR} — обошли обычный результат автора минимум вдвое`}
           accent={viral > 0}
+        />
+        <MetricTile
+          label="Лучший X-фактор"
+          value={bestX ? formatX(bestX) : "—"}
+          sub={bestAuthor ? `@${bestAuthor}` : "нужен хотя бы один разбор"}
+          hint="Рекорд проекта: во сколько раз лучший пост обошёл обычный результат своего автора"
         />
         <MetricTile
           label="Ждут разбора"
@@ -137,6 +147,13 @@ export function MetricsRow({ metrics, sourcesFallback }: MetricsRowProps) {
           value={ideasUsed}
           sub={ideasUsed ? `${plural(ideasUsed, "тема", "темы", "тем")} в контент-плане` : "ещё ни одной"}
           hint="Идеи, которые вы отправили в контент-план кнопкой «В контент-план»"
+        />
+        <MetricTile
+          label="Чаще всего заходит"
+          value={topNiche ?? "—"}
+          valueSize="sm"
+          sub={topNiche ? "ниша из разборов" : "появится после разборов"}
+          hint="Ниша, которая чаще других встречается в разборах собранных постов"
         />
         <MetricTile
           label={`Расход за ${currentMonth()}`}
