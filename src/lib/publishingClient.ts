@@ -67,6 +67,8 @@ export interface AvailablePage {
   ig_followers?: number | null;
   connectable: boolean;
   already_connected: boolean;
+  /** Название проекта, где этот же Instagram уже подключён; null — нигде. */
+  connected_elsewhere?: string | null;
 }
 
 export interface PublishGroup {
@@ -257,6 +259,17 @@ export const JOB_STATUS_META: Record<PublishJobStatus, { label: string; cls: str
   failed: { label: "Ошибка", cls: "bg-destructive/10 text-destructive" },
   manual_review: { label: "Ручная проверка", cls: "bg-sky-500/10 text-sky-700 dark:text-sky-300" },
   cancelled: { label: "Отменено", cls: "bg-muted text-muted-foreground" },
+};
+
+/** Что можно сделать с заданием из интерфейса — зеркало проверок job_retry/job_cancel. */
+export const JOB_ACTIONS: Record<PublishJobStatus, { retry: boolean; cancel: boolean }> = {
+  pending: { retry: false, cancel: true },
+  retry: { retry: true, cancel: true },
+  processing: { retry: false, cancel: false },
+  published: { retry: false, cancel: false },
+  failed: { retry: true, cancel: false },
+  manual_review: { retry: true, cancel: true },
+  cancelled: { retry: true, cancel: false },
 };
 
 export const STRATEGY_META: Record<PublishStrategy, { label: string }> = {
@@ -469,6 +482,8 @@ export const publishingApi = {
   jobsList: (project_id: string, opts: { status?: PublishJobStatus; limit?: number } = {}) =>
     call<{ jobs: PublishJob[] }>("jobs_list", { project_id, ...opts }),
   metrics: (project_id: string) => call<MetricsResponse>("metrics", { project_id }),
+  jobRetry: (project_id: string, job_id: string) => call<{ ok: true; status: "pending" }>("job_retry", { project_id, job_id }),
+  jobCancel: (project_id: string, job_id: string) => call<{ ok: true; status: "cancelled" }>("job_cancel", { project_id, job_id }),
   publishVideo: (project_id: string, input: PublishVideoInput) =>
     call<PublishVideoResult>("publish_video", { project_id, ...input }),
 };

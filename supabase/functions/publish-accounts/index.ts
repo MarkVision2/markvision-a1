@@ -23,6 +23,7 @@
  *   { action: "persona_list" | "persona_upsert" | "persona_delete", project_id, ... }
  *   { action: "settings_get" | "settings_upsert", project_id,  notify_mode?, digest_chat_id?, paused?, daily_usd?, monthly_usd? }
  *   { action: "jobs_list", project_id, status?, limit? }
+ *   { action: "job_retry" | "job_cancel", project_id, job_id }   — повтор остановленного / отмена не ушедшего
  *   { action: "publish_video", project_id, file_url | video_id, group_id?, account_ids?, mode?, title?, caption?, hashtags? }
  *   { action: "metrics", project_id } → { publish, radar, videos, groups, accounts } — accounts из publish_account_metrics
  *   { action: "metrics", project_id } — витрины publish_metrics / radar_metrics
@@ -183,9 +184,26 @@ Deno.serve(async (req) => {
         .select("external_account_id").eq("project_id", projectId).eq("platform", "instagram");
       const connected = new Set(((existing ?? []) as { external_account_id: string }[]).map((r) => r.external_account_id));
 
+      // Тот же Instagram в другом проекте — дневной лимит удвоится, площадка это
+      // видит как один аккаунт. Не запрещаем, но говорим, где он уже подключён.
+      const igIds = pages.map((p) => p.instagram_business_account?.id).filter((x): x is string => Boolean(x));
+      const elsewhere = new Map<string, string>();
+      if (igIds.length) {
+        const { data: other } = await admin.from("publish_accounts")
+          .select("external_account_id, projects(name)")
+          .eq("platform", "instagram").neq("project_id", projectId).in("external_account_id", igIds);
+        // Связь через FK клиент типизирует то объектом, то массивом — принимаем оба вида.
+        type Rel = { name?: string } | { name?: string }[] | null;
+        for (const r of (other ?? []) as unknown as { external_account_id: string; projects: Rel }[]) {
+          const rel = Array.isArray(r.projects) ? r.projects[0] : r.projects;
+          elsewhere.set(r.external_account_id, rel?.name ?? "другом проекте");
+        }
+      }
+
       return json({
         ok: true,
         pages: pages.map((p) => ({
+          connected_elsewhere: elsewhere.get(p.instagram_business_account?.id ?? "") ?? null,
           page_id: p.id,
           page_name: p.name ?? null,
           ig_user_id: p.instagram_business_account?.id ?? null,
@@ -532,6 +550,43 @@ Deno.serve(async (req) => {
       if (planErr) return json({ error: planErr.message }, 500);
       const rows = (planned ?? []) as { job_id: string; account_id: string; scheduled_at: string; created: boolean }[];
       return json({ ok: true, video_id: videoId, created: rows.filter((r) => r.created).length, skipped: rows.filter((r) => !r.created).length, jobs: rows });
+    }
+
+    /* ── задания: повтор и отмена из интерфейса ── */
+    if (action === "job_retry" || action === "job_cancel") {
+      if (!projectId) return json({ error: "project_id обязателен" }, 400);
+      const jobId = String(body?.job_id ?? "");
+      if (!jobId) return json({ error: "job_id обязателен" }, 400);
+      const { data: job } = await admin.from("publish_jobs")
+        .select("id, status, account_id").eq("id", jobId).eq("project_id", projectId).maybeSingle();
+      if (!job) return json({ error: "задание не найдено" }, 404);
+      const j = job as { id: string; status: string; account_id: string };
+
+      if (action === "job_retry") {
+        // Повторить можно то, что остановилось: отказ, отмена, ручной разбор, зависший retry.
+        if (!["failed", "cancelled", "manual_review", "retry"].includes(j.status)) {
+          return json({ error: `задание в статусе «${j.status}» повторять нечего` }, 400);
+        }
+        const { error } = await admin.from("publish_jobs").update({
+          status: "pending",
+          next_attempt_at: new Date().toISOString(),
+          locked_at: null,
+          error_code: null,
+          error_message: null,
+        }).eq("id", j.id);
+        if (error) return json({ error: error.message }, 500);
+        return json({ ok: true, job_id: j.id, status: "pending" });
+      }
+
+      // Отмена — только того, что ещё не ушло на площадку.
+      if (!["pending", "retry", "manual_review"].includes(j.status)) {
+        return json({ error: `задание в статусе «${j.status}» уже не отменить` }, 400);
+      }
+      const { error } = await admin.from("publish_jobs").update({ status: "cancelled", locked_at: null }).eq("id", j.id);
+      if (error) return json({ error: error.message }, 500);
+      // Слот освобождаем, иначе планировщик считает окно занятым.
+      await admin.from("publish_slots").delete().eq("job_id", j.id);
+      return json({ ok: true, job_id: j.id, status: "cancelled" });
     }
 
     if (action === "disconnect") {

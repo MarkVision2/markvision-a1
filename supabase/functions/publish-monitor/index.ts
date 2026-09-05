@@ -231,8 +231,11 @@ async function checkTokens(admin: SupabaseClient) {
     }
 
     // Обновление long-lived токена до истечения — иначе через 60 дней вся сеть встанет.
+    // Instagram Login (IG…) без записанного срока — тот же случай: срок неизвестен,
+    // значит обновляем сейчас и запоминаем, когда истечёт. Page-токены (не IG…) вечные.
     const expiresAt = account.token_expires_at ? new Date(account.token_expires_at).getTime() : null;
-    if (expiresAt != null && expiresAt < refreshBefore) {
+    const unknownIgExpiry = expiresAt == null && (account.platform === "threads" || /^IG/i.test(token));
+    if (unknownIgExpiry || (expiresAt != null && expiresAt < refreshBefore)) {
       const r = await refreshLongLivedToken(account.platform, token);
       if (r && "token" in r) {
         await admin.from("publish_accounts").update({

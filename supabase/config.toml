@@ -242,3 +242,9 @@ verify_jwt = false
 # внутри, callback доверяет одноразовому state (publish_oauth_states).
 [functions.publish-oauth]
 verify_jwt = false
+
+# Presigned URL для заливки крупных видео в R2. Защита — заголовком x-app-key
+# внутри функции; без этой записи шлюз требовал JWT и отвечал
+# UNAUTHORIZED_NO_AUTH_HEADER — заливка >45 МБ из композера и монтажа не работала.
+[functions.r2-presign-upload]
+verify_jwt = false

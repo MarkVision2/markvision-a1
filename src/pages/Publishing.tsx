@@ -932,6 +932,12 @@ function ConnectInstagramDialog({ open, onClose, pub }: { open: boolean; onClose
             )}
           </div>
           <div className="truncate text-xs text-muted-foreground">{p.page_name}{p.ig_name && p.ig_username ? ` · ${p.ig_name}` : ""}</div>
+          {p.connected_elsewhere && (
+            // Один Instagram в двух проектах — двойной дневной лимит на один аккаунт площадки.
+            <div className="truncate text-xs text-amber-600 dark:text-amber-400">
+              уже подключён в проекте «{p.connected_elsewhere}» — лимиты сложатся
+            </div>
+          )}
         </div>
         {state === "pick" && <Checkbox checked={on} tabIndex={-1} aria-hidden className="pointer-events-none" />}
         {state === "connected" && <Badge variant="secondary" className="shrink-0 bg-emerald-500/10 text-emerald-700">Подключён</Badge>}
