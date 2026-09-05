@@ -1,7 +1,7 @@
 {
-  "git_sha": "a97eb2c",
-  "git_sha_full": "a97eb2c5a3f120fd4275ea42e83752cfc0eebbcb",
-  "updated_at": "2026-09-05T20:26:25+04:00",
-  "label": "[vercel-deploy] Merge: fix(radar) — вкладки переносятся на телефоне, e2e mobile-layout зелёный (#270)",
+  "git_sha": "75db226",
+  "git_sha_full": "75db2262fd036d2dd4fec97597078a2d1d9793a3",
+  "updated_at": "2026-09-05T20:38:06+04:00",
+  "label": "[vercel-deploy] Merge: Публикации — варианты подписи в композере и группа при OAuth-подключении (#273)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
