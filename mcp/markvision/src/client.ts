@@ -83,6 +83,7 @@ export class MarkVisionClient {
   publication(id: string) { return this.request<{ publication: unknown }>("GET", `/publications/${id}`); }
   createPublication(input: Record<string, unknown>) { return this.request<Record<string, unknown>>("POST", "/publications", input); }
   createJobs(id: string, target: Record<string, unknown>) { return this.request<Record<string, unknown>>("POST", `/publications/${id}/jobs`, target); }
+  distribute(input: Record<string, unknown>) { return this.request<Record<string, unknown>>("POST", "/publications/distribute", input); }
   cancelJob(id: string) { return this.request<Record<string, unknown>>("POST", `/jobs/${id}/cancel`); }
   retryJob(id: string) { return this.request<Record<string, unknown>>("POST", `/jobs/${id}/retry`); }
 

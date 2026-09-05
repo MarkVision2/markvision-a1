@@ -58,6 +58,7 @@ Authorization: Bearer mv_live_…        (или заголовок x-api-key: m
 | `GET /publications?limit=20` | read | последние видео и сводка заданий по статусам |
 | `GET /publications/:id` | read | видео, сводка и задания по аккаунтам |
 | `POST /publications/:id/jobs` | publish | задания на уже принятое видео |
+| `POST /publications/distribute` | publish | пачка принятых видео по сети: один ролик → один аккаунт |
 | `POST /jobs/:id/cancel` | publish | отменить не ушедшее задание |
 | `POST /jobs/:id/retry` | publish | вернуть упавшее задание в очередь |
 
@@ -90,6 +91,28 @@ curl -X POST "$API/publications" -H "Authorization: Bearer $KEY" -H "Content-Typ
 Поля `target` можно передавать и плоско (`group_id`, `account_ids`, `mode`, `start_at`,
 `per_hour` на верхнем уровне). Без цели видео принимается, задания создаются позже через
 `POST /publications/:id/jobs` с теми же полями.
+
+### Пачка по сети: один ролик → один аккаунт
+
+Для контент-завода (каждый ролик уникален, сеть нужна ради пропускной способности) видео
+сначала принимаются **без цели** (`POST /publications` без `group_id`/`account_ids`), а затем
+раскладываются одним вызовом:
+
+```bash
+curl -X POST "$API/publications/distribute" -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{
+  "videos": [{"id":"<publication id>","topic_key":"сеть-аккаунтов"}, {"id":"<…>","topic_key":"прокси"}],
+  "batch_id": "2026-09-08-1",
+  "target": {"group_id":"<uuid>", "per_day": 3, "start_at":"2026-09-08T09:00:00+05:00", "max_days": 30}
+}'
+# → { "ok": true, "created": 2, "skipped": 0, "unassigned": [],
+#     "assignments": [{ "video_id": "…", "account_id": "…", "account_name": "@a", "day": 0, "scheduled_at": "…" }, …] }
+```
+
+Правила раскладки: аккаунты по кругу, здоровые вперёд; не больше `per_day` (по умолчанию 3)
+роликов на аккаунт в сутки; ролики с одним `topic_key` — в разные дни и, пока есть выбор, в
+разные аккаунты; точное время внутри дня — планировщик слотов (окно, интервалы, разгон).
+`video_ids: […]` вместо `videos` — если ключи тем не нужны. Что не влезло в `max_days`, приходит
+в `unassigned`. Чужие публикации и цели — 404 без постановки заданий. До 500 видео за вызов.
 
 - `mode`: `now` — все сразу; `drip` (по умолчанию) — по слотам планировщика в окне аккаунта
   с минимальным интервалом и дневным лимитом; `daily` — по одному в день.

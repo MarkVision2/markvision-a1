@@ -31,7 +31,7 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { checkRateLimit, hasScope, type ApiKeyContext, type RateBucket } from "../_lib/apiKeys.ts";
 import { resolveApiKey } from "../_lib/apiKeysDb.ts";
-import { matchRoute, parsePublicationInput, parseTarget, requiredScope, type ApiRoute } from "../_lib/publicApi.ts";
+import { matchRoute, parseDistributeInput, parsePublicationInput, parseTarget, requiredScope, type ApiRoute } from "../_lib/publicApi.ts";
 
 const CORS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -349,6 +349,29 @@ async function publicationJobsCreate(req: Request, deps: Deps, ctx: ApiKeyContex
   return passthrough(r);
 }
 
+/** Пачка контент-завода: один ролик → один аккаунт, лимит в сутки, разнос тем по дням. */
+async function publicationsDistribute(req: Request, deps: Deps, ctx: ApiKeyContext): Promise<Response> {
+  const admin = deps.admin;
+  const parsed = parseDistributeInput(await readJson(req));
+  if (!parsed.ok) return json({ error: parsed.error }, 400);
+  const { input } = parsed;
+  const bad = await targetError(admin, ctx, input.target);
+  if (bad) return json({ error: bad }, 404);
+  const ids = input.videos.map((v) => v.id);
+  const { data } = await admin.from("publish_videos").select("id").eq("project_id", ctx.projectId).in("id", ids);
+  const known = new Set(((data ?? []) as { id: string }[]).map((r) => r.id));
+  const alien = ids.filter((id) => !known.has(id));
+  if (alien.length) return json({ error: `публикации не найдены: ${alien.join(", ")}` }, 404);
+  const r = await callInternal(deps, "publish-intake", {
+    action: "distribute",
+    project_id: ctx.projectId,
+    videos: input.videos,
+    batch_id: input.batch_id,
+    target: input.target,
+  }, { "x-automation-key": await automationKey(admin) });
+  return passthrough(r);
+}
+
 async function jobAction(deps: Deps, ctx: ApiKeyContext, id: string, action: "job_cancel" | "job_retry"): Promise<Response> {
   const admin = deps.admin;
   const { data } = await admin.from("publish_jobs").select("id, project_id").eq("id", id).maybeSingle();
@@ -373,6 +396,7 @@ async function dispatch(req: Request, deps: Deps, ctx: ApiKeyContext, route: Api
     case "metrics": return metrics(deps, ctx);
     case "upload_url": return uploadUrl(req, deps);
     case "publication_create": return publicationCreate(req, deps, ctx);
+    case "publications_distribute": return publicationsDistribute(req, deps, ctx);
     case "publications_list": return publicationsList(req, deps, ctx);
     case "publication_get": return publicationGet(deps, ctx, route.id);
     case "publication_jobs_create": return publicationJobsCreate(req, deps, ctx, route.id);

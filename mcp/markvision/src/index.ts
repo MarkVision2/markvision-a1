@@ -98,6 +98,26 @@ server.registerTool("markvision_create_jobs", {
   inputSchema: { publication_id: uuid, ...targetShape },
 }, ({ publication_id, ...target }) => run(() => client.createJobs(publication_id, target)));
 
+server.registerTool("markvision_distribute", {
+  title: "Разложить пачку по сети",
+  description:
+    "Пачка контент-завода: каждый принятый ролик уходит ровно в один аккаунт (не копии во все), " +
+    "не больше per_day роликов на аккаунт в сутки (по умолчанию 3), ролики с одним topic_key — в разные дни и разные аккаунты. " +
+    "Без group_id/account_ids берутся все активные аккаунты проекта. Возвращает, какой ролик в какой аккаунт и когда.",
+  inputSchema: {
+    videos: z.array(z.object({
+      id: uuid.describe("publication id из markvision_create_publication (принято без target)."),
+      topic_key: z.string().max(200).optional().describe("Ключ темы, чтобы похожие ролики не вышли в один день."),
+    })).min(1).max(500),
+    batch_id: z.string().max(120).optional().describe("Имя пачки производства для сводной статистики."),
+    group_id: uuid.optional(),
+    account_ids: z.array(uuid).optional(),
+    start_at: z.string().optional().describe("ISO 8601, начало дня 0. По умолчанию сейчас."),
+    per_day: z.number().int().min(1).max(20).optional(),
+    max_days: z.number().int().min(1).max(90).optional(),
+  },
+}, ({ videos, batch_id, ...target }) => run(() => client.distribute(compact({ videos, batch_id, target: compact(target) }))));
+
 server.registerTool("markvision_list_publications", {
   title: "Последние публикации",
   description: "Последние принятые видео проекта и сводка заданий по статусам.",

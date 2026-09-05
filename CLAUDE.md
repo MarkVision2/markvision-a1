@@ -50,6 +50,12 @@
 - **Публичный API и MCP-сервер** (внешний клиент по API-ключу проекта загружает видео и ставит
   публикацию): edge `api` + таблица `api_keys`, ключи выдаются в «Настройки → API и MCP»,
   MCP-сервер `mcp/markvision/`. Контракт — `docs/PUBLIC-API.md`.
+- **Контент-завод на субагентах** (пачка уникальных роликов из трендов → критики → раскладка «один
+  ролик → один аккаунт» по сети): скилл **`content-factory`** (`.claude/skills/content-factory/`, 9 этапов,
+  `critic.md`, шаблоны файлов проекта в `templates/`), скрипты `scripts/factory-{cut,check,storyboard}.mjs`,
+  раскладка — `publish-intake action=distribute` / `POST /publications/distribute` / MCP `markvision_distribute`.
+  ТЗ — `docs/TZ-content-factory-network.md`, аудит пробелов — `docs/GAP-content-factory-audit.md`.
+  Команда «сделай пачку роликов» = этот скилл.
 - **Подключение TikTok** (Настройки → Подключения → TikTok, `/settings?tab=tiktok`; компонент
   `src/components/settings/TikTokConnect.tsx`, старый `/marketing/tiktok` редиректит; витрина для App review TikTok for Developers):
   Login Kit → Display API (профиль, видео) → Content Posting API (Direct Post / inbox) → отключение
