@@ -297,8 +297,11 @@ describe("страница «Публикации»", () => {
     fireEvent.change(screen.getByLabelText("Ссылка на видео"), { target: { value: "https://cdn.example.com/reel.mp4" } });
 
     // Оба годных аккаунта выбраны по умолчанию — снимаем TikTok чипом.
+    // Чипы живут в Popover «Выбрано аккаунтов» — сначала открываем его.
     expect(screen.getByRole("button", { name: /Отправить на публикацию \(2\)/ })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /aiva.tt — TikTok/ }));
+    // Radix Popover (в отличие от DropdownMenu) открывается обычным click.
+    fireEvent.click(screen.getByRole("button", { name: /Выбрано аккаунтов/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /aiva.tt — TikTok/ }));
 
     fireEvent.click(screen.getByRole("button", { name: /Отправить на публикацию \(1\)/ }));
     await waitFor(() =>
