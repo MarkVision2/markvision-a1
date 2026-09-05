@@ -12,6 +12,8 @@
  *            refresh бессрочный при access_type=offline).
  */
 
+import { DEFAULT_TIKTOK_SCOPE } from "./tiktokApi.ts";
+
 export type OAuthPlatform = "threads" | "tiktok" | "youtube";
 export const OAUTH_PLATFORMS: readonly OAuthPlatform[] = ["threads", "tiktok", "youtube"];
 
@@ -21,7 +23,8 @@ export function isOAuthPlatform(v: unknown): v is OAuthPlatform {
 
 export const SCOPES: Record<OAuthPlatform, string> = {
   threads: "threads_basic,threads_content_publish",
-  tiktok: "user.info.basic,video.publish,video.upload,video.list",
+  // Login Kit + Display API + Content Posting API — каталог в tiktokApi.ts.
+  tiktok: DEFAULT_TIKTOK_SCOPE,
   youtube: "https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly",
 };
 
@@ -37,7 +40,8 @@ export interface AppCredentials {
   clientSecret: string;
 }
 
-export function authorizeUrl(platform: OAuthPlatform, p: { clientId: string; redirectUri: string; state: string }): string {
+/** `scope` переопределяет набор прав площадки (TikTok: секрет TIKTOK_SCOPES для песочницы с урезанными продуктами). */
+export function authorizeUrl(platform: OAuthPlatform, p: { clientId: string; redirectUri: string; state: string; scope?: string }): string {
   if (platform === "threads") {
     const u = new URL("https://threads.net/oauth/authorize");
     u.searchParams.set("client_id", p.clientId);
@@ -50,7 +54,7 @@ export function authorizeUrl(platform: OAuthPlatform, p: { clientId: string; red
   if (platform === "tiktok") {
     const u = new URL("https://www.tiktok.com/v2/auth/authorize/");
     u.searchParams.set("client_key", p.clientId);
-    u.searchParams.set("scope", SCOPES.tiktok);
+    u.searchParams.set("scope", p.scope?.trim() || SCOPES.tiktok);
     u.searchParams.set("response_type", "code");
     u.searchParams.set("redirect_uri", p.redirectUri);
     u.searchParams.set("state", p.state);

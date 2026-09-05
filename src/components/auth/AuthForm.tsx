@@ -183,6 +183,12 @@ export function AuthForm() {
             <Button type="submit" disabled={loading} className="h-12 w-full gap-2 bg-success text-white shadow-lg shadow-success/30 hover:bg-success/90">
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Войти в платформу <ArrowRight className="h-4 w-4" /></>}
             </Button>
+            <p className="text-center text-[11px] leading-snug text-muted-foreground">
+              Входя в платформу, вы принимаете{" "}
+              <a href="/terms" target="_blank" rel="noreferrer" className="underline underline-offset-2 hover:text-foreground">Условия использования</a>
+              {" "}и{" "}
+              <a href="/privacy" target="_blank" rel="noreferrer" className="underline underline-offset-2 hover:text-foreground">Политику конфиденциальности</a>.
+            </p>
           </form>
 
           <div className="mt-4 flex items-start gap-3 rounded-xl border border-border/60 bg-card/40 p-3.5">

@@ -40,6 +40,8 @@ const ContentPlan = lazy(routeImports.ContentPlan);
 const ContentPlanDetail = lazy(routeImports.ContentPlanDetail);
 const Radar = lazy(routeImports.Radar);
 const Publishing = lazy(routeImports.Publishing);
+const TikTokConnect = lazy(routeImports.TikTokConnect);
+const Legal = lazy(routeImports.Legal);
 const Finance = lazy(routeImports.Finance);
 const Reports = lazy(routeImports.Reports);
 const Settings = lazy(routeImports.Settings);
@@ -82,6 +84,9 @@ const App = () => (
               <Route path="/lab" element={<Lab />} />
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/client/:token" element={<ClientDashboard />} />
+              {/* Публичные юридические страницы — их адреса указываются в кабинетах площадок (TikTok, Meta, Google). */}
+              <Route path="/terms" element={<Legal doc="terms" />} />
+              <Route path="/privacy" element={<Legal doc="privacy" />} />
               <Route path="/" element={<RequireAuth><AppLayout><RequireModule module="factory"><Index /></RequireModule></AppLayout></RequireAuth>} />
               <Route path="/dashboard" element={<RequireAuth><AppLayout><RequireModule module="dashboard"><Dashboard /></RequireModule></AppLayout></RequireAuth>} />
               <Route path="/metrics" element={<RequireAuth><AppLayout><RequireModule module="metrics"><Metrics /></RequireModule></AppLayout></RequireAuth>} />
@@ -101,6 +106,7 @@ const App = () => (
               <Route path="/marketing/content-plan/:id" element={<RequireAuth><AppLayout><RequireModule module="content_plan"><ContentPlanDetail /></RequireModule></AppLayout></RequireAuth>} />
               <Route path="/marketing/radar" element={<RequireAuth><AppLayout><RequireModule module="content_plan"><Radar /></RequireModule></AppLayout></RequireAuth>} />
               <Route path="/marketing/publishing" element={<RequireAuth><AppLayout><RequireModule module="content_plan"><Publishing /></RequireModule></AppLayout></RequireAuth>} />
+              <Route path="/marketing/tiktok" element={<RequireAuth><AppLayout><RequireModule module="content_plan"><TikTokConnect /></RequireModule></AppLayout></RequireAuth>} />
               <Route path="/marketing/autopost" element={<RequireAuth><Navigate to="/marketing/content-plan?view=calendar" replace /></RequireAuth>} />
               <Route path="/finance" element={<RequireAuth><AppLayout><RequireModule module="finance"><Finance /></RequireModule></AppLayout></RequireAuth>} />
               <Route path="/reports" element={<RequireAuth><AppLayout><RequireModule module="reports"><Reports /></RequireModule></AppLayout></RequireAuth>} />
