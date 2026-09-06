@@ -341,6 +341,7 @@ async function publishStatus(admin: SupabaseClient, projectId: string, body: Bod
     await admin.from("publish_accounts").update({ last_post_at: new Date().toISOString() }).eq("id", ctx.account.id);
   }
   const postId = st.post_ids[0] ?? null;
+  const handle = ctx.account.handle?.replace(/^@/, "") ?? null;
   return json({
     ok: true,
     status: st.status,
@@ -349,6 +350,11 @@ async function publishStatus(admin: SupabaseClient, projectId: string, body: Bod
     uploaded_bytes: st.uploaded_bytes,
     post_id: postId,
     post_url: tiktokPostUrl(ctx.account.handle, postId),
+    // Приватный пост (SELF_ONLY) публикуется, но публичной ссылки у него нет:
+    // TikTok возвращает publicaly_available_post_id только для публичных видео,
+    // и в /video/list такой ролик тоже не попадает. Чтобы «Опубликовано» не
+    // упиралось в пустоту, отдаём ссылку на профиль — там ролик виден автору.
+    profile_url: handle ? `https://www.tiktok.com/@${handle}` : null,
   });
 }
 

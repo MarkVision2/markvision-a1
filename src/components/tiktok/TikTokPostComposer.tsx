@@ -211,12 +211,23 @@ export function TikTokPostComposer({ projectId, account, lang, onPublished }: Pr
               </div>
             )}
             {statusError && <p className="mt-2 text-xs text-destructive">{statusError}</p>}
+            {/* Приватная публикация проходит, но публичной ссылки у неё нет — ведём в профиль. */}
+            {stage === "PUBLISH_COMPLETE" && !status?.post_url && (
+              <div className="mt-3 flex items-start gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                <span>{t("privateNoLink", lang)}</span>
+              </div>
+            )}
             <div className="mt-4 flex flex-wrap gap-2">
-              {status?.post_url && (
+              {status?.post_url ? (
                 <Button asChild size="sm">
                   <a href={status.post_url} target="_blank" rel="noreferrer noopener"><ExternalLink className="mr-1.5 h-4 w-4" />{t("openPost", lang)}</a>
                 </Button>
-              )}
+              ) : stage === "PUBLISH_COMPLETE" && status?.profile_url ? (
+                <Button asChild size="sm">
+                  <a href={status.profile_url} target="_blank" rel="noreferrer noopener"><ExternalLink className="mr-1.5 h-4 w-4" />{t("openProfileAfterPost", lang)}</a>
+                </Button>
+              ) : null}
               {done && <Button variant="outline" size="sm" onClick={reset}>{t("newPost", lang)}</Button>}
             </div>
           </div>

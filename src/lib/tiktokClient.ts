@@ -79,6 +79,8 @@ export interface PublishStatusResponse {
   uploaded_bytes: number | null;
   post_id: string | null;
   post_url: string | null;
+  /** Ссылка на профиль — запасной выход, когда публичной ссылки на пост нет (приватная публикация). */
+  profile_url: string | null;
 }
 
 /* ───────────────────────────── вызов ───────────────────────────── */
@@ -323,6 +325,11 @@ const DICT = {
   statusTitle: { ru: "Статус публикации", en: "Post status" },
   publishId: { ru: "publish_id", en: "publish_id" },
   openPost: { ru: "Открыть видео", en: "Open the video" },
+  openProfileAfterPost: { ru: "Открыть профиль в TikTok", en: "Open the profile in TikTok" },
+  privateNoLink: {
+    ru: "Видео опубликовано с видимостью «Только я» — публичной ссылки у такого поста нет, и в ленте Display API он не показывается. Откройте профиль в приложении TikTok, чтобы увидеть ролик.",
+    en: "The video is posted with “Only me” visibility — TikTok gives no public link for such a post and it does not appear in the Display API feed. Open the profile in the TikTok app to see it.",
+  },
   inboxDone: {
     ru: "Откройте приложение TikTok — черновик ждёт во «Входящих», там можно добавить описание и опубликовать.",
     en: "Open the TikTok app — the draft is waiting in your inbox, add a caption there and post it.",
