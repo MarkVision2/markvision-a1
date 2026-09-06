@@ -285,7 +285,14 @@ export async function phoneAppClear(projectId: string, phoneId: string, packageN
   await call("app_clear", projectId, { phone_id: phoneId, package_name: packageName });
 }
 
-export type LoginState = "success" | "wrong_password" | "two_factor" | "challenge" | "form" | "unknown";
+export type LoginState =
+  | "success"
+  | "post_login"
+  | "wrong_password"
+  | "two_factor"
+  | "challenge"
+  | "form"
+  | "unknown";
 
 export interface LoginResult {
   state: LoginState;

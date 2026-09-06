@@ -112,3 +112,32 @@ describe("что на экране после входа", () => {
     expect(classifyScreen([], flow).state).toBe("unknown");
   });
 });
+
+describe("экран после успешного входа", () => {
+  const flow = { packageName: "com.instagram.android", userLabels: ["username"], passLabels: ["password"], submitLabels: ["log in"], gateLabels: [], loggedInLabels: ["your story", "home"] };
+
+  it("вопрос «сохранить данные для входа» — это успех, а не ошибка", () => {
+    // Именно на этом экране человек видел «вход не завершён», хотя аккаунт уже открыт.
+    const nodes = [
+      { text: "Save your login info to Instagram?", desc: "", password: false, bounds: { x1: 0, y1: 200, x2: 1000, y2: 300 } },
+      { text: "Not now", desc: "", password: false, bounds: { x1: 0, y1: 900, x2: 1000, y2: 1000 } },
+    ] as never;
+    const v = classifyScreen(nodes, flow as never);
+    expect(v.state).toBe("post_login");
+    expect(v.message).toMatch(/Вход прошёл/);
+  });
+
+  it("предложение включить уведомления тоже считается входом", () => {
+    const nodes = [
+      { text: "Turn on Notifications", desc: "", password: false, bounds: { x1: 0, y1: 200, x2: 1000, y2: 300 } },
+    ] as never;
+    expect(classifyScreen(nodes, flow as never).state).toBe("post_login");
+  });
+
+  it("непонятный экран объясняет, что делать, а не просто «не распознан»", () => {
+    const nodes = [{ text: "Какой-то новый экран", desc: "", password: false, bounds: { x1: 0, y1: 0, x2: 10, y2: 10 } }] as never;
+    const v = classifyScreen(nodes, flow as never);
+    expect(v.state).toBe("unknown");
+    expect(v.message).toMatch(/Проверить вход|ленту/);
+  });
+});

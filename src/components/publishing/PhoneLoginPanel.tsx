@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import {
   phoneAppStart, phoneLogin, phoneProfile, PHONE_APPS,
   type LoginPlatform, type LoginResult, type PhoneApps, type PhoneNet, type PhoneProfile,
+  phoneInput,
 } from "@/lib/accountDevices";
 
 /** Шаги входа — их видно в окне, чтобы не гадать, на чём всё встало. */
@@ -33,6 +34,8 @@ type StepKey = (typeof STEPS)[number]["key"];
 
 const VERDICT_TONE: Record<LoginResult["state"], "ok" | "warn" | "bad"> = {
   success: "ok",
+  // Вход уже прошёл, осталось закрыть вопрос приложения — это не проблема.
+  post_login: "ok",
   form: "warn",
   two_factor: "warn",
   challenge: "warn",
@@ -92,7 +95,7 @@ export function PhoneLoginPanel({
     try {
       const state = await phoneLogin(projectId, phoneId, platform, "probe");
       setVerdict(state);
-      if (state.state === "success") {
+      if (state.state === "success" || state.state === "post_login") {
         setProfile(await phoneProfile(projectId, phoneId).catch(() => null));
       }
     } catch (e) {
@@ -152,7 +155,7 @@ export function PhoneLoginPanel({
   };
 
   const tone = verdict ? VERDICT_TONE[verdict.state] : null;
-  const loggedIn = verdict?.state === "success";
+  const loggedIn = verdict?.state === "success" || verdict?.state === "post_login";
 
   const pkg = PHONE_APPS[platform].packageName;
   const inst = apps?.installed.find((a) => a.packageName === pkg) ?? null;
@@ -168,6 +171,22 @@ export function PhoneLoginPanel({
             ? <>Выход в сеть с {net.ip}{net.isp ? ` · ${net.isp}` : ""}{proxyIp ? "" : " — прокси не привязан"}</>
             : "Выход в сеть не проверен"}
         </Ready>
+        {/* Смысл отдельных устройств в том, что каждый аккаунт выходит со своего адреса.
+            Поэтому про IP говорим не «плохо», а что именно сделать. */}
+        {net?.collisionWith && (
+          <li className="rounded-md border border-destructive/40 bg-destructive/5 p-2 text-xs text-destructive">
+            С этого же адреса за последний час выходил другой телефон — площадка увидит аккаунты
+            как один источник. Выключите второй телефон, смените IP в кабинете прокси и работайте
+            с телефонами по очереди.
+          </li>
+        )}
+        {!net?.collisionWith && net?.same && (
+          <li className="rounded-md border border-amber-500/40 bg-amber-500/5 p-2 text-xs text-amber-700 dark:text-amber-500">
+            Адрес тот же, что в прошлую сессию этого телефона. Заходить в уже заведённый аккаунт
+            так можно и даже правильно — площадка любит постоянство. А новый аккаунт с этого адреса
+            лучше не создавать: смените IP кнопкой «Обновить IP» в кабинете прокси и проверьте снова.
+          </li>
+        )}
         <Ready ok={Boolean(inst)}>
           {inst
             ? <>{PHONE_APPS[platform].label} {inst.version} установлен</>
@@ -231,6 +250,27 @@ export function PhoneLoginPanel({
             {loggedIn ? "Аккаунт открыт в приложении" : "Аккаунт не подключён"}
           </div>
           <p className="mt-1 text-xs">{verdict.message}</p>
+          {verdict.state === "post_login" && (
+            // Приложение впустило и спрашивает про сохранение пароля. Жмём «Not now»
+            // за человека: это единственное, что отделяет его от готового аккаунта.
+            <Button
+              size="sm" className="mt-2" disabled={busy}
+              onClick={() => void onAct(async () => {
+                await phoneInput(projectId, phoneId, { kind: "key", key: "back" });
+                await probe();
+              })}
+            >
+              Пропустить и завершить
+            </Button>
+          )}
+          {verdict.state === "unknown" && (
+            <Button
+              size="sm" variant="outline" className="mt-2" disabled={busy}
+              onClick={() => void probe()}
+            >
+              Проверить вход ещё раз
+            </Button>
+          )}
           {profile && (profile.handle || profile.followers || profile.posts) && (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {profile.handle && <Badge variant="outline">@{profile.handle}</Badge>}
