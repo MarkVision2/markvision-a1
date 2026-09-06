@@ -1,7 +1,7 @@
 {
-  "git_sha": "eddc24a",
-  "git_sha_full": "eddc24a78b846ac752a8f628fa7e13aaf69f0284",
-  "updated_at": "2026-09-06T10:12:07+04:00",
-  "label": "fix(publish): обрезать пробелы в ключах приложения при автопродлении токена",
+  "git_sha": "ebff5b3",
+  "git_sha_full": "ebff5b3e03898727bab33d0d0a8ad9321fcb156d",
+  "updated_at": "2026-09-06T10:31:34+04:00",
+  "label": "Merge: jobs_overdue дописывается в конец витрины publish_metrics (#279)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
