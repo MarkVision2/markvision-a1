@@ -31,6 +31,7 @@ import { MetaTokensSettings } from "@/components/settings/MetaTokensSettings";
 import { FacebookConnect } from "@/components/settings/FacebookConnect";
 import { GoogleAdsConnect } from "@/components/settings/GoogleAdsConnect";
 import { SiteIntakeCard } from "@/pages/SettingsConnection";
+import { SignOutButton } from "@/components/settings/SignOutButton";
 // Раздел TikTok тяжёлый (форма публикации, превью) — грузим только на своём табе.
 const TikTokConnect = lazy(() => import("@/components/settings/TikTokConnect"));
 import { PageContainer } from "@/components/layout/PageContainer";
@@ -366,6 +367,7 @@ export default function Settings() {
         icon={SettingsIcon}
         title="Настройки"
         description="Слева — разделы проекта и интеграций. Справа — настройки выбранного пункта."
+        actions={<SignOutButton />}
       />
 
       <div className="mt-6 flex flex-col gap-6 lg:grid lg:grid-cols-[minmax(220px,260px)_1fr] lg:items-start">

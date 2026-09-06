@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { MarketingPanel } from "@/components/auth/MarketingPanel";
+import { CommandPanel } from "@/components/auth/CommandPanel";
 import { AuthForm } from "@/components/auth/AuthForm";
 
 export default function Login() {
@@ -18,9 +18,9 @@ export default function Login() {
   }, [navigate]);
 
   return (
-    <div className="grid h-screen w-full grid-cols-1 overflow-hidden lg:grid-cols-[1.1fr_1fr]">
-      <MarketingPanel />
-      <div className="flex h-full items-center justify-center bg-background px-6 py-8 sm:px-10">
+    <div className="grid min-h-screen w-full grid-cols-1 overflow-hidden lg:h-screen lg:grid-cols-[1.15fr_1fr]">
+      <CommandPanel />
+      <div className="flex h-full items-center justify-center bg-background px-6 py-10 sm:px-10">
         <AuthForm />
       </div>
     </div>

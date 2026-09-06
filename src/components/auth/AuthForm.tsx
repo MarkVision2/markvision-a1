@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { ArrowLeft, ArrowRight, Eye, EyeOff, HelpCircle, Loader2, Mail, MailCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, Eye, EyeOff, HelpCircle, Loader2, Mail, MailCheck, ShieldCheck, Zap } from "lucide-react";
 
 type Mode = "signin" | "signup" | "forgot" | "sent";
 
@@ -129,11 +129,24 @@ export function AuthForm() {
 
   return (
     <div className="w-full max-w-sm">
+      {/* Брендинг для узких экранов — левая панель там скрыта. */}
+      <div className="mb-8 flex items-center gap-2.5 lg:hidden">
+        <span className="grid h-9 w-9 place-items-center rounded-xl bg-success/15 text-success ring-1 ring-success/40">
+          <Zap className="h-4 w-4" />
+        </span>
+        <div className="leading-tight">
+          <div className="text-[15px] font-bold tracking-tight">MarkVision</div>
+          <div className="text-[11px] text-muted-foreground">Центр управления коммерческим отделом</div>
+        </div>
+      </div>
+
       {mode === "signin" && (
         <>
           <div className="mb-6">
-            <h2 className="text-3xl font-bold tracking-tight">Добро пожаловать</h2>
-            <p className="mt-1.5 text-sm text-muted-foreground">Войдите в систему, чтобы продолжить работу</p>
+            <h2 className="text-3xl font-bold tracking-tight">Вход в систему</h2>
+            <p className="mt-1.5 text-sm text-muted-foreground">
+              Маркетинг, продажи и аналитика — под одной учётной записью
+            </p>
           </div>
           <form onSubmit={handleSignIn} className="space-y-4">
             <div className="space-y-1.5">
@@ -191,14 +204,19 @@ export function AuthForm() {
             </p>
           </form>
 
-          <div className="mt-4 flex items-start gap-3 rounded-xl border border-border/60 bg-card/40 p-3.5">
+          <div className="mt-5 flex items-start gap-3 rounded-xl border border-border/60 bg-card/40 p-3.5">
             <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-secondary text-muted-foreground">
               <HelpCircle className="h-4 w-4" />
             </span>
             <div>
               <div className="text-sm font-semibold">Нужна помощь с входом?</div>
-              <div className="text-xs text-muted-foreground">Регистрация закрыта. Новые аккаунты создаёт администратор.</div>
+              <div className="text-xs text-muted-foreground">Регистрация закрыта. Новые аккаунты и доступ к модулям выдаёт администратор.</div>
             </div>
+          </div>
+
+          <div className="mt-4 flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
+            <ShieldCheck className="h-3.5 w-3.5 text-success/80" />
+            Защищённая сессия · доступ по ролям
           </div>
         </>
       )}
