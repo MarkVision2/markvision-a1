@@ -301,8 +301,12 @@ Deno.serve(async (req) => {
         ...(proxyId ? { proxyId } : {}),
         ...(body.group_id ? { groupId: Number(body.group_id) } : {}),
         automaticGeo: true,
-        automaticLanguage: true,
         automaticLocation: true,
+        // Язык ставим английский, а не «по стране прокси»: сценарии прогрева из маркетплейса
+        // требуют ровно en-US, и по-английски же платформа распознаёт экраны входа. С казахским
+        // или русским интерфейсом и прогрев отклоняется, и вход «не распознан».
+        automaticLanguage: false,
+        language: "en-US",
         ...(Array.isArray(body.tags) && body.tags.length ? { tags: body.tags } : {}),
       });
       return json({ ok: true, created: created ?? [], quantity });
