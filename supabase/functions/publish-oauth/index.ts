@@ -23,6 +23,8 @@
  *   POST /publish-oauth/invite/finish { token, pending_id, page_ids } → { connected }
  *   GET  /publish-oauth/diag           (JWT | x-automation-key) → что настроено, без секретов
  *   GET  /publish-oauth/probe-tiktok  (JWT | x-automation-key) → что отвечает TikTok на наш client key
+ *   GET  /publish-oauth/probe-instagram (JWT | x-automation-key) → принимает ли Instagram наш
+ *        адрес возврата (единственная проверка регистрации redirect_uri без входа человека)
  *   GET  /publish-oauth/callback/:platform?code&state   → 302 на return_url с
  *        ?publish_connected=<platform>&account=<name> или ?publish_error=<msg>
  *
@@ -298,6 +300,80 @@ function instagramLoginCredentials(): { clientId: string; clientSecret: string }
  * разные, и каждый адрес регистрируется в своей консоли — иначе человек
  * упирается в «URL Blocked» уже после ввода пароля.
  */
+/**
+ * Живая проверка входа в Instagram: спрашиваем у площадки страницу согласия и
+ * смотрим, что она отвечает ДО входа человека.
+ *
+ * Ловит ровно ту беду, которую иначе видно только по жалобе клиента: адрес
+ * возврата не зарегистрирован в приложении. Instagram Login отбивает такой
+ * запрос сразу («Invalid redirect_uri»), а Facebook Login — только ПОСЛЕ
+ * ввода пароля, поэтому для facebook-двери проверяется лишь то, что ключи
+ * приняты и страница согласия открывается.
+ */
+async function probeInstagram(req: Request, admin: SupabaseClient): Promise<Response> {
+  if (!(await automationKeyValid(req, admin))) {
+    const auth = await requireUser(req);
+    if (!auth.ok) return auth.response;
+  }
+
+  const checks: Record<string, unknown>[] = [];
+  for (const mode of ["instagram", "facebook"] as InstagramMode[]) {
+    const creds = mode === "instagram" ? instagramLoginCredentials() : metaCredentials();
+    const uri = redirectUri("instagram", mode);
+    if (!creds) {
+      checks.push({
+        mode,
+        redirect_uri: uri,
+        ready: false,
+        verdict: mode === "instagram"
+          ? "INSTAGRAM_APP_ID / INSTAGRAM_APP_SECRET не заданы"
+          : "META_APP_SECRET не задан",
+      });
+      continue;
+    }
+    const url = mode === "instagram"
+      ? instagramLoginAuthorizeUrl({ clientId: creds.clientId, redirectUri: uri, state: "probe" })
+      : metaAuthorizeUrl({ clientId: creds.clientId, redirectUri: uri, state: "probe" });
+
+    let status = 0;
+    let location: string | null = null;
+    let verdict = "неизвестно";
+    let redirectRegistered: boolean | null = null;
+    try {
+      const r = await fetch(url, { redirect: "manual" });
+      status = r.status;
+      location = r.headers.get("location");
+      const body = status === 200 ? (await r.text()).slice(0, 4000) : "";
+      const seen = `${location ?? ""} ${body}`;
+      if (/redirect_uri|URL Blocked|Invalid platform app/i.test(seen)) {
+        redirectRegistered = false;
+        verdict = `площадка не принимает адрес возврата — зарегистрируйте ${uri}`;
+      } else if (/Invalid Client ID|Invalid App ID|invalid_client/i.test(seen)) {
+        verdict = "площадка не принимает client id приложения";
+      } else if (status === 200 || (status >= 300 && status < 400)) {
+        redirectRegistered = mode === "instagram" ? true : null;
+        verdict = mode === "instagram"
+          ? "Instagram отдал страницу входа — адрес возврата принят"
+          : "Facebook отдал страницу входа; адрес возврата он сверяет только ПОСЛЕ входа человека";
+      }
+    } catch (e) {
+      verdict = `запрос к площадке не удался: ${e instanceof Error ? e.message : String(e)}`;
+    }
+    checks.push({
+      mode,
+      redirect_uri: uri,
+      ready: true,
+      client_id_prefix: `${creds.clientId.slice(0, 2)}…`,
+      status,
+      location_host: location ? new URL(location, "https://www.instagram.com").host : null,
+      redirect_registered: redirectRegistered,
+      verdict,
+    });
+  }
+
+  return json({ ok: true, checks });
+}
+
 function redirectUri(platform: ConnectLinkPlatform, mode: InstagramMode = "facebook"): string {
   const seg = platform === "instagram" && mode === "instagram" ? "instagram-login" : platform;
   return `${Deno.env.get("SUPABASE_URL")}/functions/v1/publish-oauth/callback/${seg}`;
@@ -1027,6 +1103,7 @@ Deno.serve(async (req) => {
   try {
     if (seg[0] === "diag" && req.method === "GET") return await diag(req, admin);
     if (seg[0] === "probe-tiktok" && req.method === "GET") return await probeTiktok(req, admin);
+    if (seg[0] === "probe-instagram" && req.method === "GET") return await probeInstagram(req, admin);
     if (seg[0] === "start" && req.method === "POST") return await start(req, admin);
     if (seg[0] === "pages" && req.method === "POST") return await dashboardPages(req, admin);
     if (seg[0] === "finish" && req.method === "POST") return await dashboardFinish(req, admin);
