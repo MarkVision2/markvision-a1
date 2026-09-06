@@ -99,6 +99,8 @@ export function useRadar() {
     refetch,
     upsertSource: (input: Omit<UpsertSourceInput, "project_id"> & { project_id?: string }) =>
       act("source", () => radarApi.upsertSource({ ...input, project_id: input.project_id ?? projectId })),
+    /** Только чтение: сколько данных уйдёт с источником (для подтверждения). */
+    sourceImpact: (id: string) => radarApi.sourceImpact(id),
     deleteSource: (id: string) => act(`delete:${id}`, () => radarApi.deleteSource(id)),
     crawlSource: (id: string) => act(`crawl:${id}`, () => radarApi.crawlSource(id)),
     analyzeUrl: (url: string) => act("analyze-url", () => radarApi.analyzeUrl(projectId, url)),

@@ -1136,6 +1136,7 @@ Deno.serve(async (req) => {
         if (typeof body?.title === "string") patch.title = body.title.trim() || null;
         if (typeof body?.caption === "string") patch.base_caption = body.caption.trim() || null;
         if (Array.isArray(body?.hashtags)) patch.hashtags = body.hashtags.map(String);
+        if (Array.isArray(body?.caption_variants)) patch.caption_variants = body.caption_variants.map(String);
         if (Object.keys(patch).length) {
           const { error } = await admin.from("publish_videos").update(patch).eq("id", videoId).eq("project_id", projectId);
           if (error) return json({ error: error.message }, 500);

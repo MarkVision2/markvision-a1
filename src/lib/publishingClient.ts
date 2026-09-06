@@ -530,6 +530,8 @@ export interface PublishVideoInput {
   title?: string;
   caption?: string;
   hashtags?: string[];
+  /** Разные подписи для разных аккаунтов — планировщик раздаёт по кругу (одинаковый текст в 100 аккаунтов площадки метят как спам). */
+  caption_variants?: string[];
   start_at?: string;
   /** Повтор из библиотеки: второе задание в аккаунт, где видео уже выходило. */
   repost?: boolean;

@@ -1,0 +1,106 @@
+{
+  "avatar": "avatar-example.mp4",
+  "audioTrack": null,
+  "music": null,
+  "musicVolume": 0.12,
+  "captions": true,
+  "handle": "@markvision.ai",
+  "fps": 30,
+  "totalDurationInFrames": 1020,
+  "theme": {
+    "bg": "#0B0F1A",
+    "accent": "#5B8CFF",
+    "text": "#FFFFFF"
+  },
+  "words": [
+    {
+      "text": "Один",
+      "from_ms": 300,
+      "to_ms": 700
+    },
+    {
+      "text": "аккаунт",
+      "from_ms": 700,
+      "to_ms": 1200,
+      "accent": true
+    },
+    {
+      "text": "растёт",
+      "from_ms": 1200,
+      "to_ms": 1700
+    },
+    {
+      "text": "год",
+      "from_ms": 1700,
+      "to_ms": 2200,
+      "accent": true
+    },
+    {
+      "text": "и",
+      "from_ms": 2300,
+      "to_ms": 2500
+    },
+    {
+      "text": "это",
+      "from_ms": 2500,
+      "to_ms": 2800
+    },
+    {
+      "text": "статистика",
+      "from_ms": 2800,
+      "to_ms": 3600
+    }
+  ],
+  "scenes": [
+    {
+      "from_ms": 0,
+      "to_ms": 4000,
+      "layout": "avatar_full",
+      "title": "Один аккаунт растёт год"
+    },
+    {
+      "from_ms": 4000,
+      "to_ms": 13000,
+      "layout": "avatar_bottom",
+      "visual": "stat",
+      "value": "92 %",
+      "label": "каналов не доходят до 10 000 подписчиков",
+      "title": "92 % каналов не доходят до 10 000"
+    },
+    {
+      "from_ms": 13000,
+      "to_ms": 21000,
+      "layout": "avatar_bottom",
+      "visual": "list",
+      "title": "Что даёт сеть",
+      "bullets": [
+        "900 роликов в месяц",
+        "статистика по 10 аккаунтам",
+        "бан одного не ломает всё"
+      ]
+    },
+    {
+      "from_ms": 21000,
+      "to_ms": 27000,
+      "layout": "avatar_circle",
+      "visual": "compare",
+      "left": "1 аккаунт · 300 просмотров",
+      "right": "30 аккаунтов · 10 000",
+      "title": "Пропускная способность вместо удачи"
+    },
+    {
+      "from_ms": 27000,
+      "to_ms": 31000,
+      "layout": "content_full",
+      "visual": "quote",
+      "title": "Спорить со статистикой смысла нет — её обходят объёмом",
+      "label": "правило контент-завода"
+    },
+    {
+      "from_ms": 31000,
+      "to_ms": 34000,
+      "layout": "avatar_full",
+      "title": "Подпишитесь — разбираю цифры каждую неделю"
+    }
+  ]
+}
