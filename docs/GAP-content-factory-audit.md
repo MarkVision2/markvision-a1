@@ -96,7 +96,7 @@ Content Posting, YouTube Data, Threads) с OAuth-подключением соб
 3. ~~Автопередача `approved` → `publish_videos` → `publish_jobs`~~ — уже есть (`handoffToPublishing`), пункт снят.
 4. **Раскладка «один ролик → один аккаунт»** в планировщике: сейчас композер льёт один ролик во все аккаунты
    группы, у сети наоборот. **Сделано 05.09**: `publish-intake action=distribute`, `POST /publications/distribute`,
-   MCP `markvision_distribute`, колонки `publish_videos.topic_key/batch_id` (миграция `20260908140000`).
+   MCP `markvision_distribute`, колонки `publish_videos.topic_key/batch_id` (миграция `20260909150000`).
 
 ### Сделано 05.09 (после аудита)
 - Настройки конвейера для MarkVision AI записаны в прод (аватар «Юрий», голос Russian Business Pro, 60–90 слов,
