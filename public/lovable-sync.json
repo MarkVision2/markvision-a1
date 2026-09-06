@@ -1,7 +1,7 @@
 {
-  "git_sha": "ebff5b3",
-  "git_sha_full": "ebff5b3e03898727bab33d0d0a8ad9321fcb156d",
-  "updated_at": "2026-09-06T10:31:34+04:00",
-  "label": "Merge: jobs_overdue дописывается в конец витрины publish_metrics (#279)",
+  "git_sha": "5f5ccf0",
+  "git_sha_full": "5f5ccf0852698a59c9204912d5eea17704453e95",
+  "updated_at": "2026-09-06T10:39:37+04:00",
+  "label": "fix(publish): перечитать схему PostgREST — воркер падал на publish_jobs.poll_count",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
