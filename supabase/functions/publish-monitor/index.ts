@@ -347,6 +347,76 @@ async function checkTokens(admin: SupabaseClient) {
   };
 }
 
+/** Метка в last_error: по ней монитор отличает свою автопаузу от ручного «ограничен». */
+const SHADOW_MARK = "возможный теневой бан";
+
+interface ShadowRow {
+  account_id: string;
+  project_id: string;
+  account_name: string;
+  platform: string;
+  status: string;
+  last_error: string | null;
+  baseline_views: number | null;
+  recent_views: number | null;
+  ratio: number | null;
+  suspect: boolean;
+}
+
+/**
+ * Теневой бан по просмотрам (publish_shadowban_scan, крон раз в сутки): последние
+ * посты аккаунта собирают в разы меньше его же медианы → status = limited, планировщик
+ * и claim аккаунт не берут, проект получает сообщение. Просмотры вернулись → снимаем
+ * паузу сами, но только со своей пометкой: «ограничен» руками оператора не трогаем.
+ */
+async function checkShadowban(admin: SupabaseClient) {
+  const { data, error } = await admin.rpc("publish_shadowban_scan", {});
+  if (error) return { scanned: 0, limited: 0, restored: 0, error: error.message };
+  const rows = (data ?? []) as ShadowRow[];
+  const limited: ShadowRow[] = [];
+  const restored: ShadowRow[] = [];
+  for (const r of rows) {
+    const pct = r.ratio != null ? Math.round(Number(r.ratio) * 100) : null;
+    if (r.suspect && r.status === "active") {
+      const { error: uErr } = await admin.from("publish_accounts").update({
+        status: "limited",
+        last_error: `просмотры последних постов упали до ${pct ?? "?"} % от обычных (${r.recent_views ?? "?"} против ${r.baseline_views ?? "?"}) — ${SHADOW_MARK}, публикации приостановлены`,
+      }).eq("id", r.account_id);
+      if (!uErr) limited.push(r);
+    } else if (!r.suspect && r.status === "limited" && (r.last_error ?? "").includes(SHADOW_MARK)) {
+      const { error: uErr } = await admin.from("publish_accounts").update({ status: "active", last_error: null }).eq("id", r.account_id);
+      if (!uErr) restored.push(r);
+    }
+  }
+
+  const byProject = new Map<string, { limited: ShadowRow[]; restored: ShadowRow[] }>();
+  for (const r of limited) { const p = byProject.get(r.project_id) ?? { limited: [], restored: [] }; p.limited.push(r); byProject.set(r.project_id, p); }
+  for (const r of restored) { const p = byProject.get(r.project_id) ?? { limited: [], restored: [] }; p.restored.push(r); byProject.set(r.project_id, p); }
+  for (const [projectId, p] of byProject) {
+    const lines: string[] = [];
+    if (p.limited.length) {
+      lines.push(`🕶 Возможный теневой бан — публикации приостановлены (${p.limited.length}):`);
+      for (const r of p.limited) lines.push(`• ${r.account_name} (${r.platform}) — ${r.recent_views ?? "?"} просмотров против обычных ${r.baseline_views ?? "?"}`);
+      lines.push("Проверьте аккаунт вручную; когда просмотры вернутся, пауза снимется сама.");
+    }
+    if (p.restored.length) {
+      lines.push(`✅ Просмотры вернулись, публикации возобновлены (${p.restored.length}): ${p.restored.map((r) => r.account_name).join(", ")}`);
+    }
+    await notifyProject(admin, projectId, lines.join("\n"));
+  }
+
+  return {
+    scanned: rows.length,
+    suspects: rows.filter((r) => r.suspect).length,
+    limited: limited.length,
+    restored: restored.length,
+    accounts: rows.filter((r) => r.suspect).map((r) => ({
+      id: r.account_id, account_name: r.account_name, platform: r.platform,
+      baseline_views: r.baseline_views, recent_views: r.recent_views, ratio: r.ratio,
+    })),
+  };
+}
+
 /** Часовой дайджест по проекту: что опубликовано, что упало, кому нужно внимание. */
 async function sendDigests(admin: SupabaseClient) {
   const since = new Date(Date.now() - 3_600_000).toISOString();
@@ -454,6 +524,7 @@ Deno.serve(async (req) => {
     if (mode === "tokens") return json({ ok: true, mode, ...(await checkTokens(admin)) });
     if (mode === "errors") return json({ ok: true, mode, ...(await checkErrors(admin)) });
     if (mode === "digest") return json({ ok: true, mode, ...(await sendDigests(admin)) });
+    if (mode === "shadow") return json({ ok: true, mode, ...(await checkShadowban(admin)) });
     return json({ error: `неизвестный режим: ${mode}` }, 400);
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : String(e) }, 500);
