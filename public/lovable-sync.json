@@ -1,7 +1,7 @@
 {
-  "git_sha": "214e253",
-  "git_sha_full": "214e25399933ff3f91698d03a5d495df5bd919ec",
-  "updated_at": "2026-09-06T09:24:50+04:00",
-  "label": "[vercel-deploy] Merge: fix(radar) — мобильная вёрстка ленты, авторов и «рентгена» (#274)",
+  "git_sha": "4329ce4",
+  "git_sha_full": "4329ce48968dd2fe3f5a016296fc0716de135768",
+  "updated_at": "2026-09-06T09:30:52+04:00",
+  "label": "[vercel-deploy] Merge: Social Content Factory OS — верификация публикаций, коннекторы, кампании, вебхуки, RBAC, рутины (#271)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
