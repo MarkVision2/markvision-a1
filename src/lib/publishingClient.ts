@@ -144,6 +144,8 @@ export interface PublishMetrics {
   accounts_limited_or_error: number;
   health_avg: number | null;
   jobs_queued: number;
+  /** Задания, чей слот прошёл 15+ минут назад: очередь не разбирается. */
+  jobs_overdue?: number;
   jobs_processing: number;
   published_24h: number;
   failed_24h: number;
@@ -464,6 +466,19 @@ export function publishedToday(
 
 /* ───────────────────────────── API ───────────────────────────── */
 
+/**
+ * Отказ edge-функции вместе с телом ответа: по нему интерфейс отличает
+ * «нельзя» от «нельзя без подтверждения» (video_delete → needs_force).
+ */
+export class PublishApiError extends Error {
+  readonly payload: Record<string, unknown>;
+  constructor(message: string, payload: Record<string, unknown> = {}) {
+    super(message);
+    this.name = "PublishApiError";
+    this.payload = payload;
+  }
+}
+
 async function call<T>(action: string, body: Record<string, unknown> = {}): Promise<T> {
   const { data, error } = await supabase.functions.invoke("publish-accounts", {
     body: { action, ...body },
@@ -472,15 +487,17 @@ async function call<T>(action: string, body: Record<string, unknown> = {}): Prom
     // FunctionsHttpError несёт тело ответа с человекочитаемой ошибкой.
     const ctx = (error as { context?: Response }).context;
     let message = error.message || "Ошибка запроса";
+    let payload: Record<string, unknown> = {};
     if (ctx && typeof ctx.json === "function") {
       try {
         const j = (await ctx.json()) as { error?: string };
+        if (j && typeof j === "object") payload = j as Record<string, unknown>;
         if (j?.error) message = j.error;
       } catch {
         /* ignore */
       }
     }
-    throw new Error(message);
+    throw new PublishApiError(message, payload);
   }
   const payload = data as (T & { error?: string }) | null;
   if (!payload) throw new Error("Пустой ответ");
@@ -515,6 +532,8 @@ export interface GroupUpsertInput {
   window_end?: string | null;
   /** null — вернуть значение по умолчанию (публикация в час 10, интервал 120, джиттер 20). */
   per_hour?: number | null;
+  /** Сколько одобрений подряд нужно доверенной группе, чтобы публиковать без согласования. */
+  auto_publish_after?: number | null;
   min_gap_minutes?: number | null;
   jitter_minutes?: number | null;
 }
@@ -626,7 +645,15 @@ export const publishingApi = {
   jobsList: (project_id: string, opts: { status?: PublishJobStatus; limit?: number; video_id?: string } = {}) =>
     call<{ jobs: PublishJob[]; counts?: JobCounts }>("jobs_list", { project_id, ...opts }),
   metrics: (project_id: string) => call<MetricsResponse>("metrics", { project_id }),
+  /** Убрать ролик из библиотеки вместе с заданиями; force — вместе с опубликованными постами. */
+  videoDelete: (project_id: string, video_id: string, force = false) =>
+    call<{ deleted_jobs: number }>("video_delete", { project_id, video_id, ...(force ? { force: true } : {}) }),
+  /** Проверка связи: доходит ли уведомление в Telegram проекта. */
+  notifyTest: (project_id: string) => call<{ chat_id: string; own_chat: boolean }>("notify_test", { project_id }),
   jobRetry: (project_id: string, job_id: string) => call<{ ok: true; status: "pending" }>("job_retry", { project_id, job_id }),
+  /** Повтор всей пачки упавших: по одному после падения площадки не накликаешь. */
+  jobsRetryFailed: (project_id: string, video_id?: string | null) =>
+    call<{ retried: number; skipped: number }>("jobs_retry_failed", { project_id, ...(video_id ? { video_id } : {}) }),
   jobCancel: (project_id: string, job_id: string) => call<{ ok: true; status: "cancelled" }>("job_cancel", { project_id, job_id }),
   publishVideo: (project_id: string, input: PublishVideoInput) =>
     call<PublishVideoResult>("publish_video", { project_id, ...input }),

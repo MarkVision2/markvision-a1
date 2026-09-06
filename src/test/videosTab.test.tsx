@@ -3,11 +3,17 @@
  * «Задания» зовут страницу с нужным роликом; ни разу не выходивший ролик —
  * только «Опубликовать».
  */
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { VideosTab, videoLabel } from "@/components/publishing/VideosTab";
-import type { PublishVideo } from "@/lib/publishingClient";
+import { PublishApiError, type PublishVideo } from "@/lib/publishingClient";
 import type { UsePublishing } from "@/hooks/usePublishing";
+
+const toastSuccess = vi.fn();
+const toastError = vi.fn();
+vi.mock("sonner", () => ({
+  toast: { success: (...a: unknown[]) => toastSuccess(...a), error: (...a: unknown[]) => toastError(...a), warning: vi.fn() },
+}));
 
 const video = (p: Partial<PublishVideo>): PublishVideo => ({
   id: "v1", title: "Осенняя акция", status: "queued", file_url: "https://cdn/x/osen.mp4", created_at: new Date().toISOString(), source: "manual",
@@ -15,7 +21,10 @@ const video = (p: Partial<PublishVideo>): PublishVideo => ({
   ...p,
 });
 
-const pubWith = (videos: PublishVideo[]) => ({ metrics: { publish: null, radar: null, videos }, busy: null }) as unknown as UsePublishing;
+const pubWith = (videos: PublishVideo[], patch: Partial<UsePublishing> = {}) =>
+  ({ metrics: { publish: null, radar: null, videos }, busy: null, videoDelete: vi.fn(), ...patch }) as unknown as UsePublishing;
+
+afterEach(() => { toastSuccess.mockClear(); toastError.mockClear(); vi.restoreAllMocks(); });
 
 describe("videoLabel", () => {
   it("заголовок, иначе имя файла из ссылки", () => {
@@ -52,5 +61,36 @@ describe("VideosTab", () => {
     // Ролик без заданий: кнопка называется «Опубликовать», «Заданий» нет.
     expect(screen.getByRole("button", { name: "Опубликовать ещё Новый ролик" }).textContent).toMatch(/^\s*Опубликовать\s*$/);
     expect(screen.queryByRole("button", { name: "Задания по видео Новый ролик" })).toBeNull();
+  });
+});
+
+describe("удаление ролика из библиотеки", () => {
+  it("спрашивает подтверждение и удаляет вместе с заданиями", async () => {
+    const videoDelete = vi.fn().mockResolvedValue({ deleted_jobs: 3 });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<VideosTab pub={pubWith([video({ id: "v1" })], { videoDelete })} onRepost={vi.fn()} onShowJobs={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Удалить видео Осенняя акция" }));
+    await waitFor(() => expect(videoDelete).toHaveBeenCalledWith("v1"));
+  });
+
+  it("отказ — ничего не удаляем", () => {
+    const videoDelete = vi.fn();
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<VideosTab pub={pubWith([video({ id: "v1" })], { videoDelete })} onRepost={vi.fn()} onShowJobs={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Удалить видео Осенняя акция" }));
+    expect(videoDelete).not.toHaveBeenCalled();
+  });
+
+  it("ролик с опубликованными постами удаляется только после второго подтверждения", async () => {
+    // Сервер отбивает первую попытку (needs_force): вместе с роликом пропадёт
+    // история живых постов, поэтому спрашиваем ещё раз и называем цену.
+    const videoDelete = vi.fn()
+      .mockRejectedValueOnce(new PublishApiError("у ролика 2 опубликованных постов", { needs_force: true, published_jobs: 2 }))
+      .mockResolvedValueOnce({ deleted_jobs: 2 });
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<VideosTab pub={pubWith([video({ id: "v1", published: 2, jobs_total: 2 })], { videoDelete })} onRepost={vi.fn()} onShowJobs={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Удалить видео Осенняя акция" }));
+    await waitFor(() => expect(videoDelete).toHaveBeenLastCalledWith("v1", true));
+    expect(confirmSpy.mock.calls[1][0]).toMatch(/2 опубликованных постов/);
   });
 });

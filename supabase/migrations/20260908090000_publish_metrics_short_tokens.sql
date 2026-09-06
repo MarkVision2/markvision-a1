@@ -1,4 +1,12 @@
--- Витрина publish_metrics: «токены истекают» больше не считает TikTok и YouTube.
+-- Витрина publish_metrics: просроченные задания и честный счётчик токенов.
+--
+-- 1. jobs_overdue — задания, чей слот прошёл больше 15 минут назад, а они всё
+--    ещё ждут. Крон publish-worker ходит раз в минуту, поэтому живая очередь
+--    даёт здесь ноль; ненулевое значение означает, что разбор встал (умер крон,
+--    кончились попытки, некому забрать) — до этого страница показывала бодрое
+--    «В очереди 13» и ничем не выдавала, что оттуда ничего не уедет.
+--
+-- 2. «Токены истекают» больше не считает TikTok и YouTube.
 --
 -- У них access-токен короткий по замыслу площадки (TikTok — сутки, YouTube —
 -- час), и publish-monitor продлевает его refresh-токеном каждый день сам. Из-за
@@ -22,6 +30,12 @@ SELECT
   (SELECT count(*) FROM public.publish_accounts a WHERE a.project_id = p.id AND a.status IN ('limited', 'error')) AS accounts_limited_or_error,
   (SELECT round(avg(a.health_score), 1) FROM public.publish_accounts a WHERE a.project_id = p.id) AS health_avg,
   (SELECT count(*) FROM public.publish_jobs j WHERE j.project_id = p.id AND j.status IN ('pending', 'retry')) AS jobs_queued,
+  -- Слот прошёл, а задание не тронуто: воркер до него не доходит.
+  (SELECT count(*) FROM public.publish_jobs j
+    WHERE j.project_id = p.id
+      AND j.status IN ('pending', 'retry')
+      AND j.scheduled_at < now() - interval '15 minutes'
+      AND j.next_attempt_at < now() - interval '15 minutes') AS jobs_overdue,
   (SELECT count(*) FROM public.publish_jobs j WHERE j.project_id = p.id AND j.status = 'processing') AS jobs_processing,
   (SELECT count(*) FROM public.publish_jobs j WHERE j.project_id = p.id AND j.status = 'published' AND j.published_at >= now() - interval '24 hours') AS published_24h,
   (SELECT count(*) FROM public.publish_jobs j WHERE j.project_id = p.id AND j.status = 'failed' AND j.updated_at >= now() - interval '24 hours') AS failed_24h,
@@ -41,4 +55,4 @@ FROM public.projects p;
 GRANT SELECT ON public.publish_metrics TO authenticated, service_role;
 
 COMMENT ON VIEW public.publish_metrics IS
-  'Сводка контура публикаций по проекту для страницы «Публикации». tokens_expiring_7d не учитывает TikTok и YouTube: их короткие токены продлевает publish-monitor.';
+  'Сводка контура публикаций по проекту для страницы «Публикации». jobs_overdue — задания, чей слот прошёл 15+ минут назад (признак вставшей очереди). tokens_expiring_7d не учитывает TikTok и YouTube: их короткие токены продлевает publish-monitor.';

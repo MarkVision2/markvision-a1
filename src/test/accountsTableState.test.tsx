@@ -80,6 +80,30 @@ describe("состояние аккаунта в таблице", () => {
     expect(within(rowOf("Клиника Айва")).getByText("4 дн. назад")).toBeTruthy();
   });
 
+  it("погашенный монитором аккаунт возвращается в строй из меню строки", async () => {
+    // Монитор ставит status=error и снимает publish_enabled. Выключатель чинил
+    // только половину: планировщик берёт строго status='active'.
+    const updateAccount = vi.fn().mockResolvedValue({});
+    render(<AccountsTable pub={makePub([{ ...base, status: "error", publish_enabled: false, last_error: "Лимит Instagram" }], { updateAccount })} />);
+    expect(within(rowOf("Клиника Айва")).getByText(/не публикует: погашен после отказов/)).toBeTruthy();
+
+    fireEvent.keyDown(screen.getByRole("button", { name: "Действия для Клиника Айва" }), { key: "Enter" });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Вернуть в строй" }));
+    await waitFor(() => expect(updateAccount).toHaveBeenCalledWith("a1", { status: "active", publish_enabled: true }));
+  });
+
+  it("здоровому аккаунту возвращать нечего", async () => {
+    render(<AccountsTable pub={makePub([base])} />);
+    fireEvent.keyDown(screen.getByRole("button", { name: "Действия для Клиника Айва" }), { key: "Enter" });
+    await screen.findByRole("menuitem", { name: /Проверить сейчас/ });
+    expect(screen.queryByRole("menuitem", { name: "Вернуть в строй" })).toBeNull();
+  });
+
+  it("протухший токен зовёт переподключить, а не «вернуть в строй»", () => {
+    render(<AccountsTable pub={makePub([{ ...base, status: "token_expired" }])} />);
+    expect(within(rowOf("Клиника Айва")).getByText(/не публикует: нужно переподключить/)).toBeTruthy();
+  });
+
   it("группа показана подписью, а назначается из меню строки", async () => {
     const updateAccount = vi.fn().mockResolvedValue({});
     render(<AccountsTable pub={makePub([{ ...base, group_id: "g1" }], { updateAccount })} />);

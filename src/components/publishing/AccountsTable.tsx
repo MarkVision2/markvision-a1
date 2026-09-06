@@ -12,7 +12,7 @@
  * контрольными точками d1/d3/d7 — у свежих постов показы честно пустые.
  */
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowDown, ArrowUp, Loader2, MoreHorizontal, Search, ShieldCheck, Sparkles } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, Loader2, MoreHorizontal, RotateCcw, Search, ShieldCheck, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -181,6 +181,24 @@ function Identity({ a, personaName, groupName, followers }: { a: PublishAccount;
 }
 
 /**
+ * «Статус не «Активен»» — правда, но бесполезная: чинить протухший токен,
+ * погашенный монитором аккаунт и ограничение площадки нужно по-разному.
+ */
+const INACTIVE_SHORT: Partial<Record<PublishAccount["status"], string>> = {
+  token_expired: "нужно переподключить",
+  error: "погашен после отказов",
+  limited: "ограничен площадкой",
+  disabled: "выключен вручную",
+};
+
+const INACTIVE_HINT: Partial<Record<PublishAccount["status"], string>> = {
+  token_expired: "Площадка не принимает токен. Подключите аккаунт заново кнопкой «Подключить аккаунт» — задания из очереди уедут сами.",
+  error: "Монитор погасил аккаунт после серии отказов. Разберитесь с причиной (она в подсказке у статуса) и верните в строй из меню строки.",
+  limited: "Площадка ограничила публикации. Снизьте дневной лимит и верните аккаунт в строй из меню строки.",
+  disabled: "Аккаунт выключен вручную: верните ему статус «Активен» из меню строки.",
+};
+
+/**
  * Что со строкой на самом деле: чип статуса площадки плюс причина, по которой
  * планировщик её всё равно не возьмёт. «Активен» у аккаунта с выключенной
  * публикацией или здоровьем ниже 20 — самая дорогая ложь этой таблицы.
@@ -212,10 +230,12 @@ function StatusCell({ a, groups, projectPaused, scopeHint }: { a: PublishAccount
         <Tooltip>
           <TooltipTrigger asChild>
             <span tabIndex={0} className="block cursor-help truncate text-xs text-amber-600 dark:text-amber-400">
-              не публикует: {REASON_SHORT[e.reason!]}
+              не публикует: {e.reason === "not_active" ? INACTIVE_SHORT[a.status] ?? REASON_SHORT[e.reason] : REASON_SHORT[e.reason!]}
             </span>
           </TooltipTrigger>
-          <TooltipContent className="max-w-xs">{e.hint}</TooltipContent>
+          <TooltipContent className="max-w-xs">
+            {e.reason === "not_active" ? INACTIVE_HINT[a.status] ?? e.hint : e.hint}
+          </TooltipContent>
         </Tooltip>
       )}
     </div>
@@ -754,6 +774,22 @@ function AccountRow({
             <DropdownMenuItem disabled={disabled} onSelect={() => void run("Проверено", () => pub.healthCheck([a.id]))}>
               <ShieldCheck className="mr-2 h-3.5 w-3.5" /> Проверить сейчас
             </DropdownMenuItem>
+            {/* Монитор гасит аккаунт после трёх отказов подряд: status=error и
+                публикация выключена. Вернуть его в строй из интерфейса было
+                нечем — выключатель чинил только половину, а планировщик берёт
+                строго status='active'. */}
+            {(a.status === "error" || a.status === "limited" || a.status === "disabled") && (
+              <DropdownMenuItem
+                disabled={disabled}
+                onSelect={() =>
+                  void run("Аккаунт вернулся в строй", () =>
+                    pub.updateAccount(a.id, { status: "active", publish_enabled: true }),
+                  )
+                }
+              >
+                <RotateCcw className="mr-2 h-3.5 w-3.5" /> Вернуть в строй
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Лимит в день</DropdownMenuLabel>
             <div className="px-2 pb-1.5">

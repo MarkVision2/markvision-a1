@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { cloneElement, isValidElement, useEffect, useMemo, useState, type ReactElement } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { AlertCircle, ChevronDown, ExternalLink, Instagram, KeyRound, Loader2, PauseCircle, Plus, RefreshCw, Search, Send, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
@@ -202,6 +202,16 @@ export default function Publishing() {
           </div>
         )}
 
+        {projectId && !pub.settings?.settings.paused && (pub.metrics?.publish?.jobs_overdue ?? 0) > 0 && (
+          <div className="flex items-start gap-2 rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              Очередь не разбирается: у {pub.metrics?.publish?.jobs_overdue} заданий слот прошёл больше 15 минут назад.
+              Проверьте, что публикации проекта не на паузе, а аккаунты активны — иначе задания так и будут ждать.
+            </span>
+          </div>
+        )}
+
         {projectId && (
           <SummaryBar
             pub={pub}
@@ -306,6 +316,7 @@ function SummaryBar({ pub, onOpen }: { pub: UsePublishing; onOpen: (tab: string,
   for (const a of pub.accounts) byPlatform.set(a.platform, (byPlatform.get(a.platform) ?? 0) + 1);
 
   const attention = m ? m.accounts_token_expired + m.accounts_limited_or_error : 0;
+  const overdue = m?.jobs_overdue ?? 0;
 
   // Каждая плитка — вход в свой список: «ошибок 3» без клика по ним бесполезно.
   const cells: {
@@ -338,12 +349,19 @@ function SummaryBar({ pub, onOpen }: { pub: UsePublishing; onOpen: (tab: string,
     {
       label: "В очереди",
       value: m ? String(m.jobs_queued) : "—",
-      hint: "Задания, которые ждут своего слота. Воркер забирает их по расписанию раз в минуту.",
-      sub: m?.jobs_processing
+      hint: overdue
+        ? "Слот этих заданий прошёл больше 15 минут назад, а их никто не забрал: разбор очереди встал. Проверьте паузу проекта и живость крона publish-worker."
+        : "Задания, которые ждут своего слота. Воркер забирает их по расписанию раз в минуту.",
+      // Очередь из 13 заданий выглядела здоровой, даже когда воркер умер и
+      // оттуда месяц ничего не уезжало.
+      sub: overdue
+        ? `просрочено ${overdue} — очередь не разбирается`
+        : m?.jobs_processing
         ? `публикуется сейчас: ${m.jobs_processing}`
         : m?.next_slot_at
         ? `ближайший слот ${fmtRelative(m.next_slot_at)}`
         : "заданий на публикацию нет",
+      tone: overdue ? "bad" : undefined,
       onClick: () => onOpen("jobs", "pending"),
     },
     {
@@ -360,10 +378,13 @@ function SummaryBar({ pub, onOpen }: { pub: UsePublishing; onOpen: (tab: string,
       label: "Здоровье сети",
       value: m?.health_avg != null ? `${Math.round(m.health_avg)}%` : "—",
       hint: "Среднее здоровье подключённых аккаунтов (0–100). Ниже 20 планировщик аккаунт не берёт вовсе.",
+      // Нулевые слагаемые не пишем: «токены истекают у 0» — шум, из-за которого
+      // строка переносилась и прятала важную половину.
       sub: m
-        ? attention || m.tokens_expiring_7d
-          ? `внимания требуют ${attention} · токены истекают у ${m.tokens_expiring_7d}`
-          : "все аккаунты в порядке"
+        ? [
+            attention ? `внимания требуют ${attention}` : null,
+            m.tokens_expiring_7d ? `токены истекают у ${m.tokens_expiring_7d}` : null,
+          ].filter(Boolean).join(" · ") || "все аккаунты в порядке"
         : "",
       tone: attention ? "bad" : m?.health_avg != null && m.health_avg < 70 ? "warn" : m?.tokens_expiring_7d ? "warn" : undefined,
       onClick: () => onOpen("accounts"),
@@ -425,6 +446,7 @@ type GroupDraft = {
   per_hour: string;
   persona_id: string;
   review_mode: ReviewMode;
+  auto_publish_after: string;
   timezone: string;
   window_start: string;
   window_end: string;
@@ -440,6 +462,7 @@ const EMPTY_GROUP: GroupDraft = {
   per_hour: "",
   persona_id: NONE,
   review_mode: "review_required",
+  auto_publish_after: "",
   timezone: "Asia/Almaty",
   window_start: "",
   window_end: "",
@@ -468,6 +491,7 @@ function groupToDraft(g: PublishGroup, accounts: PublishAccount[] = []): GroupDr
     per_hour: g.per_hour != null ? String(g.per_hour) : "",
     persona_id: g.persona_id ?? NONE,
     review_mode: g.review_mode,
+    auto_publish_after: g.auto_publish_after != null ? String(g.auto_publish_after) : "",
     timezone: g.timezone ?? "",
     window_start: g.window_start?.slice(0, 5) ?? "",
     window_end: g.window_end?.slice(0, 5) ?? "",
@@ -498,6 +522,7 @@ function GroupsTab({ pub }: { pub: UsePublishing }) {
         per_hour: numOrNull(draft.per_hour),
         persona_id: draft.persona_id === NONE ? null : draft.persona_id,
         review_mode: draft.review_mode,
+        auto_publish_after: numOrNull(draft.auto_publish_after),
         timezone: draft.timezone.trim() || null,
         window_start: draft.window_start || null,
         window_end: draft.window_end || null,
@@ -547,8 +572,13 @@ function GroupsTab({ pub }: { pub: UsePublishing }) {
               </div>
               <div className="mt-1 text-xs text-muted-foreground">
                 {groupMemberIds(g, pub.accounts).length} акк. · {STRATEGY_META[g.publish_strategy]?.label ?? g.publish_strategy}
-                {g.platform ? ` · ${PLATFORM_META[g.platform].label}` : ""} · одобрено подряд: {g.approved_streak}
+                {g.platform ? ` · ${PLATFORM_META[g.platform].label}` : ""}
               </div>
+              {g.review_mode === "auto_publish" && (
+                <div className="mt-0.5 text-xs text-muted-foreground">
+                  Одобрено подряд {g.approved_streak} из {g.auto_publish_after ?? 5} до публикации без согласования
+                </div>
+              )}
             </button>
           );
         })}
@@ -558,7 +588,11 @@ function GroupsTab({ pub }: { pub: UsePublishing }) {
         <div className="space-y-4 rounded-2xl border bg-card p-4">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold">{draft.id ? "Редактирование группы" : "Новая группа"}</h3>
-            {selected && <span className="text-xs text-muted-foreground">Одобрено подряд: {selected.approved_streak}</span>}
+            {selected && (
+              <span className="text-xs text-muted-foreground">
+                Одобрено подряд: {selected.approved_streak} из {selected.auto_publish_after ?? 5}
+              </span>
+            )}
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Название">
@@ -606,6 +640,17 @@ function GroupsTab({ pub }: { pub: UsePublishing }) {
                   ))}
                 </SelectContent>
               </Select>
+            </Field>
+            {/* Порог доверия сравнивается с approved_streak в content-pipeline:
+                настройка работала, а задать её было негде. */}
+            <Field label="Автопубликация после, одобрений">
+              <Input
+                type="number"
+                min={1}
+                placeholder="5"
+                value={draft.auto_publish_after}
+                onChange={(e) => set("auto_publish_after", e.target.value)}
+              />
             </Field>
             <Field label="Часовой пояс">
               <Input value={draft.timezone} placeholder="Asia/Almaty" onChange={(e) => set("timezone", e.target.value)} />
@@ -670,11 +715,19 @@ function GroupsTab({ pub }: { pub: UsePublishing }) {
   );
 }
 
+/**
+ * Подпись + контрол. Label без htmlFor не связан с полем: ни скринридер, ни
+ * автотест не знают, какое поле называется «Окно с». Ставим контролу
+ * aria-label по подписи, если своего нет; у Radix Select имя вешаем на триггер.
+ */
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  const named = isValidElement(children) && !(children.props as { "aria-label"?: string })["aria-label"]
+    ? cloneElement(children as ReactElement, { "aria-label": label } as Record<string, unknown>)
+    : children;
   return (
     <div className="space-y-1">
       <Label className="text-xs text-muted-foreground">{label}</Label>
-      {children}
+      {named}
     </div>
   );
 }
@@ -924,6 +977,15 @@ function SettingsTab({ pub }: { pub: UsePublishing }) {
     }
   };
 
+  const testNotify = async () => {
+    try {
+      const r = await pub.notifyTest();
+      toast.success(r.own_chat ? `Сообщение ушло в чат ${r.chat_id}` : `Сообщение ушло в чат проекта ${r.chat_id}`);
+    } catch (e) {
+      toast.error(errMsg(e, "Проверка не прошла"));
+    }
+  };
+
   // Пауза применяется сразу, отдельно от формы: это аварийный рубильник.
   const togglePause = async (next: boolean) => {
     setPaused(next);
@@ -991,6 +1053,15 @@ function SettingsTab({ pub }: { pub: UsePublishing }) {
             ? "Пусто — пишем в чат, привязанный к проекту в Telegram. Свой id нужен, чтобы увести отчёты в отдельную группу."
             : "Это число: id личного чата или группы (у групп со знаком минус)."}
         </p>
+        {/* Настройка, которую нельзя проверить, работает только на бумаге:
+            дайджест приходит раз в час, и молчание не отличить от поломки. */}
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" disabled={disabled || dirty} onClick={() => void testNotify()}>
+            {pub.busy === "notify_test" ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Send className="mr-1.5 h-3.5 w-3.5" />}
+            Проверить связь
+          </Button>
+          {dirty && <span className="text-xs text-muted-foreground">Сначала сохраните — проверка идёт по сохранённому чату.</span>}
+        </div>
       </section>
 
       {/* Бюджет */}

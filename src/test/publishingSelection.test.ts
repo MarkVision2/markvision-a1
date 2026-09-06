@@ -49,10 +49,18 @@ describe("accountEligibility", () => {
     expect(accountEligibility(acc({ health_score: 20 }))).toEqual({ ok: true, reason: null, hint: null });
   });
 
-  it("выключенная публикация — самая частая причина, проверяется первой", () => {
-    const e = accountEligibility(acc({ publish_enabled: false, status: "error", health_score: 0 }));
+  it("снятый тумблер у живого аккаунта — это «публикация выключена»", () => {
+    const e = accountEligibility(acc({ publish_enabled: false, health_score: 100 }));
     expect(e.ok).toBe(false);
     expect(e.reason).toBe("disabled");
+  });
+
+  it("погашенный монитором аккаунт называет статус, а не тумблер", () => {
+    // Монитор снимает publish_enabled и ставит status=error одновременно.
+    // Назвать причиной тумблер — отправить оператора чинить не то: включённый
+    // аккаунт со статусом error планировщик всё равно не возьмёт.
+    const e = accountEligibility(acc({ publish_enabled: false, status: "error", health_score: 0 }));
+    expect(e.reason).toBe("not_active");
   });
 
   it("не активный статус отсеивается", () => {

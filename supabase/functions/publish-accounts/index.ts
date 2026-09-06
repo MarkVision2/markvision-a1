@@ -24,6 +24,9 @@
  *   { action: "settings_get" | "settings_upsert", project_id,  notify_mode?, digest_chat_id?, paused?, daily_usd?, monthly_usd? }
  *   { action: "jobs_list", project_id, status?, limit?, video_id? } → { jobs, counts } — counts по всей очереди
  *   { action: "job_retry" | "job_cancel", project_id, job_id }   — повтор остановленного / отмена не ушедшего
+ *   { action: "jobs_retry_failed", project_id, video_id? }        — повтор всей пачки упавших разом
+ *   { action: "video_delete", project_id, video_id, force? }      — убрать ролик из библиотеки (с заданиями)
+ *   { action: "notify_test", project_id }                         — проверить, дойдёт ли уведомление в Telegram
  *   { action: "publish_video", project_id, file_url | video_id, group_id?, account_ids?, mode?, title?, caption?, hashtags? }
  *   { action: "metrics", project_id } → { publish, radar, videos, groups, accounts } — accounts из publish_account_metrics
  *   { action: "metrics", project_id } — витрины publish_metrics / radar_metrics
@@ -402,6 +405,10 @@ Deno.serve(async (req) => {
           row[k] = k === "window_start" ? "09:00" : "21:00";
         }
       }
+      // Через сколько одобрений подряд доверенная группа перестаёт спрашивать
+      // согласование (content-pipeline сравнивает с approved_streak).
+      if (typeof body?.auto_publish_after === "number") row.auto_publish_after = Math.min(Math.max(Math.round(body.auto_publish_after), 1), 50);
+      else if (body?.auto_publish_after === null) row.auto_publish_after = 5;
       if (typeof body?.min_gap_minutes === "number") row.min_gap_minutes = Math.min(Math.max(Math.round(body.min_gap_minutes), 0), 1440);
       else if (body?.min_gap_minutes === null) row.min_gap_minutes = 120;
       if (typeof body?.jitter_minutes === "number") row.jitter_minutes = Math.min(Math.max(Math.round(body.jitter_minutes), 0), 180);
@@ -797,6 +804,104 @@ Deno.serve(async (req) => {
       // Слот освобождаем, иначе планировщик считает окно занятым.
       await admin.from("publish_slots").delete().eq("job_id", j.id);
       return json({ ok: true, job_id: j.id, status: "cancelled" });
+    }
+
+    /* ── очередь пачкой: повтор всех упавших ── */
+    if (action === "jobs_retry_failed") {
+      if (!projectId) return json({ error: "project_id обязателен" }, 400);
+      // Кликать «Повторить» сто раз после падения площадки невозможно, а
+      // причина у пачки обычно одна (протух токен, площадка лежала).
+      const videoId = typeof body?.video_id === "string" ? body.video_id : null;
+      let q = admin.from("publish_jobs").select("id").eq("project_id", projectId).eq("status", "failed");
+      if (videoId) q = q.eq("video_id", videoId);
+      const { data: rows, error: listErr } = await q.limit(500);
+      if (listErr) return json({ error: listErr.message }, 500);
+      const ids = ((rows ?? []) as { id: string }[]).map((r) => r.id);
+      if (!ids.length) return json({ ok: true, retried: 0, skipped: 0 });
+
+      const now = new Date().toISOString();
+      // По одному: частичная уникальность (video_id, account_id) может отбить
+      // строку, у которой уже стоит свежее задание с тем же роликом.
+      let retried = 0;
+      let skipped = 0;
+      for (const id of ids) {
+        const { error } = await admin.from("publish_jobs").update({
+          status: "pending", attempts: 0, container_id: null, poll_count: 0,
+          scheduled_at: now, next_attempt_at: now, locked_at: null,
+          error_code: null, error_message: null,
+        }).eq("id", id).eq("status", "failed");
+        if (error) skipped += 1;
+        else retried += 1;
+      }
+      return json({ ok: true, retried, skipped });
+    }
+
+    /* ── библиотека: убрать ролик вместе с его заданиями ── */
+    if (action === "video_delete") {
+      const videoId = String(body?.video_id ?? "");
+      if (!videoId) return json({ error: "video_id обязателен" }, 400);
+      // Опубликованный ролик — единственная запись о живых постах площадок
+      // (по заданиям собираются метрики). Удаляем только по явному подтверждению.
+      const { count: published } = await admin.from("publish_jobs")
+        .select("id", { count: "exact", head: true })
+        .eq("project_id", pid).eq("video_id", videoId).eq("status", "published");
+      if ((published ?? 0) > 0 && body?.force !== true) {
+        return json({
+          error: `у ролика ${published} опубликованных постов — вместе с ним пропадёт их история и метрики`,
+          published_jobs: published ?? 0,
+          needs_force: true,
+        }, 409);
+      }
+      const { count: running } = await admin.from("publish_jobs")
+        .select("id", { count: "exact", head: true })
+        .eq("project_id", pid).eq("video_id", videoId).eq("status", "processing");
+      if ((running ?? 0) > 0) {
+        return json({ error: "по ролику сейчас идёт публикация — дождитесь её и повторите" }, 409);
+      }
+      // Задания, слоты, журнал и снятые метрики уходят по ON DELETE CASCADE —
+      // считаем только, сколько заданий пропадёт, чтобы сказать это в ответе.
+      const { count: jobs } = await admin.from("publish_jobs")
+        .select("id", { count: "exact", head: true }).eq("project_id", pid).eq("video_id", videoId);
+      const { error } = await admin.from("publish_videos").delete().eq("id", videoId).eq("project_id", pid);
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true, deleted_jobs: jobs ?? 0 });
+    }
+
+    /* ── проверка связи с Telegram: дойдёт ли дайджест ── */
+    if (action === "notify_test") {
+      if (!projectId) return json({ error: "project_id обязателен" }, 400);
+      const { data: st } = await admin.from("publish_project_settings")
+        .select("digest_chat_id").eq("project_id", projectId).maybeSingle();
+      const chatId = (st as { digest_chat_id?: string | null } | null)?.digest_chat_id ?? null;
+      // Куда уйдёт сообщение, если своего chat id нет: чат проекта в Telegram.
+      let target = chatId;
+      if (!target) {
+        const { data: link } = await admin.from("telegram_links")
+          .select("chat_id").eq("project_id", projectId).limit(1).maybeSingle();
+        target = (link as { chat_id?: string } | null)?.chat_id ?? null;
+      }
+      if (!target) {
+        return json({ error: "Telegram не подключён: у проекта нет чата и не задан chat id для дайджеста" }, 400);
+      }
+      const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN");
+      if (!botToken) {
+        return json({ error: "TELEGRAM_BOT_TOKEN не задан в секретах Supabase — уведомления не отправляются" }, 500);
+      }
+      // Шлём сами, а не через notifyProject: тот глотает отказ Telegram, а нам
+      // нужно показать «chat not found» вместо бодрого «отправлено».
+      const tg = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: target,
+          text: "🔔 Проверка связи из раздела «Публикации» — уведомления настроены верно.",
+          disable_web_page_preview: true,
+        }),
+      }).then((r) => r.json()).catch((e) => ({ ok: false, description: e instanceof Error ? e.message : String(e) }));
+      if (!tg?.ok) {
+        return json({ error: `Telegram не принял сообщение: ${tg?.description ?? "нет ответа"}` }, 400);
+      }
+      return json({ ok: true, chat_id: target, own_chat: Boolean(chatId) });
     }
 
     if (action === "disconnect") {

@@ -5,13 +5,14 @@
  * но без заливки файла) и открывается очередь именно по нему. Счётчики —
  * витрина publish_video_stats, приходит вместе с metrics.
  */
-import { ExternalLink, ListChecks, Repeat2 } from "lucide-react";
+import { ExternalLink, ListChecks, Repeat2, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { UsePublishing } from "@/hooks/usePublishing";
-import type { PublishVideo } from "@/lib/publishingClient";
+import { PublishApiError, type PublishVideo } from "@/lib/publishingClient";
 import { fmtExact, fmtRelative } from "@/lib/publishingFormat";
 import { cn } from "@/lib/utils";
 
@@ -45,6 +46,38 @@ export function VideosTab({
   const videos = pub.metrics?.videos ?? [];
   const busy = pub.busy != null;
 
+  /**
+   * Убрать ролик из библиотеки. Пробные заливки копятся тут навсегда, а
+   * удалять их было нечем. Сервер отбивает ролик с опубликованными постами
+   * (needs_force) — тогда спрашиваем второй раз, называя, что пропадёт.
+   */
+  const remove = async (v: PublishVideo) => {
+    const label = videoLabel(v);
+    if (!window.confirm(`Убрать «${label}» из библиотеки? Задания по нему тоже удалятся.`)) return;
+    try {
+      await pub.videoDelete(v.id);
+      toast.success("Ролик удалён");
+      return;
+    } catch (e) {
+      const needsForce = e instanceof PublishApiError && e.payload.needs_force === true;
+      if (!needsForce) {
+        toast.error(e instanceof Error ? e.message : "Не удалось удалить");
+        return;
+      }
+      const published = Number(e.payload.published_jobs ?? 0);
+      if (!window.confirm(
+        `У «${label}» ${published} опубликованных постов. Сами посты на площадках останутся, ` +
+        "но их история и метрики в MarkVision пропадут. Удалить всё равно?",
+      )) return;
+      try {
+        await pub.videoDelete(v.id, true);
+        toast.success("Ролик удалён вместе с историей публикаций");
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Не удалось удалить");
+      }
+    }
+  };
+
   if (!videos.length) {
     return (
       <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">
@@ -60,10 +93,10 @@ export function VideosTab({
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead className="h-9">Видео</TableHead>
-              <TableHead className="h-9 w-[220px]">Задания</TableHead>
-              <TableHead className="h-9 w-[150px]">Последний пост</TableHead>
-              <TableHead className="h-9 w-[150px]">Ближайший слот</TableHead>
-              <TableHead className="h-9 w-[250px]" />
+              <TableHead className="h-9 w-[210px]">Задания</TableHead>
+              <TableHead className="h-9 w-[140px] whitespace-nowrap">Последний пост</TableHead>
+              <TableHead className="h-9 w-[140px] whitespace-nowrap">Ближайший слот</TableHead>
+              <TableHead className="h-9 w-[230px]" />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -147,6 +180,19 @@ export function VideosTab({
                         <ListChecks className="mr-1 h-3.5 w-3.5" /> Задания
                       </Button>
                     )}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          size="sm" variant="ghost" className="h-7 w-7 px-0 text-muted-foreground hover:text-destructive"
+                          disabled={busy}
+                          aria-label={`Удалить видео ${label}`}
+                          onClick={() => void remove(v)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Убрать из библиотеки вместе с заданиями</TooltipContent>
+                    </Tooltip>
                   </TableCell>
                 </TableRow>
               );

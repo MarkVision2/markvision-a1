@@ -64,14 +64,19 @@ export function isGroupMember(a: PublishAccount, g: PublishGroup): boolean {
  */
 export function accountEligibility(a: PublishAccount, ctx: PlanContext = {}): Eligibility {
   const ownGroup = ctx.groups?.find((g) => g.id === a.group_id) ?? null;
+  // Статус проверяем раньше выключателя: монитор гасит аккаунт сразу обоими
+  // (status=error + publish_enabled=false), и «публикация выключена» отправляла
+  // оператора щёлкать тумблер — планировщик всё равно берёт строго
+  // status='active'. Сам по себе снятый тумблер у живого аккаунта по-прежнему
+  // называется «публикация выключена».
   const reason: IneligibleReason | null = ctx.projectPaused
     ? "project_paused"
     : ctx.group?.review_mode === "paused"
       ? "group_paused"
-      : !a.publish_enabled
-        ? "disabled"
-        : a.status !== "active"
-          ? "not_active"
+      : a.status !== "active"
+        ? "not_active"
+        : !a.publish_enabled
+          ? "disabled"
           : Number(a.health_score ?? 0) < MIN_HEALTH_TO_PUBLISH
             ? "low_health"
             : ctx.group && !isGroupMember(a, ctx.group)

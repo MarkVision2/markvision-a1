@@ -8,7 +8,7 @@
  * (сервер отдаёт до 500). Ошибка живёт в подсказке, а не третьей строкой в ячейке.
  */
 import { useMemo, useState } from "react";
-import { ExternalLink, RotateCcw, Search, X, XCircle } from "lucide-react";
+import { ExternalLink, Loader2, RotateCcw, Search, X, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -108,6 +108,23 @@ export function JobsTab({ pub }: { pub: UsePublishing }) {
   const counts = pub.jobCounts ?? {};
 
   const visible = useMemo(() => pub.jobs.filter((j) => jobMatches(j, q)), [pub.jobs, q]);
+
+  /**
+   * Причина у пачки обычно одна (протух токен, площадка лежала), а кликать
+   * «Повторить» тридцать семь раз невозможно. Фильтр по видео уважаем: из
+   * очереди одного ролика повторяем только его.
+   */
+  const retryAllFailed = async () => {
+    const scope = pub.jobsVideo ? "по этому видео" : "в проекте";
+    if (!window.confirm(`Повторить все упавшие задания ${scope} (${counts.failed ?? 0})?`)) return;
+    try {
+      const r = await pub.jobsRetryFailed(pub.jobsVideo);
+      if (r.skipped) toast.warning(`Возвращено в очередь ${r.retried}, пропущено ${r.skipped}`);
+      else toast.success(`Возвращено в очередь: ${r.retried}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Ошибка");
+    }
+  };
   const videoFilter = pub.jobsVideo ? pub.metrics?.videos?.find((v) => v.id === pub.jobsVideo) ?? null : null;
 
   const filters: { value: PublishJobStatus | "all"; label: string; count: number }[] = [
@@ -137,6 +154,19 @@ export function JobsTab({ pub }: { pub: UsePublishing }) {
               </Button>
             );
           })}
+          {(counts.failed ?? 0) > 1 && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-8"
+              disabled={busy}
+              onClick={() => void retryAllFailed()}
+            >
+              {pub.busy === "jobs_retry_failed" ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="mr-1.5 h-3.5 w-3.5" />}
+              Повторить все упавшие
+            </Button>
+          )}
           <div className="relative ml-auto w-full sm:w-64">
             <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
             <Input

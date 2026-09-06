@@ -22,6 +22,8 @@ const disconnect = vi.fn().mockResolvedValue({ ok: true });
 const loadAvailable = vi.fn().mockResolvedValue({ pages: [] });
 const connect = vi.fn().mockResolvedValue({ connected: [{}], skipped: [] });
 const settingsUpsert = vi.fn().mockResolvedValue({ settings: null, budget: null });
+const notifyTest = vi.fn().mockResolvedValue({ chat_id: "-1001", own_chat: false });
+const groupUpsert = vi.fn().mockResolvedValue({ group: {} });
 const publishVideo = vi.fn().mockResolvedValue({ video_id: "v1", created: 1, skipped: 0, jobs: [] });
 
 const tiktokOld: PublishAccount = {
@@ -81,7 +83,7 @@ const account: PublishAccount = {
 };
 
 // Переключатели состояния мока между тестами (vi.mock поднимается выше объявлений).
-const mockFlags = vi.hoisted(() => ({ paused: false }));
+const mockFlags = vi.hoisted(() => ({ paused: false, overdue: 0 }));
 
 vi.mock("@/hooks/usePublishing", () => ({
   usePublishing: () => ({
@@ -102,6 +104,7 @@ vi.mock("@/hooks/usePublishing", () => ({
         accounts_limited_or_error: 0,
         health_avg: 81.4,
         jobs_queued: 13,
+        jobs_overdue: mockFlags.overdue,
         jobs_processing: 0,
         published_24h: 9,
         failed_24h: 2,
@@ -132,11 +135,12 @@ vi.mock("@/hooks/usePublishing", () => ({
     connectThreads: vi.fn(),
     updateAccount: vi.fn().mockResolvedValue({ account: {} }),
     disconnect,
-    groupUpsert: vi.fn(),
+    groupUpsert,
     groupDelete: vi.fn(),
     personaUpsert: vi.fn(),
     personaDelete: vi.fn(),
     settingsUpsert,
+    notifyTest,
     publishVideo,
   }),
 }));
@@ -371,5 +375,41 @@ describe("страница «Публикации»", () => {
     expect((screen.getByRole("button", { name: "Сохранить" }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText(/Сегодня \$0\.50 из \$5/)).toBeTruthy();
     expect(screen.getByText(/За месяц \$12\.34 из \$100/)).toBeTruthy();
+  });
+
+  it("вставшая очередь: баннер и плитка говорят, что задания не разбираются", () => {
+    mockFlags.overdue = 4;
+    try {
+      renderPage();
+      expect(screen.getByText(/Очередь не разбирается/)).toBeTruthy();
+      expect(screen.getByText(/просрочено 4/)).toBeTruthy();
+    } finally {
+      mockFlags.overdue = 0;
+    }
+  });
+
+  it("живая очередь баннер не показывает", () => {
+    renderPage();
+    expect(screen.queryByText(/Очередь не разбирается/)).toBeNull();
+  });
+
+  it("настройки: «Проверить связь» шлёт тестовое сообщение", async () => {
+    await openSettings();
+    fireEvent.click(screen.getByRole("button", { name: /Проверить связь/ }));
+    await waitFor(() => expect(notifyTest).toHaveBeenCalled());
+  });
+
+  it("группы: порог автопубликации редактируется и уходит на сервер", async () => {
+    renderPage();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Группы" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Группы" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Новая группа/ }));
+
+    fireEvent.change(await screen.findByLabelText("Название"), { target: { value: "Клиники" } });
+    fireEvent.change(screen.getByLabelText("Автопубликация после, одобрений"), { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+    await waitFor(() =>
+      expect(groupUpsert).toHaveBeenCalledWith(expect.objectContaining({ name: "Клиники", auto_publish_after: 3 })),
+    );
   });
 });

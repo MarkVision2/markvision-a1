@@ -6,13 +6,16 @@
  * Ещё чипы статусов считались по загруженной странице и врали на большой
  * очереди; теперь счётчики приходят с сервера.
  */
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { JobsTab } from "@/components/publishing/JobsTab";
 import { jobErrorHint, type PublishJob } from "@/lib/publishingClient";
 import type { UsePublishing } from "@/hooks/usePublishing";
 
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+const toastSuccess = vi.fn();
+vi.mock("sonner", () => ({
+  toast: { success: (...a: unknown[]) => toastSuccess(...a), error: vi.fn(), warning: vi.fn() },
+}));
 
 const job = (patch: Partial<PublishJob>): PublishJob => ({
   id: "j1", video_id: "v", account_id: "a", platform: "instagram", status: "failed",
@@ -81,5 +84,23 @@ describe("счётчики статусов", () => {
     render(<JobsTab pub={pub} />);
     expect(screen.getByRole("button", { name: /Все 412/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Ошибка 37/ })).toBeTruthy();
+  });
+});
+
+describe("повтор всей пачки упавших", () => {
+  afterEach(() => { toastSuccess.mockClear(); vi.restoreAllMocks(); });
+
+  it("одна кнопка вместо тридцати семи кликов; фильтр по видео уважается", async () => {
+    const jobsRetryFailed = vi.fn().mockResolvedValue({ retried: 37, skipped: 0 });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const pub = makePub([job({})], { jobCounts: { all: 40, failed: 37 }, jobsVideo: "v1", jobsRetryFailed });
+    render(<JobsTab pub={pub} />);
+    fireEvent.click(screen.getByRole("button", { name: /Повторить все упавшие/ }));
+    await waitFor(() => expect(jobsRetryFailed).toHaveBeenCalledWith("v1"));
+  });
+
+  it("одного упавшего задания для пачки мало — кнопки нет", () => {
+    render(<JobsTab pub={makePub([job({})], { jobCounts: { all: 2, failed: 1 } })} />);
+    expect(screen.queryByRole("button", { name: /Повторить все упавшие/ })).toBeNull();
   });
 });
