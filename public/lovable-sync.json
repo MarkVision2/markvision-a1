@@ -1,7 +1,7 @@
 {
-  "git_sha": "06265fe",
-  "git_sha_full": "06265fe1a6d7a61af7c7652cb60db0bc476559bc",
-  "updated_at": "2026-09-06T17:36:19+04:00",
-  "label": "feat(devices): аккаунт с телефона виден в сетке [vercel-deploy]",
+  "git_sha": "24f726a",
+  "git_sha_full": "24f726a6c3d47308e787344fb984be8702aafcb0",
+  "updated_at": "2026-09-06T17:39:04+04:00",
+  "label": "perf(devices): кадры внахлёст и режим движения — экран обновляется втрое чаще [vercel-deploy]",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
