@@ -4,7 +4,7 @@
  * (вирусные посты, просмотры сверх нормы, сила автора, плотность хитов),
  * фильтры и сортировки ленты трендов. Без сети — покрыто src/test/radarStats.test.ts.
  */
-import type { IdeaStatus, RadarMetrics, RadarPlatform, RadarPost, RadarSource } from "@/lib/radarClient";
+import type { Idea, IdeaStatus, RadarMetrics, RadarPlatform, RadarPost, RadarSource } from "@/lib/radarClient";
 
 /** Пост считаем «залетевшим», если он обошёл обычный результат автора минимум вдвое. */
 export const VIRAL_X_FACTOR = 2;
@@ -185,6 +185,42 @@ export function filterTrends(posts: RadarPost[], f: TrendFilter, now: number = D
     score: (a, b) => (Number(b.score) || 0) - (Number(a.score) || 0),
   };
   return [...list].sort(by[f.sort]);
+}
+
+/* ───────────────────────────── идеи ───────────────────────────── */
+
+export interface IdeaFilter {
+  status: IdeaStatus | "all";
+  niche: string | null;
+  query: string;
+}
+
+export const DEFAULT_IDEA_FILTER: IdeaFilter = { status: "all", niche: null, query: "" };
+
+/** Ниши банка идей по убыванию частоты. */
+export function ideaNiches(ideas: Idea[]): { niche: string; count: number }[] {
+  const counts = new Map<string, number>();
+  for (const i of ideas) {
+    const n = i.niche?.trim();
+    if (n) counts.set(n, (counts.get(n) ?? 0) + 1);
+  }
+  return [...counts.entries()].map(([niche, count]) => ({ niche, count })).sort((a, b) => b.count - a.count || a.niche.localeCompare(b.niche, "ru"));
+}
+
+/** Идеи под фильтр (статус, ниша, поиск по названию / хуку / углу / нише), по убыванию оценки. */
+export function filterIdeas(ideas: Idea[], f: IdeaFilter): Idea[] {
+  const q = f.query.trim().toLowerCase();
+  return ideas
+    .filter((i) => {
+      if (f.status !== "all" && i.status !== f.status) return false;
+      if (f.niche && (i.niche?.trim() ?? "") !== f.niche) return false;
+      if (q) {
+        const hay = `${i.title} ${i.hook ?? ""} ${i.angle ?? ""} ${i.niche ?? ""}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    })
+    .sort((a, b) => Number(b.score) - Number(a.score));
 }
 
 /* ───────────────────────────── сводка ───────────────────────────── */
