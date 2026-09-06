@@ -41,6 +41,8 @@
  *   { action: "jobs_approve" | "jobs_reject", project_id, video_id? | job_ids? } — согласование AI-публикаций
  *       (manual_review + awaiting_approval → pending | cancelled), политика — settings.ai_policy
  *   { action: "analytics_insights", project_id, days? }           — AI Content Analyst: часы, площадки, аккаунты, ошибки, рекомендации
+ *   { action: "winner_replicate", project_id, content_id, group_ids? } — размножить победителя вариантами по группам (конвейер)
+ *   { action: "replication_list", project_id, content_id?, limit? }   — журнал автоповтора
  *   { action: "video_delete", project_id, video_id, force? }      — убрать ролик из библиотеки (с заданиями)
  *   { action: "notify_test", project_id }                         — проверить, дойдёт ли уведомление в Telegram
  *   { action: "publish_video", project_id, file_url | video_id, group_id?, account_ids?, mode?, title?, caption?, hashtags? }
@@ -66,6 +68,7 @@ import {
 import { generateWebhookSecret, isWebhookEvent } from "../_lib/webhooks.ts";
 import { AWAITING_APPROVAL_CODE, isAiPolicy } from "../_lib/publishAiPolicy.ts";
 import { buildContentInsights, type InsightFailure, type InsightPublication } from "../_lib/publishInsights.ts";
+import { replicateContent } from "../_lib/publishReplication.ts";
 import {
   automationKeyValid,
   CORS_HEADERS,
@@ -1519,7 +1522,7 @@ Deno.serve(async (req) => {
       const since = new Date(Date.now() - days * 86_400_000).toISOString();
       const [{ data: pubs, error: pubErr }, { data: accs }, { data: fails }] = await Promise.all([
         admin.from("publish_publications")
-          .select("publication_id, content_id, content_title, account_id, account_name, platform, status, verification_status, published_at, views, reach, likes, comments, shares, saves, score, metrics_checkpoint")
+          .select("publication_id, content_id, content_title, account_id, account_name, platform, status, verification_status, published_at, views, reach, likes, comments, shares, saves, score, metrics_checkpoint, topic_key, hook_type, cta_type")
           .eq("project_id", projectId).gte("published_at", since).order("published_at", { ascending: false }).limit(5000),
         admin.from("publish_accounts").select("id, timezone").eq("project_id", projectId),
         admin.from("publish_jobs").select("error_class, platform").eq("project_id", projectId)
@@ -1536,6 +1539,38 @@ Deno.serve(async (req) => {
         defaultTimezone: "Asia/Almaty",
       });
       return json({ ok: true, insights, generated_at: new Date().toISOString() });
+    }
+
+    /* ── автопилот победителей (Phase 5, _lib/publishReplication.ts) ── */
+    if (action === "winner_replicate") {
+      if (!projectId) return json({ error: "project_id обязателен" }, 400);
+      const contentId = String(body?.content_id ?? "");
+      if (!contentId) return json({ error: "content_id обязателен" }, 400);
+      const { data: v } = await admin.from("publish_videos").select("id").eq("id", contentId).eq("project_id", projectId).maybeSingle();
+      if (!v) return json({ error: "видео не найдено в проекте" }, 404);
+      const { data: auto } = await admin.from("automation_settings").select("cron_secret").eq("id", true).maybeSingle();
+      const key = (auto as { cron_secret?: string } | null)?.cron_secret;
+      if (!key) return json({ error: "ключ автоматизации не настроен (automation_settings.cron_secret)" }, 500);
+      const r = await replicateContent(admin, {
+        projectId, contentId,
+        groupIds: Array.isArray(body?.group_ids) ? body.group_ids.map(String).filter(Boolean) : null,
+        createdBy: viaAutomation ? "api" : "ui",
+        supabaseUrl: Deno.env.get("SUPABASE_URL")!,
+        automationKey: key,
+      });
+      if (r.error) return json({ error: r.error, ...r }, 409);
+      return json({ ok: true, ...r });
+    }
+    if (action === "replication_list") {
+      if (!projectId) return json({ error: "project_id обязателен" }, 400);
+      let q = admin.from("publish_replications")
+        .select("id, content_id, item_id, group_id, child_item_id, status, reason, created_by, created_at, publish_videos(title), publish_account_groups(name)")
+        .eq("project_id", projectId).order("created_at", { ascending: false })
+        .limit(Math.min(Math.max(Number(body?.limit ?? 100), 1), 500));
+      if (typeof body?.content_id === "string") q = q.eq("content_id", body.content_id);
+      const { data, error } = await q;
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true, replications: data ?? [] });
     }
 
     /* ── библиотека: убрать ролик вместе с его заданиями ── */

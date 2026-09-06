@@ -42,7 +42,7 @@
  * (api_test.ts гоняет его с подменённой базой и сетью).
  */
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
-import { checkRateLimit, hasScope, type ApiKeyContext, type RateBucket } from "../_lib/apiKeys.ts";
+import { checkRateLimit, hasScope, RATE_LIMIT_PER_MINUTE, type ApiKeyContext, type RateBucket } from "../_lib/apiKeys.ts";
 import { resolveApiKey } from "../_lib/apiKeysDb.ts";
 import { matchRoute, parseDistributeInput, parsePublicationInput, parseTarget, requiredScope, type ApiRoute } from "../_lib/publicApi.ts";
 
@@ -207,6 +207,24 @@ async function contentVariants(req: Request, deps: Deps, ctx: ApiKeyContext, id:
     user_id: (key as { created_by?: string | null } | null)?.created_by ?? null,
   }, { "x-automation-key": await automationKey(deps.admin) });
   return passthrough(r);
+}
+
+/** POST /analytics/content/:id/replicate { group_ids? } — размножить победителя вариантами по группам. */
+async function contentReplicate(req: Request, deps: Deps, ctx: ApiKeyContext, id: string): Promise<Response> {
+  const body = await readJson(req);
+  const groupIds = Array.isArray(body.group_ids) ? body.group_ids.map(String).filter(Boolean) : [];
+  return passthrough(await accountsAction(deps, ctx, "winner_replicate", {
+    content_id: id, ...(groupIds.length ? { group_ids: groupIds } : {}),
+  }));
+}
+
+/** GET /replications?content_id=&limit= — журнал автоповтора победителей. */
+async function replicationsList(req: Request, deps: Deps, ctx: ApiKeyContext): Promise<Response> {
+  const q = new URL(req.url).searchParams;
+  return passthrough(await accountsAction(deps, ctx, "replication_list", {
+    ...(q.get("content_id") ? { content_id: q.get("content_id") } : {}),
+    limit: Math.min(500, Math.max(1, Number(q.get("limit") ?? 100) || 100)),
+  }));
 }
 
 /** GET /calendar?from&to&group_id&account_ids=a,b — задания по аккаунтам за период (до 31 дня). */
@@ -397,6 +415,10 @@ async function publicationCreate(req: Request, deps: Deps, ctx: ApiKeyContext): 
     source: "api",
     source_ref: `api_key:${ctx.keyId}`,
     origin: "api",
+    ...(input.topic_key ? { topic_key: input.topic_key } : {}),
+    ...(input.hook_type ? { hook_type: input.hook_type } : {}),
+    ...(input.cta_type ? { cta_type: input.cta_type } : {}),
+    ...(input.source_video_id ? { source_video_id: input.source_video_id } : {}),
     ...(input.target ? { target: input.target } : {}),
   }, { "x-automation-key": await automationKey(admin) });
   return passthrough(r);
@@ -684,6 +706,8 @@ async function dispatch(req: Request, deps: Deps, ctx: ApiKeyContext, route: Api
     case "analytics_insights": return analyticsInsights(req, deps, ctx);
     case "content_list": return contentList(req, deps, ctx);
     case "content_variants": return contentVariants(req, deps, ctx, route.id);
+    case "content_replicate": return contentReplicate(req, deps, ctx, route.id);
+    case "replications_list": return replicationsList(req, deps, ctx);
     case "account_update": return accountUpdate(req, deps, ctx, route.id);
     case "accounts_health_check": return accountsHealthCheck(req, deps, ctx);
     case "groups": return groups(deps, ctx);
@@ -756,6 +780,16 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
   if (!rate.allowed) {
     return json({ error: "слишком много запросов, подождите" }, 429, { "Retry-After": String(rate.retryAfterSec) });
   }
+  // Счётчик в памяти живёт в одном изоляте; глобальный предел на ключ — по журналу
+  // аудита за последнюю минуту (индекс api_request_logs_key_idx). Ошибка чтения не блокирует.
+  try {
+    const since = new Date(deps.now() - 60_000).toISOString();
+    const { count } = await deps.admin.from("api_request_logs").select("id", { count: "exact", head: true })
+      .eq("api_key_id", auth.ctx.keyId).gte("created_at", since);
+    if ((count ?? 0) >= RATE_LIMIT_PER_MINUTE) {
+      return json({ error: "слишком много запросов, подождите" }, 429, { "Retry-After": "30" });
+    }
+  } catch { /* журнал недоступен — работает лимит изолята */ }
 
   // Тело читаем один раз здесь: обработчикам отдаём клон, хэш — в аудит.
   const startedAt = deps.now();

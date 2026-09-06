@@ -6,7 +6,8 @@
  * те же числа, что в витринах, только сложенные.
  */
 import { useCallback, useEffect, useState } from "react";
-import { Lightbulb, Loader2, RefreshCw } from "lucide-react";
+import { Copy, Lightbulb, Loader2, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { publishingApi, type ContentInsights } from "@/lib/publishingClient";
@@ -22,6 +23,22 @@ export function InsightsPanel({ projectId, refreshKey }: { projectId: string | n
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(true);
+  const [replicating, setReplicating] = useState<string | null>(null);
+
+  /** Автопилот руками: победитель → варианты по группам через конвейер. Причины пропусков — в тосте. */
+  const replicate = async (contentId: string, title: string | null) => {
+    if (!projectId) return;
+    setReplicating(contentId);
+    try {
+      const r = await publishingApi.winnerReplicate(projectId, contentId);
+      if (r.created.length) toast.success(`«${title ?? "Ролик"}»: варианты для ${r.created.map((c) => c.group_name).join(", ")}`);
+      else toast.warning(`«${title ?? "Ролик"}»: размножать некуда — ${r.skipped.slice(0, 3).map((x) => `${x.name}: ${x.reason}`).join("; ") || "нет подходящих групп"}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Не удалось размножить");
+    } finally {
+      setReplicating(null);
+    }
+  };
 
   const load = useCallback(async () => {
     if (!projectId) { setData(null); return; }
@@ -82,6 +99,30 @@ export function InsightsPanel({ projectId, refreshKey }: { projectId: string | n
               </li>
             ))}
           </ul>
+
+          {data.top_content.length > 0 && (
+            <div className="rounded-xl border p-3 text-xs">
+              <div className="mb-1.5 font-medium">Лучшие ролики периода</div>
+              <ul className="divide-y divide-border/60">
+                {data.top_content.map((c) => (
+                  <li key={c.content_id} className="flex items-center gap-2 py-1">
+                    <span className="min-w-0 flex-1 truncate">{c.title ?? c.content_id.slice(0, 8)}</span>
+                    <span className="tabular-nums text-muted-foreground">{c.publications} публ.</span>
+                    <span className="tabular-nums">score {c.score_avg ?? "—"}</span>
+                    <Button
+                      size="sm" variant="outline" className="h-7 px-2 text-xs"
+                      disabled={replicating != null}
+                      aria-label={`Размножить ${c.title ?? c.content_id.slice(0, 8)}`}
+                      onClick={() => void replicate(c.content_id, c.title)}
+                    >
+                      {replicating === c.content_id ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Copy className="mr-1 h-3 w-3" />}
+                      По группам
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {(data.by_platform.length > 0 || data.accounts_top.length > 0) && (
             <div className="grid gap-3 text-xs sm:grid-cols-2">

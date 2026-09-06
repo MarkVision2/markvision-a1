@@ -456,8 +456,21 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Метаданные для аналитики и родословной (Phase 5); ролик-источник — только из этого проекта.
+    const keyOf = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim().slice(0, 80) : null);
+    let sourceVideoId: string | null = null;
+    if (typeof body?.source_video_id === "string" && body.source_video_id) {
+      const { data: src } = await admin.from("publish_videos").select("id").eq("id", body.source_video_id).eq("project_id", projectId).maybeSingle();
+      if (!src) return json({ error: "source_video_id — ролик не из этого проекта" }, 400);
+      sourceVideoId = body.source_video_id;
+    }
+
     const { data: inserted, error } = await admin.from("publish_videos").insert({
       client_ref: clientRef,
+      topic_key: keyOf(body?.topic_key),
+      hook_type: keyOf(body?.hook_type),
+      cta_type: keyOf(body?.cta_type),
+      source_video_id: sourceVideoId,
       project_id: projectId,
       file_url: fileUrl,
       local_path: body?.local_path ? String(body.local_path) : null,
