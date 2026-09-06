@@ -11,7 +11,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import {
   ANALYSIS_STATUS_META, formatEngagement, IDEA_STATUS_META, radarApi, type Idea, type RadarGroup, type RadarPost,
 } from "@/lib/radarClient";
-import { formatAge, formatCompact, primaryMetric, usualMetric, VIRAL_X_FACTOR } from "@/lib/radarStats";
+import { formatAge, formatCompact, mediaTypeLabel, primaryMetric, usualMetric, VIRAL_X_FACTOR } from "@/lib/radarStats";
 import { cn } from "@/lib/utils";
 import { PostVideo } from "./PostVideo";
 import { Chip, errMsg, PlatformChip, PostThumb, ScoreBadge, SectionLabel, XBadge } from "./RadarBits";
@@ -76,7 +76,7 @@ export function PostXraySheet({ post, groups, busy, onClose, onAnalyze, onPromot
   return (
     <Sheet open={Boolean(post)} onOpenChange={(v) => !v && onClose()}>
       <SheetContent className="w-full overflow-y-auto sm:max-w-2xl">
-        <SheetHeader className="text-left">
+        <SheetHeader className="pr-10 text-left">
           <div className="flex items-center gap-2">
             <SectionLabel>Рентген</SectionLabel>
             {loading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
@@ -91,26 +91,26 @@ export function PostXraySheet({ post, groups, busy, onClose, onAnalyze, onPromot
             <Chip label={st.label} cls={st.cls} />
           </SheetTitle>
           <SheetDescription>
-            {formatAge(p.published_at)} · {p.media_type ?? "пост"} · подписчиков у автора {p.followers ? formatCompact(p.followers) : "—"}
+            {formatAge(p.published_at)} · {mediaTypeLabel(p.media_type)} · подписчиков у автора {p.followers ? formatCompact(p.followers) : "—"}
           </SheetDescription>
         </SheetHeader>
 
         {error && <div className="mt-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">{error}</div>}
 
-        <div className="mt-4 grid gap-4 sm:grid-cols-[160px_1fr]">
-          <div className="relative aspect-[4/5] overflow-hidden rounded-xl bg-muted">
-            <PostVideo post={p} poster={<PostThumb post={p} className="absolute inset-0" />} />
+        <div className="mt-4 grid grid-cols-[132px_1fr] gap-3 sm:grid-cols-[160px_1fr] sm:gap-4">
+          <div className="relative aspect-[4/5] self-start overflow-hidden rounded-xl bg-muted">
+            <PostVideo post={p} poster={<PostThumb post={p} compact className="absolute inset-0" />} />
           </div>
-          <div className="grid gap-3">
+          <div className="grid min-w-0 gap-3">
             <div>
               <SectionLabel>Динамика</SectionLabel>
-              <div className="mt-1.5 grid grid-cols-2 gap-3">
-                <div className="rounded-xl border border-border/60 px-3 py-2">
-                  <div className="text-xs text-muted-foreground">обычно у автора</div>
+              <div className="mt-1.5 grid grid-cols-2 gap-2 sm:gap-3">
+                <div className="min-w-0 rounded-xl border border-border/60 px-2.5 py-2 sm:px-3">
+                  <div className="truncate text-xs text-muted-foreground">обычно у автора</div>
                   <div className="text-xl font-semibold tabular-nums">{usual == null ? "—" : formatCompact(usual)}</div>
                 </div>
-                <div className={cn("rounded-xl border px-3 py-2", viral ? "border-success/40 bg-success/5" : "border-border/60")}>
-                  <div className="text-xs text-muted-foreground">этот пост</div>
+                <div className={cn("min-w-0 rounded-xl border px-2.5 py-2 sm:px-3", viral ? "border-success/40 bg-success/5" : "border-border/60")}>
+                  <div className="truncate text-xs text-muted-foreground">этот пост</div>
                   <div className={cn("text-xl font-semibold tabular-nums", viral && "text-success")}>{formatCompact(main.value)}</div>
                 </div>
               </div>
@@ -148,7 +148,7 @@ export function PostXraySheet({ post, groups, busy, onClose, onAnalyze, onPromot
             </section>
             <section>
               <SectionLabel>Структура</SectionLabel>
-              <dl className="mt-1.5 grid gap-1.5 text-sm sm:grid-cols-[100px_1fr]">
+              <dl className="mt-1.5 grid grid-cols-[88px_1fr] gap-x-3 gap-y-1.5 text-sm sm:grid-cols-[100px_1fr]">
                 <dt className="text-muted-foreground">Проблема</dt><dd>{a.structure?.problem || "—"}</dd>
                 <dt className="text-muted-foreground">Решение</dt><dd>{a.structure?.solution || "—"}</dd>
                 <dt className="text-muted-foreground">Призыв</dt><dd>{a.structure?.cta || "—"}</dd>

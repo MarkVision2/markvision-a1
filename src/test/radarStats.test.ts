@@ -17,8 +17,7 @@ import {
   normViews,
   primaryMetric,
   usualMetric,
-  xTone,
-} from "@/lib/radarStats";
+  xTone, mediaTypeLabel } from "@/lib/radarStats";
 
 const NOW = Date.parse("2026-09-05T12:00:00.000Z");
 
@@ -150,5 +149,21 @@ describe("authorStats", () => {
     expect(followerBracket(50_000)).toBe("m");
     expect(followerBracket(500_000)).toBe("l");
     expect(followerBracket(5_000_000)).toBe("xl");
+  });
+});
+
+describe("mediaTypeLabel", () => {
+  it("сырой тип сборщика → слово для интерфейса", () => {
+    expect(mediaTypeLabel("video")).toBe("видео");
+    expect(mediaTypeLabel("Video")).toBe("видео");
+    expect(mediaTypeLabel("clips")).toBe("reels");
+    expect(mediaTypeLabel("reel")).toBe("reels");
+    expect(mediaTypeLabel("shorts")).toBe("shorts");
+    expect(mediaTypeLabel("sidecar")).toBe("карусель");
+    expect(mediaTypeLabel("GraphImage")).toBe("фото");
+    expect(mediaTypeLabel("ad")).toBe("объявление");
+    expect(mediaTypeLabel(null)).toBe("пост");
+    expect(mediaTypeLabel("")).toBe("пост");
+    expect(mediaTypeLabel("something")).toBe("something");
   });
 });
