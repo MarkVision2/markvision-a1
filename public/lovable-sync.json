@@ -1,7 +1,7 @@
 {
-  "git_sha": "a3a9152",
-  "git_sha_full": "a3a9152148db2b16134a6cbfb8d1e5941ff9708b",
-  "updated_at": "2026-09-06T19:44:30+04:00",
-  "label": "[vercel-deploy] Merge: feat(radar) — поиск и ниша в «Идеях», docs выката фронта (#287)",
+  "git_sha": "d7d0ead",
+  "git_sha_full": "d7d0ead2125c4982258d11ef414e087bc423217d",
+  "updated_at": "2026-09-06T19:50:35+04:00",
+  "label": "[vercel-deploy] Merge: chore(vercel) — собирать только main с меткой, превью веток жгли квоту Hobby (#288)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
