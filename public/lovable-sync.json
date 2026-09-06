@@ -1,7 +1,7 @@
 {
-  "git_sha": "94dacec",
-  "git_sha_full": "94dacec424e345313e85b28d9137163e0b92c03a",
-  "updated_at": "2026-09-06T14:32:43+04:00",
-  "label": "chore: деплой проверки входов Instagram [vercel-deploy]",
+  "git_sha": "a4d93ab",
+  "git_sha_full": "a4d93abb97977ae63bd906af1c5b8572936c7766",
+  "updated_at": "2026-09-06T14:34:33+04:00",
+  "label": "fix(build): объявить qrcode.react — без него фронт не собирается [vercel-deploy]",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
