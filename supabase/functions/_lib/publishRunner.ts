@@ -119,7 +119,16 @@ async function settleVideo(admin: SupabaseClient, videoId: string): Promise<void
   const { data } = await admin
     .from("publish_jobs").select("status").eq("video_id", videoId);
   const rows = (data ?? []) as { status: string }[];
-  if (!rows.length) return;
+  // Заданий не осталось вовсе — их отменили или удалили, пока ролик был в работе.
+  // Раньше он молча оставался в «публикуется» навсегда: закрыть его было нечему,
+  // а разложить заново интерфейс не давал. Возвращаем в библиотеку.
+  if (!rows.length) {
+    await admin.from("publish_videos")
+      .update({ status: "ready" })
+      .eq("id", videoId)
+      .eq("status", "publishing");
+    return;
+  }
   const open = rows.some((r) => ["pending", "retry", "processing", "verifying"].includes(r.status));
   if (open) return;
   const anyPublished = rows.some((r) => r.status === "published");

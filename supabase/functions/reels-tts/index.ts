@@ -16,6 +16,7 @@
 //   publish {jobId, videoUrl, title?, description?, durationSec?, coverUrl?, notifyTelegram?}
 //                                        → reels_usage + reels_jobs=done + Telegram
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+import { addToPublishLibrary } from "../_lib/publishLibrary.ts";
 import { decryptProviderKey, type ReelsProvider } from "../_lib/reelsCredentials.ts";
 
 type Json = Record<string, unknown>;
@@ -314,6 +315,14 @@ Deno.serve(async (req) => {
           cover_url: coverUrl, thumbnail_url: coverUrl, description, duration_sec: durationSec, cost_usd: null,
         });
         if (insErr) warnings.push(`reels_usage: ${insErr.message}`);
+
+        // И в библиотеку публикации: без этого готовый Reels жил только в витрине
+        // «Готовые» и до очереди не доходил (docs/JOBS.md).
+        const { warning } = await addToPublishLibrary(admin, {
+          projectId, fileUrl: videoUrl, title, caption: description,
+          thumbnailUrl: coverUrl, durationSec, source: "reels", sourceRef: `reels-${jobId}`,
+        });
+        if (warning) warnings.push(warning);
 
         const { error: updErr } = await admin.from("reels_jobs").update({
           status: "done", progress: 100, stage: "готово", error: null,

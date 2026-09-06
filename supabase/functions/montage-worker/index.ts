@@ -19,6 +19,7 @@
 //   kie_status {project_id, task_id}
 //   pexels_search {project_id, query, per_page?}
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+import { addToPublishLibrary } from "../_lib/publishLibrary.ts";
 import { decryptProviderKey } from "../_lib/reelsCredentials.ts";
 import { seedEricDemo } from "../_lib/ericDemoSeed.ts";
 
@@ -159,6 +160,34 @@ Deno.serve(async (req) => {
       .upsert(rows, { onConflict: "project_id,ref_id", ignoreDuplicates: false });
     const warnings: string[] = [];
     if (error) warnings.push(`heygen_usage: ${error.message}`);
+
+    // Готовый рендер — сразу в библиотеку публикации, иначе он оставался только в витрине
+    // «Готовые», и опубликовать его можно было лишь перезалив руками (docs/JOBS.md).
+    // Статус ready: раскладку по аккаунтам человек запускает сам.
+    for (const v of [
+      { url: p.videoUrl, title: p.title, ref: p.refBase, source: "montage", caption: p.description ?? null, thumb: p.thumbnailUrl ?? null, dur: p.durationSec ?? null },
+      ...(p.shorts ?? []).map((s, i) => ({
+        url: s.url,
+        title: s.title ?? `${p.title} — шортс ${i + 1}`,
+        ref: `${p.refBase}-short-${i + 1}`,
+        source: "montage-short",
+        caption: null as string | null,
+        thumb: null as string | null,
+        dur: null as number | null,
+      })),
+    ]) {
+      const { warning } = await addToPublishLibrary(admin, {
+        projectId: p.projectId,
+        fileUrl: v.url,
+        title: v.title,
+        caption: v.caption,
+        thumbnailUrl: v.thumb,
+        durationSec: v.dur,
+        source: v.source,
+        sourceRef: v.ref,
+      });
+      if (warning) warnings.push(warning);
+    }
 
     if (p.notifyTelegram && botToken) {
       const chatId = await chatIdOf(p.projectId);
