@@ -1,7 +1,7 @@
 {
-  "git_sha": "437b87c",
-  "git_sha_full": "437b87cb0427e463b5135ccec3d7960575a3f656",
-  "updated_at": "2026-09-06T13:54:09+04:00",
-  "label": "fix(publishing): у двух дверей Instagram — свои адреса возврата в подсказке",
+  "git_sha": "83d345b",
+  "git_sha_full": "83d345bd4c871065046dc1b05f5562468849d5ef",
+  "updated_at": "2026-09-06T14:06:13+04:00",
+  "label": "feat(auth): страница входа — центр управления коммерческим отделом + выход из аккаунта [vercel-deploy]",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
