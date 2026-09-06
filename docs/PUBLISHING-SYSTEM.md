@@ -367,6 +367,20 @@ Facebook. Просить пароль нельзя, сажать человек�
 `https://www.markvision.kz`). Площадка без настроенных секретов показывается
 клиенту неактивной кнопкой с причиной, а не отваливается после входа.
 
+**Один шаг руками — redirect URI Instagram.** Адрес возврата
+`…/functions/v1/publish-oauth/callback/instagram` новый: у обычного входа через
+Facebook он другой (`…/facebook-oauth-callback`). Его нужно один раз добавить в
+приложении Meta (App → Facebook Login → Settings → Valid OAuth Redirect URIs),
+иначе клиент увидит «URL Blocked» уже ПОСЛЕ входа. Проверить заранее нельзя:
+Meta, как и TikTok, сверяет redirect_uri только после авторизации — до входа
+любой адрес уводит на `/login`. TikTok и YouTube этого шага не требуют: их
+callback'и те же, что у подключения из кабинета.
+
+Состояние на 6 сентября 2026: `META_APP_SECRET`, `PUBLISH_TOKEN_KEY`,
+`TIKTOK_CLIENT_KEY/SECRET`, `GOOGLE_OAUTH_CLIENT_ID/SECRET` и `PUBLIC_APP_URL`
+заданы; `THREADS_APP_ID/SECRET` — нет, поэтому кнопка Threads у клиента неактивна
+с подписью «не заданы».
+
 ## Сетка аккаунтов: что делает каждая кнопка
 
 Раздел «Сетка аккаунтов» (`/marketing/publishing`, `src/pages/Publishing.tsx`).
