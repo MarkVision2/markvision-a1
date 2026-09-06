@@ -4,7 +4,7 @@
  * (вирусные посты, просмотры сверх нормы, сила автора, плотность хитов),
  * фильтры и сортировки ленты трендов. Без сети — покрыто src/test/radarStats.test.ts.
  */
-import type { RadarPlatform, RadarPost, RadarSource } from "@/lib/radarClient";
+import type { IdeaStatus, RadarMetrics, RadarPlatform, RadarPost, RadarSource } from "@/lib/radarClient";
 
 /** Пост считаем «залетевшим», если он обошёл обычный результат автора минимум вдвое. */
 export const VIRAL_X_FACTOR = 2;
@@ -185,6 +185,202 @@ export function filterTrends(posts: RadarPost[], f: TrendFilter, now: number = D
     score: (a, b) => (Number(b.score) || 0) - (Number(a.score) || 0),
   };
   return [...list].sort(by[f.sort]);
+}
+
+/* ───────────────────────────── сводка ───────────────────────────── */
+
+export type FunnelKey = "collected" | "analyzed" | "viral" | "ideas" | "approved" | "used";
+
+export interface FunnelStep {
+  key: FunnelKey;
+  label: string;
+  value: number;
+  /** Доля от первого шага (0–1) — длина полоски. */
+  share: number;
+  /** Короткая расшифровка под числом. */
+  sub: string;
+  hint: string;
+}
+
+const n0 = (v: number | null | undefined) => Math.max(0, Number(v) || 0);
+
+/**
+ * Воронка радара из витрины: собрано → разобрано → залетевших → идей →
+ * одобрено (включая уже ушедшие в план) → в плане. Полоска каждого шага —
+ * доля от собранного, чтобы воронка читалась глазами, а не только цифрами.
+ */
+export function radarFunnel(m: RadarMetrics | null | undefined): FunnelStep[] {
+  const collected = n0(m?.posts_total);
+  const analyzed = n0(m?.posts_analyzed);
+  const pending = n0(m?.posts_unanalyzed);
+  const viral = n0(m?.posts_viral);
+  const scored = n0(m?.posts_scored);
+  const ideas = n0(m?.ideas_total);
+  const ideasNew = n0(m?.ideas_new);
+  const used = n0(m?.ideas_used);
+  const approved = n0(m?.ideas_approved) + used;
+  const today = n0(m?.posts_today);
+  const week = n0(m?.posts_7d);
+  const base = Math.max(collected, 1);
+  const share = (v: number) => Math.min(1, v / base);
+  return [
+    {
+      key: "collected", label: "Собрано", value: collected, share: share(collected),
+      sub: collected ? `за 7 дней ${week}${today ? ` · сегодня +${today}` : ""}` : "постов пока нет",
+      hint: "Все публикации в базе радара по этому проекту",
+    },
+    {
+      key: "analyzed", label: "Разобрано", value: analyzed, share: share(analyzed),
+      sub: pending ? `ждут разбора ${pending}` : collected ? "очередь пуста" : "—",
+      hint: "Посты, по которым модель уже написала хук, структуру и сценарий",
+    },
+    {
+      key: "viral", label: "Залетевших", value: viral, share: share(viral),
+      sub: scored ? `из ${scored} с X-фактором` : "X-фактор не посчитан",
+      hint: `X-фактор ≥ ${VIRAL_X_FACTOR}: пост обошёл обычный результат автора минимум вдвое`,
+    },
+    {
+      key: "ideas", label: "Идей", value: ideas, share: share(ideas),
+      sub: ideas ? `новых ${ideasNew}` : "оценка ≥ 55 → идея",
+      hint: "Идеи в банке: разборы с оценкой от 55",
+    },
+    {
+      key: "approved", label: "Одобрено", value: approved, share: share(approved),
+      sub: approved ? `${approved - used} ждут плана` : "ещё ни одной",
+      hint: "Идеи, которые вы одобрили (включая уже отправленные в план)",
+    },
+    {
+      key: "used", label: "В плане", value: used, share: share(used),
+      sub: used ? "тем в контент-плане" : "ещё ни одной",
+      hint: "Идеи, ставшие темами контент-плана кнопкой «В контент-план»",
+    },
+  ];
+}
+
+/** Куда ведёт клик по элементу сводки. */
+export type PulseTarget =
+  | { tab: "trends"; filter?: Partial<TrendFilter> }
+  | { tab: "ideas"; status?: IdeaStatus | "all" }
+  | { tab: "sources" }
+  | { tab: "runs" }
+  | { tab: "add-source" };
+
+export interface XBucket {
+  key: "below" | "normal" | "viral" | "mega";
+  label: string;
+  count: number;
+  /** Доля от постов с посчитанным X-фактором (0–1). */
+  share: number;
+  tone: XTone;
+}
+
+/** Распределение постов по X-фактору: ниже нормы · норма · залетели · сильно залетели. */
+export function xFactorBuckets(posts: RadarPost[]): XBucket[] {
+  const counts = { below: 0, normal: 0, viral: 0, mega: 0 };
+  let total = 0;
+  for (const p of posts) {
+    const x = Number(p.x_factor);
+    if (!Number.isFinite(x) || x <= 0) continue;
+    total++;
+    if (x < 1) counts.below++;
+    else if (x < VIRAL_X_FACTOR) counts.normal++;
+    else if (x < 5) counts.viral++;
+    else counts.mega++;
+  }
+  const share = (n: number) => (total ? n / total : 0);
+  return [
+    { key: "below", label: "ниже нормы", count: counts.below, share: share(counts.below), tone: "normal" },
+    { key: "normal", label: `×1–${VIRAL_X_FACTOR}`, count: counts.normal, share: share(counts.normal), tone: "above" },
+    { key: "viral", label: `×${VIRAL_X_FACTOR}–5`, count: counts.viral, share: share(counts.viral), tone: "viral" },
+    { key: "mega", label: "×5 и выше", count: counts.mega, share: share(counts.mega), tone: "viral" },
+  ];
+}
+
+export interface NextStep {
+  key: "sources" | "pending" | "ideas" | "approved" | "viral" | "done";
+  text: string;
+  action: string;
+  target: PulseTarget;
+  /** Требует внимания пользователя (а не просто ждёт крон). */
+  urgent: boolean;
+}
+
+/**
+ * «Что дальше»: до трёх подсказок по состоянию воронки — где застряло дело
+ * и куда нажать. Порядок — от того, что ждёт человека, к тому, что идёт само.
+ */
+export function nextSteps(m: RadarMetrics | null | undefined, sourcesCount: number): NextStep[] {
+  const out: NextStep[] = [];
+  const sources = m ? n0(m.sources) : sourcesCount;
+  const pending = n0(m?.posts_unanalyzed);
+  const ideasNew = n0(m?.ideas_new);
+  const approved = n0(m?.ideas_approved);
+  const viral = n0(m?.posts_viral);
+  const collected = n0(m?.posts_total);
+  if (sources === 0) {
+    out.push({ key: "sources", urgent: true, text: "Источников нет — радару нечего собирать", action: "Добавить источник", target: { tab: "add-source" } });
+  }
+  if (approved > 0) {
+    out.push({
+      key: "approved", urgent: true,
+      text: `${approved} ${plural(approved, "одобренная идея ждёт", "одобренные идеи ждут", "одобренных идей ждут")} контент-плана`,
+      action: "В контент-план", target: { tab: "ideas", status: "approved" },
+    });
+  }
+  if (ideasNew > 0) {
+    out.push({
+      key: "ideas", urgent: true,
+      text: `${ideasNew} ${plural(ideasNew, "новая идея ждёт", "новые идеи ждут", "новых идей ждут")} решения`,
+      action: "Смотреть идеи", target: { tab: "ideas", status: "new" },
+    });
+  }
+  if (pending > 0) {
+    out.push({
+      key: "pending", urgent: false,
+      text: `${pending} ${plural(pending, "пост ждёт", "поста ждут", "постов ждут")} разбора — очередь идёт каждые 15 минут`,
+      action: "Открыть ленту", target: { tab: "trends", filter: { sort: "recent" } },
+    });
+  }
+  if (out.length < 3 && viral > 0) {
+    out.push({
+      key: "viral", urgent: false,
+      text: `${viral} ${plural(viral, "залетевший пост", "залетевших поста", "залетевших постов")} — посмотрите, что сработало`,
+      action: "Залетевшие", target: { tab: "trends", filter: { viralOnly: true, sort: "x" } },
+    });
+  }
+  if (out.length === 0) {
+    out.push({
+      key: "done", urgent: false,
+      text: collected ? "Всё разобрано, новых идей нет — ждём следующий сбор" : "Первый сбор ещё идёт — посты появятся через пару минут",
+      action: "Сборы", target: { tab: "runs" },
+    });
+  }
+  return out.slice(0, 3);
+}
+
+/** Склонение по числу: 1 пост, 2 поста, 5 постов. */
+export function plural(n: number, one: string, few: string, many: string): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return one;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
+  return many;
+}
+
+/** Пост-рекорд среди загруженных: максимальный X-фактор. */
+export function bestPost(posts: RadarPost[]): RadarPost | null {
+  let best: RadarPost | null = null;
+  for (const p of posts) {
+    const x = Number(p.x_factor) || 0;
+    if (x > 0 && (!best || x > (Number(best.x_factor) || 0))) best = p;
+  }
+  return best;
+}
+
+/** Сколько собранных постов относятся к нише (по разбору). */
+export function nicheCount(posts: RadarPost[], niche: string | null | undefined): number {
+  if (!niche) return 0;
+  return posts.filter((p) => nicheOf(p) === niche).length;
 }
 
 /* ───────────────────────────── авторы ───────────────────────────── */

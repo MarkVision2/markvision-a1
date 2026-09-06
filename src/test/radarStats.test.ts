@@ -17,7 +17,7 @@ import {
   normViews,
   primaryMetric,
   usualMetric,
-  xTone, mediaTypeLabel } from "@/lib/radarStats";
+  xTone, mediaTypeLabel, radarFunnel, bestPost, nicheCount, xFactorBuckets, nextSteps } from "@/lib/radarStats";
 
 const NOW = Date.parse("2026-09-05T12:00:00.000Z");
 
@@ -165,5 +165,70 @@ describe("mediaTypeLabel", () => {
     expect(mediaTypeLabel(null)).toBe("пост");
     expect(mediaTypeLabel("")).toBe("пост");
     expect(mediaTypeLabel("something")).toBe("something");
+  });
+});
+
+describe("сводка: воронка и рекорд", () => {
+  const metrics = {
+    sources: 3, sources_total: 4, posts_total: 60, posts_7d: 42, posts_today: 2, posts_unanalyzed: 5, posts_analyzed: 55,
+    posts_viral: 4, posts_scored: 48, best_x_factor: 526.26, best_x_author: "a", top_niche: "AI-маркетинг",
+    ideas_total: 9, ideas_new: 7, ideas_approved: 1, ideas_used: 2,
+    spent_month_crawl_usd: 0.021, spent_month_ai_usd: 0.045, spent_month_usd: 0.066, last_run_at: null, runs_active: 0,
+  };
+
+  it("radarFunnel: шесть шагов, доли от собранного, одобрено включает ушедшие в план", () => {
+    const steps = radarFunnel(metrics);
+    expect(steps.map((s) => s.key)).toEqual(["collected", "analyzed", "viral", "ideas", "approved", "used"]);
+    expect(steps.map((s) => s.value)).toEqual([60, 55, 4, 9, 3, 2]);
+    expect(steps[0].share).toBe(1);
+    expect(steps[2].share).toBeCloseTo(4 / 60);
+    expect(steps[0].sub).toBe("за 7 дней 42 · сегодня +2");
+    expect(steps[1].sub).toBe("ждут разбора 5");
+    expect(steps[4].sub).toBe("1 ждут плана");
+  });
+
+  it("radarFunnel: пустая витрина — нули и подсказки без деления на ноль", () => {
+    const steps = radarFunnel(null);
+    expect(steps.every((s) => s.value === 0 && s.share === 0)).toBe(true);
+    expect(steps[0].sub).toBe("постов пока нет");
+  });
+
+  it("bestPost / nicheCount", () => {
+    const mk = (id: string, x: number | null, niche?: string) => ({
+      id, x_factor: x, analysis: niche ? { niche } : null,
+    }) as unknown as RadarPost;
+    const posts = [mk("a", 1.2, "спорт"), mk("b", 21, "отели"), mk("c", null, "отели")];
+    expect(bestPost(posts)?.id).toBe("b");
+    expect(bestPost([mk("z", null)])).toBeNull();
+    expect(nicheCount(posts, "отели")).toBe(2);
+    expect(nicheCount(posts, null)).toBe(0);
+  });
+});
+
+describe("сводка: распределение X-фактора и «что дальше»", () => {
+  const mk = (x: number | null) => ({ x_factor: x }) as unknown as RadarPost;
+  it("xFactorBuckets: четыре корзины, посты без X-фактора не считаются", () => {
+    const b = xFactorBuckets([mk(0.5), mk(1.2), mk(1.9), mk(2), mk(4.9), mk(21), mk(null), mk(0)]);
+    expect(b.map((x) => x.count)).toEqual([1, 2, 2, 1]);
+    expect(b[3].share).toBeCloseTo(1 / 6);
+    expect(xFactorBuckets([]).every((x) => x.count === 0 && x.share === 0)).toBe(true);
+  });
+
+  it("nextSteps: сначала то, что ждёт человека, максимум три подсказки", () => {
+    const m = {
+      sources: 2, posts_unanalyzed: 3, ideas_new: 6, ideas_approved: 1, posts_viral: 5, posts_total: 12,
+    } as unknown as Parameters<typeof nextSteps>[0];
+    const steps = nextSteps(m, 2);
+    expect(steps.map((s) => s.key)).toEqual(["approved", "ideas", "pending"]);
+    expect(steps[0].text).toBe("1 одобренная идея ждёт контент-плана");
+    expect(steps[0].target).toEqual({ tab: "ideas", status: "approved" });
+    expect(steps[1].text).toBe("6 новых идей ждут решения");
+    expect(steps[2].urgent).toBe(false);
+  });
+
+  it("nextSteps: без источников — добавить источник; всё разобрано — ждём сбор", () => {
+    expect(nextSteps(null, 0)[0]).toMatchObject({ key: "sources", target: { tab: "add-source" } });
+    const calm = { sources: 1, posts_total: 12, posts_unanalyzed: 0, ideas_new: 0, ideas_approved: 0, posts_viral: 0 } as unknown as Parameters<typeof nextSteps>[0];
+    expect(nextSteps(calm, 1)).toEqual([expect.objectContaining({ key: "done", target: { tab: "runs" } })]);
   });
 });

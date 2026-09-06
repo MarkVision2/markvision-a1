@@ -21,7 +21,7 @@ post_metrics ◀──── publish-metrics ◀──── publish_jobs ◀─
 | Радар | `supabase/functions/radar/index.ts`, чистая логика `supabase/functions/_lib/radar.ts` (нормализация, разбор, превью), `supabase/functions/_lib/radarCrawl.ts` (прямой сборщик Apify: акторы, вход, разворачивание ответа, стоимость); миграции `20260907110000_radar_crawler.sql` (статус и id запуска в `radar_runs`), `20260909100000_radar_thumbnails.sql` (bucket `radar-thumbs` — копии превью) |
 | Конвейер: варианты, персоны, автопередача | `supabase/functions/content-pipeline/index.ts` (маршрут `/items/:id/variants`, `handoffToPublishing`, автоодобрение доверенных групп) |
 | Дистрибуция | `publish-intake` (планировщик слотов, стратегия группы), `publish-worker` (партиции), `_lib/publishers/threads.ts`, `publish-monitor` (обновление токенов, дайджест), `publish-metrics` (новая), `publish-accounts` (персоны, настройки, задания, Threads, «залить в группу»), `_lib/publishRunner.ts` (режим уведомлений) |
-| Интерфейс | `src/pages/Radar.tsx` + компоненты `src/components/radar/*` (строка статуса и поле ссылки `RadarHero`, лента `TrendsTab`/`TrendCard`, «рентген» поста `PostXraySheet`, `IdeaCard`, рейтинг `AuthorsTab`, `SourcesTab`, `RunsTab`) + `src/lib/radarClient.ts` + чистые вычисления `src/lib/radarStats.ts` + `src/hooks/useRadar.ts`; `src/pages/Publishing.tsx` + `src/lib/publishingClient.ts` + `src/hooks/usePublishing.ts`; блок вариантов в `src/components/content-plan/ContentPipelinePanel.tsx` |
+| Интерфейс | `src/pages/Radar.tsx` + компоненты `src/components/radar/*` (строка статуса и поле ссылки `RadarHero`, сводка-«пульс» `RadarPulse`, лента `TrendsTab`/`TrendCard`, «рентген» поста `PostXraySheet`, `IdeaCard`, рейтинг `AuthorsTab`, `SourcesTab`, `RunsTab`) + `src/lib/radarClient.ts` + чистые вычисления `src/lib/radarStats.ts` + `src/hooks/useRadar.ts`; `src/pages/Publishing.tsx` + `src/lib/publishingClient.ts` + `src/hooks/usePublishing.ts`; блок вариантов в `src/components/content-plan/ContentPipelinePanel.tsx` |
 | n8n | `docs/n8n-radar-crawler-v2.json` (сборщик), `docs/n8n-content-pipeline-v5.json` (claim с `engine: heygen`), существующий «🚀 Система автопостинга» без изменений |
 | Диагностика | `scripts/content-pipeline-smoke.mjs doctor` проверяет radar / publish-metrics / publish-* ; `scripts/publishing-doctor.mjs` |
 | Воркер Reels faceless | `scripts/content-pipeline-worker.mjs` (claim по движку → OpenAI → reels_jobs → asset) |
@@ -123,7 +123,15 @@ X-фактора, порога залетевшего поста, оценки �
 новые идеи, идеи в плане, самая частая ниша из разборов, расход.
 
 **Интерфейс «как рентген» (`/marketing/radar`).** Строка статуса «● Радар · N постов под
-наблюдением · источников · залетевших · последний сбор» и поле «вставьте ссылку → Разобрать».
+наблюдением · источников · последний сбор» и поле «вставьте ссылку → Разобрать». Под ними
+сводка `RadarPulse` (чистые расчёты `radarFunnel` / `xFactorBuckets` / `nextSteps` в
+`radarStats.ts`): воронка «собрано → разобрано → залетевших → идей → одобрено → в плане» с
+полосками-долями от собранного, клик по шагу открывает вкладку с уже включённым фильтром
+(«Залетевших» → лента с `viralOnly`, «В плане» → идеи со статусом used); распределение постов
+по корзинам X-фактора; «Что дальше» — до трёх подсказок по состоянию воронки (одобренные без
+плана, новые идеи, очередь разбора, нет источников); справа рекорд проекта (открывает «рентген»
+поста), топ-ниша (фильтр ленты), источники с последним сбором и расход за месяц с разбивкой
+сбор/разбор. Кнопка «Как считаем» раскрывает формулы.
 Вкладки: **Тренды** — карточки постов (превью, просмотры/лайки, «обычно / сейчас / ER», X-фактор,
 ниша из разбора; фильтры площадка / период / ниша / только залетевшие / поиск; сортировки
 горячее (X-фактор с затуханием ≈ 3 дня) / X-фактор / просмотры / свежие / оценка); клик —
