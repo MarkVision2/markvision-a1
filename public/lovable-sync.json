@@ -1,7 +1,7 @@
 {
-  "git_sha": "9c6e119",
-  "git_sha_full": "9c6e119dce79979e7dd894c5f19f5dfec1654c26",
-  "updated_at": "2026-09-06T15:45:24+04:00",
-  "label": "feat(radar): сводка-«пульс» вместо девяти плиток — воронка, X-фактор, «что дальше» (#285)",
+  "git_sha": "e710b46",
+  "git_sha_full": "e710b460dad5751b9b351112af2da64a84bb9694",
+  "updated_at": "2026-09-06T17:19:04+04:00",
+  "label": "feat(devices): окно подключения аккаунта — вход в Instagram/TikTok прямо из платформы [vercel-deploy]",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
