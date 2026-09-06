@@ -74,8 +74,8 @@ MCP: mcp/markvision (stdio) → /api/v1
 | 60. Webhooks (исходящие) | **MISSING** | Входящие подписанные callback'и есть | Phase 2 (`publish_webhooks` + доставка из воркера событий) |
 | 61. Event-driven | **PARTIAL** | Триггеры БД (учёт аккаунта), кроны | Журнал событий задания — основа для уведомлений/вебхуков |
 | 62–63. Notification center, daily report | **PARTIAL → добавлено** | Telegram дайджест раз в час | `publish_notifications` (reconnect, ошибка, unverified, campaign.completed) + UI/API; ежедневный отчёт `publish-monitor mode:daily_report` (Telegram, уведомление, `GET /reports/daily`) |
-| 64. Календарь | **EXISTS (редплан)** | `/marketing/content-plan?view=calendar` | Календарь публикаций по аккаунтам — Phase 2 |
-| 65–66. Bulk, фильтры | **EXISTS** | Панель массовых действий, фильтры площадка/группа/внимание | Серверная пагинация — при > 500 аккаунтов (Phase 2) |
+| 64. Календарь | **EXISTS → добавлено** | `/marketing/content-plan?view=calendar` (редплан) | Вкладка «Календарь» в «Публикациях»: неделя × аккаунт, `action=calendar`, `GET /calendar`, MCP `markvision_calendar` |
+| 65–66. Bulk, фильтры | **EXISTS → добавлено** | Панель массовых действий, фильтры площадка/группа/внимание | Серверная пагинация `list`/`jobs_list` (страницы по 200, `total`/`has_more`), `accounts_bulk_update` одним UPDATE, пресет онбординга при `connect` |
 | 67–68. Health | **EXISTS** | `publishHealth.ts`, формула 0–100, крон 6 ч | — |
 | 69–71. Observability | **MISSING → добавлено** | `publish_logs` (сырой ответ), нет trace/request id, Sentry нет | `trace_id` у задания, `publish_job_events` (шаги), структурные console-логи JSON |
 | 72. Security review | **EXISTS** | Секреты в Supabase secrets, hardening 20260907 | Замечания — раздел 4 |
@@ -93,7 +93,7 @@ MCP: mcp/markvision (stdio) → /api/v1
 2. **Нет трассы задания**: `publish_logs` хранит сырые ответы без шагов и `trace_id`; нельзя восстановить цепочку api → intake → worker → площадка. Исправлено.
 3. **TikTok**: при пустом `publicaly_available_post_id` в `external_post_id` попадал внутренний `publish_id` — метрики по нему не собираются. Верификация теперь помечает такое как `unverified`.
 4. **Ошибки — сырые коды площадок** (`190`, `spam_risk_too_many_posts`, …), фронту и AI нечего агрегировать. Добавлен канонический `error_class`.
-5. **RLS-предикат `projects_select_authed USING (true)`**: любой авторизованный видит список проектов; `montage_jobs`/`reels_jobs` с предикатом `project_id IN (SELECT id FROM projects)` фактически не изолированы. Ядро публикаций (`publish_*`) изолировано корректно. Требует отдельной миграции с проверкой на проде (Phase 2, риск сломать Lovable-экраны).
+5. **RLS проектов** — сверено по цепочке миграций: `projects_select_authed USING (true)` снят ещё `20260514092512`, действующая политика `projects_select_owner_admin` (`20260605074408`) = владелец / глобальный admin / `is_project_member`. Поэтому `montage_jobs` и `reels_jobs` с предикатом `project_id IN (SELECT id FROM projects)` наследуют ту же изоляцию, отдельной миграции не нужно. Ядро публикаций (`publish_*`) изолировано через `user_can_access_project`.
 6. **`project_members.role` — свободный текст и никем не читается**; авторизация бинарная. RBAC из ТЗ — Phase 2.
 7. **Лимит API-ключей в памяти изолята** — «120/мин» не глобален. Достаточно для MCP, но при внешних клиентах — перенести в таблицу.
 8. **Ретеншн журналов не настроен** — `publish_logs` растут бесконечно. Добавлен GC для событий/логов (90 дней, настраиваемо).
@@ -161,10 +161,22 @@ Frontend: вкладка «Задания» — статус «Проверяе�
 - **Routine Engine**: рутины как данные, задачи в `publish_tasks`, воркер `publish-tasks`, ранние
   метрики `r<N>m`, задачи в трассе задания; API `/routines/*`, `/tasks`, 6 MCP-инструментов.
 
+## 5c. Четвёртый заход (без миграции)
+
+- **Серверная пагинация**: `list` с `limit/offset/q/platform/group_id/status`, `jobs_list` с `offset`
+  и фильтрами по видео/аккаунту/кампании; интерфейс грузит по 200 и растит страницу, честно показывая
+  «загружено N из total». `GET /accounts?…`, `GET /jobs?offset=`.
+- **Календарь публикаций**: `action=calendar` (аккаунты + задания за период), вкладка «Календарь»
+  (неделя × аккаунт в поясе аккаунта, занято/лимит, трасса по клику), `GET /calendar`, MCP.
+- **Массовый онбординг**: `accounts_bulk_update` (один UPDATE на ≤ 500 аккаунтов) для панели массовых
+  действий, `POST /accounts/bulk`, MCP; пресет (группа, персона, рутина, пояс, окно, лимит, разгон)
+  в диалоге подключения Instagram применяется ко всей подключённой пачке (`connect.preset`).
+- **RLS проектов** — сверено, действующая политика уже owner/admin/member (раздел 3, п. 5).
+
 ## 6. План дальше (по приоритету)
 
-**Phase 2 — остаток.** Серверная пагинация аккаунтов и заданий; календарь публикаций по аккаунтам;
-ужесточение `projects_select_authed`; массовый онбординг аккаунтов (batch assignment после подключения).
+**Phase 2 — закрыт.** Остаток на потом: PKCE для TikTok, ротация ключа шифрования `v2:`, витрина
+`content_items`, `MEDIA_PREPARE` как шаг очереди (раздел 2).
 
 **Phase 3 — Device engine.** `DeviceProvider` (PhoneGrid/Multilogin) как отдельный сервис только для
 health-check / native-only сценариев; `secondary_executor` у аккаунта; Execution Router выбирает

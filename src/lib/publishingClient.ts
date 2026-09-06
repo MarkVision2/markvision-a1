@@ -531,12 +531,76 @@ export interface AccountUpdateInput {
   status?: PublishAccountStatus;
   group_id?: string | null;
   persona_id?: string | null;
+  routine_id?: string | null;
   timezone?: string | null;
   window_start?: string | null;
   window_end?: string | null;
   ramp_enabled?: boolean;
   ramp_restart?: true;
   notes?: string;
+  account_name?: string;
+}
+
+/** Серверная страница аккаунтов: без limit сервер отдаёт всё (старое поведение). */
+export interface AccountListOpts {
+  limit?: number;
+  offset?: number;
+  /** Поиск по имени и handle (ilike). */
+  q?: string;
+  platform?: PublishPlatform;
+  /** null — без группы. */
+  group_id?: string | null;
+  status?: PublishAccountStatus;
+  publish_enabled?: boolean;
+}
+
+export interface AccountListResponse {
+  accounts: PublishAccount[];
+  role?: ProjectRole;
+  /** Сколько аккаунтов подходит под фильтры во всём проекте (не только на странице). */
+  total?: number;
+  offset?: number;
+  limit?: number | null;
+  has_more?: boolean;
+}
+
+/** Календарь публикаций: задания по аккаунтам за период (publish-accounts action=calendar). */
+export interface CalendarAccount {
+  id: string;
+  platform: PublishPlatform;
+  account_name: string;
+  handle: string | null;
+  status: PublishAccountStatus;
+  publish_enabled: boolean;
+  daily_limit: number;
+  timezone: string | null;
+  window_start: string | null;
+  window_end: string | null;
+  group_id: string | null;
+}
+
+export interface CalendarJob {
+  id: string;
+  video_id: string;
+  account_id: string;
+  platform: PublishPlatform;
+  status: PublishJobStatus;
+  scheduled_at: string | null;
+  published_at: string | null;
+  campaign_id: string | null;
+  error_class: string | null;
+  verification_status?: PublishVerificationStatus | null;
+  external_post_url: string | null;
+  publish_videos: { title: string | null } | null;
+}
+
+export interface CalendarResponse {
+  from: string;
+  to: string;
+  accounts: CalendarAccount[];
+  jobs: CalendarJob[];
+  /** Заданий больше потолка выборки — сузьте период или группу. */
+  truncated: boolean;
 }
 
 export interface GroupUpsertInput {
@@ -633,13 +697,21 @@ export interface PublishVideoInput {
 }
 
 export const publishingApi = {
-  list: (project_id: string) => call<{ accounts: PublishAccount[]; role?: ProjectRole }>("list", { project_id }),
+  list: (project_id: string, opts: AccountListOpts = {}) => call<AccountListResponse>("list", { project_id, ...opts }),
+  /** Одна правка на пачку аккаунтов (массовый онбординг): сервер обновляет одним UPDATE. */
+  accountsBulkUpdate: (project_id: string, account_ids: string[], patch: AccountUpdateInput) =>
+    call<{ updated: number; missing: number }>("accounts_bulk_update", { project_id, account_ids, patch }),
+  /** Задания по аккаунтам за период (до 31 дня) — вкладка «Календарь». */
+  calendar: (project_id: string, opts: { from: string; to: string; group_id?: string | null; account_ids?: string[] }) =>
+    call<CalendarResponse>("calendar", { project_id, from: opts.from, to: opts.to, ...(opts.group_id ? { group_id: opts.group_id } : {}), ...(opts.account_ids?.length ? { account_ids: opts.account_ids } : {}) }),
   /** meta_token — вставленный вручную User Access Token, когда токены проекта площадка отклоняет. */
   available: (project_id: string, meta_token?: string | null) =>
     call<{ pages: AvailablePage[] }>("available", { project_id, ...(meta_token ? { meta_token } : {}) }),
-  connect: (project_id: string, page_ids: string[], meta_token?: string | null, group_id?: string | null) =>
-    call<{ connected: unknown[]; skipped: { page_id: string; reason: string }[] }>("connect", {
+  /** preset — правка (персона, рутина, пояс, окно, лимит, разгон) сразу на все подключённые аккаунты. */
+  connect: (project_id: string, page_ids: string[], meta_token?: string | null, group_id?: string | null, preset?: AccountUpdateInput | null) =>
+    call<{ connected: { id: string; account_name: string; handle: string | null }[]; skipped: { page_id: string; reason: string }[]; preset_error?: string }>("connect", {
       project_id, page_ids, ...(meta_token ? { meta_token } : {}), ...(group_id ? { group_id } : {}),
+      ...(preset && Object.keys(preset).length ? { preset } : {}),
     }),
   connectThreads: (
     project_id: string,
@@ -664,8 +736,8 @@ export const publishingApi = {
   settingsUpsert: (project_id: string, input: SettingsUpsertInput) =>
     call<SettingsUpsertResult>("settings_upsert", { project_id, ...input }),
 
-  jobsList: (project_id: string, opts: { status?: PublishJobStatus; limit?: number; video_id?: string } = {}) =>
-    call<{ jobs: PublishJob[]; counts?: JobCounts }>("jobs_list", { project_id, ...opts }),
+  jobsList: (project_id: string, opts: { status?: PublishJobStatus; limit?: number; offset?: number; video_id?: string; account_id?: string; campaign_id?: string } = {}) =>
+    call<{ jobs: PublishJob[]; counts?: JobCounts; has_more?: boolean }>("jobs_list", { project_id, ...opts }),
   metrics: (project_id: string) => call<MetricsResponse>("metrics", { project_id }),
   /** Убрать ролик из библиотеки вместе с заданиями; force — вместе с опубликованными постами. */
   videoDelete: (project_id: string, video_id: string, force = false) =>

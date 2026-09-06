@@ -8,14 +8,14 @@ AI не имеет доступа к базе, токенам площадок �
 `MARKVISION_API_KEY` (права `read` / `publish` / `manage`, `project_id` зашит в ключ) и адрес
 `MARKVISION_API_URL`. Контракт API — `PUBLIC-API.md`; установка и конфиг — `mcp/markvision/README.md`.
 
-## Инструменты (43)
+## Инструменты (46)
 
 | Группа | Инструменты |
 |---|---|
-| Аккаунты | `markvision_whoami`, `markvision_list_accounts`, `markvision_update_account`, `markvision_health_check`, `markvision_account_analytics` |
+| Аккаунты | `markvision_whoami`, `markvision_list_accounts` (страница `limit`/`offset`, поиск `q`, фильтры), `markvision_update_account`, `markvision_accounts_bulk_update` (одна правка на пачку — массовый онбординг), `markvision_health_check`, `markvision_account_analytics` |
 | Группы | `markvision_list_groups`, `markvision_create_group`, `markvision_update_group`, `markvision_delete_group` |
 | Контент и публикация | `markvision_upload_media`, `markvision_create_publication`, `markvision_create_jobs`, `markvision_list_publications`, `markvision_get_publication` |
-| Задания | `markvision_list_jobs`, `markvision_get_job` (трасса шагов, верификация, метрики), `markvision_cancel_job`, `markvision_retry_job` |
+| Задания | `markvision_list_jobs` (страница `offset`, фильтры по видео/аккаунту/кампании), `markvision_get_job` (трасса шагов, верификация, метрики), `markvision_cancel_job`, `markvision_retry_job`, `markvision_calendar` (что и когда выходит в каждом аккаунте за период) |
 | Аналитика | `markvision_metrics`, `markvision_content_analytics` (score, победители), `markvision_content_analytics_item` |
 | Уведомления | `markvision_notifications`, `markvision_notification_read` |
 | Кампании | `markvision_list_campaigns`, `markvision_get_campaign`, `markvision_create_campaign`, `markvision_update_campaign`, `markvision_campaign_add_content`, `markvision_campaign_remove_content`, `markvision_campaign_action` |

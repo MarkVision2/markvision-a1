@@ -39,6 +39,7 @@ import { JobsTab } from "@/components/publishing/JobsTab";
 import { NetworkTab } from "@/components/publishing/NetworkTab";
 import { NotificationsPanel } from "@/components/publishing/NotificationsPanel";
 import { CampaignsTab } from "@/components/publishing/CampaignsTab";
+import { CalendarTab } from "@/components/publishing/CalendarTab";
 import { WebhooksSection } from "@/components/publishing/WebhooksSection";
 import { RoutinesSection } from "@/components/publishing/RoutinesSection";
 import { ProjectRolesSection } from "@/components/publishing/ProjectRolesSection";
@@ -47,14 +48,17 @@ import { VideosTab } from "@/components/publishing/VideosTab";
 import { usePublishing, type UsePublishing } from "@/hooks/usePublishing";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import {
+  DEFAULT_TIMEZONE,
   ENGINE_META,
   NOTIFY_MODE_META,
   PLATFORM_META,
   REVIEW_MODE_META,
   STRATEGY_META,
   formatFollowers,
+  publishingApi,
   readOAuthResult,
   startPublishOAuth,
+  type AccountUpdateInput,
   type AvailablePage,
   type OAuthPlatform,
   type NotifyMode,
@@ -261,6 +265,7 @@ export default function Publishing() {
             <TabsTrigger value="groups">Группы</TabsTrigger>
             <TabsTrigger value="personas">Персоны</TabsTrigger>
             <TabsTrigger value="campaigns">Кампании</TabsTrigger>
+            <TabsTrigger value="calendar">Календарь</TabsTrigger>
             <TabsTrigger value="videos">Видео</TabsTrigger>
             <TabsTrigger value="jobs">Задания</TabsTrigger>
             <TabsTrigger value="settings">Настройки</TabsTrigger>
@@ -304,6 +309,7 @@ export default function Publishing() {
             />
           </TabsContent>
           <TabsContent value="campaigns" className="mt-3"><CampaignsTab pub={pub} /></TabsContent>
+          <TabsContent value="calendar" className="mt-3"><CalendarTab pub={pub} /></TabsContent>
           <TabsContent value="jobs" className="mt-3 space-y-4">
             <TabIntro title="Задания — очередь публикаций.">
               Одно задание = один ролик в один аккаунт. «В очереди» ждёт слота, «Публикуется» сейчас в работе,
@@ -1184,6 +1190,17 @@ function ConnectInstagramDialog({ open, onClose, pub }: { open: boolean; onClose
   const [query, setQuery] = useState("");
   const [showRest, setShowRest] = useState(false);
   const [groupId, setGroupId] = useState<string>(NONE);
+  // Пресет онбординга — одна правка на всю подключаемую пачку (персона, рутина,
+  // пояс, окно, лимит, разгон): сотню аккаунтов после подключения не настраивают по одному.
+  const [presetOpen, setPresetOpen] = useState(false);
+  const [personaId, setPersonaId] = useState<string>(NONE);
+  const [routineId, setRoutineId] = useState<string>(NONE);
+  const [routines, setRoutines] = useState<{ id: string; name: string }[]>([]);
+  const [dailyLimit, setDailyLimit] = useState("");
+  const [timezone, setTimezone] = useState("");
+  const [windowStart, setWindowStart] = useState("");
+  const [windowEnd, setWindowEnd] = useState("");
+  const [ramp, setRamp] = useState(false);
   // Запасной путь: сохранённые токены проекта площадка отклонила — пользователь
   // вставляет свежий User Access Token, он идёт и в список страниц, и в подключение.
   const [manualToken, setManualToken] = useState("");
@@ -1206,9 +1223,39 @@ function ConnectInstagramDialog({ open, onClose, pub }: { open: boolean; onClose
     setQuery("");
     setShowRest(false);
     setGroupId(NONE);
+    setPresetOpen(false);
+    setPersonaId(NONE);
+    setRoutineId(NONE);
+    setDailyLimit("");
+    setTimezone("");
+    setWindowStart("");
+    setWindowEnd("");
+    setRamp(false);
     load();
+    if (pub.projectId) {
+      publishingApi.routineList(pub.projectId)
+        .then((r) => setRoutines((r.routines ?? []).map((x) => ({ id: x.id, name: x.name }))))
+        .catch(() => setRoutines([]));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  /** Пресет из формы; пустые поля не отправляем — сервер трактует их как «не менять». */
+  const buildPreset = (): { ok: true; preset: AccountUpdateInput } | { ok: false; error: string } => {
+    const preset: AccountUpdateInput = {};
+    if (personaId !== NONE) preset.persona_id = personaId;
+    if (routineId !== NONE) preset.routine_id = routineId;
+    if (dailyLimit.trim()) {
+      const v = Number(dailyLimit);
+      if (!Number.isInteger(v) || v < 1 || v > 200) return { ok: false, error: "Лимит — целое число от 1 до 200" };
+      preset.daily_limit = v;
+    }
+    if (timezone.trim()) preset.timezone = timezone.trim();
+    if ((windowStart && !windowEnd) || (!windowStart && windowEnd)) return { ok: false, error: "Окно публикаций — оба времени: с и до" };
+    if (windowStart && windowEnd) { preset.window_start = windowStart; preset.window_end = windowEnd; }
+    if (ramp) preset.ramp_enabled = true;
+    return { ok: true, preset };
+  };
 
   const all = pages ?? [];
   const q = query.trim().toLowerCase();
@@ -1228,9 +1275,12 @@ function ConnectInstagramDialog({ open, onClose, pub }: { open: boolean; onClose
 
   const submit = async () => {
     if (!picked.length) return;
+    const built = buildPreset();
+    if (built.ok === false) { setErr(built.error); return; }
     try {
-      const r = await pub.connect(picked, usedToken, groupId === NONE ? null : groupId);
+      const r = await pub.connect(picked, usedToken, groupId === NONE ? null : groupId, Object.keys(built.preset).length ? built.preset : null);
       const connected = r.connected?.length ?? 0;
+      if (r.preset_error) toast.warning(`Подключено, но пресет не применился: ${r.preset_error}`);
       if (r.skipped?.length) {
         // Причину пропуска называем — «пропущено: 2» ничего не объясняет.
         const names = new Map(pages.map((p) => [p.page_id, p.ig_username ? `@${p.ig_username}` : p.page_name ?? p.page_id]));
@@ -1406,16 +1456,72 @@ function ConnectInstagramDialog({ open, onClose, pub }: { open: boolean; onClose
               </div>
             )}
 
-            {connectable.length > 0 && pub.groups.length > 0 && (
-              <div className="flex items-center gap-3 rounded-xl border bg-muted/30 px-3 py-2">
-                <Label className="shrink-0 text-xs text-muted-foreground">Сразу в группу</Label>
-                <Select value={groupId} onValueChange={setGroupId} disabled={disabled}>
-                  <SelectTrigger className="h-8" aria-label="Группа для новых аккаунтов"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NONE}>Без группы</SelectItem>
-                    {pub.groups.map((g) => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+            {connectable.length > 0 && (
+              <div className="space-y-2 rounded-xl border bg-muted/30 px-3 py-2">
+                {pub.groups.length > 0 && (
+                  <div className="flex items-center gap-3">
+                    <Label className="shrink-0 text-xs text-muted-foreground">Сразу в группу</Label>
+                    <Select value={groupId} onValueChange={setGroupId} disabled={disabled}>
+                      <SelectTrigger className="h-8" aria-label="Группа для новых аккаунтов"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={NONE}>Без группы</SelectItem>
+                        {pub.groups.map((g) => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+                  aria-expanded={presetOpen}
+                  onClick={() => setPresetOpen((v) => !v)}
+                >
+                  {presetOpen ? "Скрыть" : "Настроить"} пачку сразу: персона, рутина, пояс, окно, лимит, разгон
+                </button>
+                {presetOpen && (
+                  <div className="grid gap-2 sm:grid-cols-2" aria-label="Пресет онбординга">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Персона</Label>
+                      <Select value={personaId} onValueChange={setPersonaId} disabled={disabled}>
+                        <SelectTrigger className="h-8" aria-label="Персона для новых аккаунтов"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NONE}>Без персоны</SelectItem>
+                          {pub.personas.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Рутина</Label>
+                      <Select value={routineId} onValueChange={setRoutineId} disabled={disabled}>
+                        <SelectTrigger className="h-8" aria-label="Рутина для новых аккаунтов"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NONE}>По умолчанию</SelectItem>
+                          {routines.map((r) => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Лимит в день</Label>
+                      <Input className="h-8" type="number" min={1} max={200} placeholder="как у аккаунта" aria-label="Лимит в день для новых аккаунтов" value={dailyLimit} onChange={(e) => setDailyLimit(e.target.value)} disabled={disabled} />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Часовой пояс</Label>
+                      <Input className="h-8" placeholder={DEFAULT_TIMEZONE} aria-label="Часовой пояс для новых аккаунтов" value={timezone} onChange={(e) => setTimezone(e.target.value)} disabled={disabled} />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Окно публикаций</Label>
+                      <div className="flex items-center gap-1">
+                        <Input className="h-8" type="time" aria-label="Окно с" value={windowStart} onChange={(e) => setWindowStart(e.target.value)} disabled={disabled} />
+                        <span className="text-xs text-muted-foreground">—</span>
+                        <Input className="h-8" type="time" aria-label="Окно до" value={windowEnd} onChange={(e) => setWindowEnd(e.target.value)} disabled={disabled} />
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 pt-5">
+                      <Switch checked={ramp} onCheckedChange={setRamp} disabled={disabled} aria-label="Разгон новых аккаунтов" />
+                      <Label className="text-xs text-muted-foreground">Разгон (плавный рост лимита)</Label>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

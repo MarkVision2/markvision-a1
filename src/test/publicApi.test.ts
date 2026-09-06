@@ -76,6 +76,12 @@ describe("matchRoute", () => {
     expect(matchRoute("POST", `/api/v1/routines/${ID}/assign`)).toEqual({ name: "routine_assign", id: ID });
     expect(matchRoute("POST", `/api/v1/routines/${ID}/delete`)).toEqual({ name: "routine_delete", id: ID });
     expect(matchRoute("GET", "/api/v1/tasks")).toEqual({ name: "tasks_list" });
+    expect(matchRoute("GET", "/api/v1/calendar")).toEqual({ name: "calendar" });
+    expect(matchRoute("POST", "/api/v1/calendar")).toBeNull();
+    expect(matchRoute("POST", "/api/v1/accounts/bulk")).toEqual({ name: "accounts_bulk_update" });
+    expect(matchRoute("GET", "/api/v1/accounts/bulk")).toBeNull();
+    expect(requiredScope({ name: "calendar" })).toBe("read");
+    expect(requiredScope({ name: "accounts_bulk_update" })).toBe("manage");
     expect(requiredScope({ name: "routine_create" })).toBe("manage");
     expect(requiredScope({ name: "member_role_set", id: ID })).toBe("manage");
     expect(requiredScope({ name: "tasks_list" })).toBe("read");

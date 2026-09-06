@@ -87,7 +87,7 @@ export const ACTION_LEVELS: Record<string, PermissionLevel> = {
   list: "read", group_list: "read", persona_list: "read", settings_get: "read", jobs_list: "read", job_get: "read",
   metrics: "read", notifications_list: "read", campaign_list: "read", campaign_get: "read",
   webhook_list: "read", webhook_deliveries: "read", api_key_list: "read", member_list: "read",
-  routine_list: "read", tasks_list: "read",
+  routine_list: "read", tasks_list: "read", calendar: "read",
   // оператор: разбор ошибок, проверка здоровья, уведомления
   notification_read: "operate", job_retry: "operate", job_cancel: "operate", health_check: "operate",
   // контент и расписание
@@ -95,6 +95,7 @@ export const ACTION_LEVELS: Record<string, PermissionLevel> = {
   campaign_status: "publish", campaign_plan_now: "publish",
   // управление аккаунтами, группами, настройками, подключениями, ключами, вебхуками, рутинами
   available: "manage", connect: "manage", connect_threads: "manage", disconnect: "manage", update: "manage",
+  accounts_bulk_update: "manage",
   group_upsert: "manage", group_delete: "manage", persona_upsert: "manage", persona_delete: "manage",
   settings_upsert: "manage", api_key_create: "manage", api_key_revoke: "manage",
   webhook_upsert: "manage", webhook_delete: "manage", routine_upsert: "manage", routine_delete: "manage", routine_assign: "manage",

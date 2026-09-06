@@ -288,7 +288,23 @@ describe("страница «Публикации»", () => {
     expect(screen.getByRole("button", { name: /Подключить 2/ })).toBeTruthy();
     fireEvent.click(screen.getByRole("checkbox", { name: "@dagestan.topteam" }));
     fireEvent.click(screen.getByRole("button", { name: /Подключить 1/ }));
-    await waitFor(() => expect(connect).toHaveBeenCalledWith(["p1"], null, null));
+    await waitFor(() => expect(connect).toHaveBeenCalledWith(["p1"], null, null, null));
+  });
+
+  it("подключение Instagram: пресет онбординга уходит одной правкой на всю пачку", async () => {
+    loadAvailable.mockResolvedValueOnce({
+      pages: [
+        { page_id: "p1", page_name: "VM Клиника", ig_user_id: "1", ig_username: "vm.clinic.ast", ig_name: "VM", ig_followers: 100, connectable: true, already_connected: false },
+      ],
+    });
+    renderPage();
+    await openConnectInstagram();
+    fireEvent.click(await screen.findByRole("checkbox", { name: "@vm.clinic.ast" }));
+    fireEvent.click(screen.getByRole("button", { name: /Настроить пачку сразу/ }));
+    fireEvent.change(screen.getByLabelText("Лимит в день для новых аккаунтов"), { target: { value: "3" } });
+    fireEvent.change(screen.getByLabelText("Часовой пояс для новых аккаунтов"), { target: { value: "Europe/Moscow" } });
+    fireEvent.click(screen.getByRole("button", { name: /Подключить 1/ }));
+    await waitFor(() => expect(connect).toHaveBeenCalledWith(["p1"], null, null, { daily_limit: 3, timezone: "Europe/Moscow" }));
   });
 
   it("«Залить видео» отклоняет не-mp4 ссылку", async () => {

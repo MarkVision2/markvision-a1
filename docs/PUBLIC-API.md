@@ -42,8 +42,9 @@ Authorization: Bearer mv_live_…        (или заголовок x-api-key: m
 | Метод и путь | Право | Что делает |
 |---|---|---|
 | `GET /me` | read | проект и права ключа |
-| `GET /accounts` | read | подключённые аккаунты: id, площадка, имя, статус, `publish_enabled`, здоровье, лимит, группа, окно |
-| `POST /accounts/:id` | manage | правка аккаунта: `publish_enabled, daily_limit, status, group_id, persona_id, timezone, window_start, window_end, ramp_enabled, ramp_restart, notes` |
+| `GET /accounts?limit=&offset=&q=&platform=&group_id=&status=&enabled=` | read | подключённые аккаунты: id, площадка, имя, статус, `publish_enabled`, здоровье, лимит, группа, окно, `capabilities`. Без `limit` — весь список; с `limit` (≤ 500) — страница и `total`, `has_more`. `q` — поиск по имени/handle, `group_id=none` — без группы, `enabled=1|0` |
+| `POST /accounts/:id` | manage | правка аккаунта: `publish_enabled, daily_limit, status, group_id, persona_id, routine_id, timezone, window_start, window_end, ramp_enabled, ramp_restart, notes` |
+| `POST /accounts/bulk` | manage | одна правка на пачку (массовый онбординг): `account_ids` (≤ 500) + `patch` с теми же полями → `updated`, `missing` |
 | `POST /accounts/health-check` | manage | живая проверка токенов у площадок (`account_ids?`) → `health_score` и причины |
 | `GET /groups` | read | группы аккаунтов: состав, стратегия, темп, окно, режим согласования |
 | `POST /groups` | manage | создать группу: `name` + любые поля группы |
@@ -51,7 +52,8 @@ Authorization: Bearer mv_live_…        (или заголовок x-api-key: m
 | `POST /groups/:id/delete` | manage | удалить группу (аккаунты остаются) |
 | `GET /settings` | read | пауза, уведомления, бюджеты и расход проекта |
 | `POST /settings` | manage | `paused, notify_mode, digest_chat_id, daily_usd, monthly_usd` |
-| `GET /jobs?status=&limit=` | read | задания очереди проекта |
+| `GET /jobs?status=&limit=&offset=&video_id=&account_id=&campaign_id=` | read | задания очереди проекта: страница по `offset` (≤ 500 за раз), `counts` по всей очереди, `has_more` |
+| `GET /calendar?from=&to=&group_id=&account_ids=a,b` | read | календарь: аккаунты и задания за период (до 31 дня) — что и когда выходит в каждом аккаунте; `truncated`, если заданий больше 2000 |
 | `GET /metrics` | read | витрины публикаций, радара, видео, групп и аккаунтов |
 | `POST /media/upload-url` | publish | presigned-ссылка для прямой загрузки файла в R2 (до 2 ГБ) |
 | `POST /publications` | publish | принять видео по ссылке и (если есть цель) поставить задания |
@@ -169,6 +171,16 @@ curl -X POST "$API/groups" -H "Authorization: Bearer $KEY" -H "Content-Type: app
 
 # аварийная пауза проекта
 curl -X POST "$API/settings" -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" -d '{"paused": true}'
+
+# массовый онбординг: сотне свежих аккаунтов — группа, персона, пояс, окно, лимит, разгон одним запросом
+curl -X POST "$API/accounts/bulk" -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"account_ids":["…","…"],"patch":{"group_id":"…","persona_id":"…","timezone":"Asia/Almaty","window_start":"09:00","window_end":"21:00","daily_limit":2,"ramp_enabled":true}}'
+
+# страница аккаунтов с поиском (на сети 500+ весь список не грузят)
+curl "$API/accounts?limit=100&offset=200&q=dental&platform=instagram" -H "Authorization: Bearer $KEY"
+
+# календарь на неделю
+curl "$API/calendar?from=2026-09-07T00:00:00Z&to=2026-09-14T00:00:00Z" -H "Authorization: Bearer $KEY"
 ```
 
 Все объекты проверяются на принадлежность проекту ключа: чужой `account_id`, `group_id`

@@ -119,13 +119,56 @@ async function me(deps: Deps, ctx: ApiKeyContext): Promise<Response> {
   });
 }
 
-async function accounts(deps: Deps, ctx: ApiKeyContext): Promise<Response> {
-  const admin = deps.admin;
-  const { data, error } = await admin.from("publish_accounts")
-    .select("id, platform, account_name, handle, status, publish_enabled, health_score, daily_limit, group_id, persona_id, timezone, window_start, window_end, last_checked_at, notes")
-    .eq("project_id", ctx.projectId).order("platform").order("account_name");
-  if (error) return json({ error: error.message }, 500);
-  return json({ ok: true, accounts: data ?? [] });
+/**
+ * GET /accounts — без параметров весь список (как раньше); с limit — страница
+ * по offset, поиск q, фильтры platform / group_id (none — без группы) / status.
+ * Идёт через publish-accounts action=list, чтобы фильтры были одни на сайт и API.
+ */
+async function accounts(req: Request, deps: Deps, ctx: ApiKeyContext): Promise<Response> {
+  const q = new URL(req.url).searchParams;
+  const body: Record<string, unknown> = {};
+  if (q.get("limit")) body.limit = Math.min(500, Math.max(1, Number(q.get("limit"))));
+  if (q.get("offset")) body.offset = Math.max(0, Number(q.get("offset")) || 0);
+  if (q.get("q")) body.q = q.get("q");
+  if (q.get("platform")) body.platform = q.get("platform");
+  if (q.get("group_id")) body.group_id = q.get("group_id") === "none" ? null : q.get("group_id");
+  if (q.get("status")) body.status = q.get("status");
+  if (q.get("enabled") === "1" || q.get("enabled") === "0") body.publish_enabled = q.get("enabled") === "1";
+  const r = await accountsAction(deps, ctx, "list", body);
+  if (r.status >= 300) return passthrough(r);
+  // Секреты и служебное интерфейсу — не наружу: отдаём поля из старого контракта плюс capabilities.
+  const keep = ["id", "platform", "account_name", "handle", "status", "publish_enabled", "health_score", "daily_limit", "group_id", "persona_id", "routine_id", "timezone", "window_start", "window_end", "last_checked_at", "last_post_at", "published_today", "followers", "capabilities", "auth_status", "connection_type", "notes"];
+  const rows = (Array.isArray(r.body.accounts) ? r.body.accounts : []) as Record<string, unknown>[];
+  const accounts = rows.map((a) => Object.fromEntries(keep.filter((k) => k in a).map((k) => [k, a[k]])));
+  const rest: Record<string, unknown> = { ...r.body };
+  delete rest.role;
+  delete rest.ok;
+  return json({ ok: true, ...rest, accounts });
+}
+
+/** POST /accounts/bulk — { account_ids, patch } или поля патча на верхнем уровне. */
+async function accountsBulkUpdate(req: Request, deps: Deps, ctx: ApiKeyContext): Promise<Response> {
+  const body = await readJson(req);
+  const ids = Array.isArray(body.account_ids) ? body.account_ids.map(String) : [];
+  if (!ids.length) return json({ error: "account_ids — список uuid аккаунтов" }, 400);
+  const rest: Record<string, unknown> = { ...body };
+  delete rest.account_ids;
+  const patch = rest.patch && typeof rest.patch === "object" ? rest.patch : rest;
+  return passthrough(await accountsAction(deps, ctx, "accounts_bulk_update", { account_ids: ids, patch }));
+}
+
+/** GET /calendar?from&to&group_id&account_ids=a,b — задания по аккаунтам за период (до 31 дня). */
+async function calendar(req: Request, deps: Deps, ctx: ApiKeyContext): Promise<Response> {
+  const q = new URL(req.url).searchParams;
+  const from = q.get("from");
+  const to = q.get("to");
+  if (!from || !to) return json({ error: "from и to обязательны (ISO 8601)" }, 400);
+  const accountIds = (q.get("account_ids") ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+  return passthrough(await accountsAction(deps, ctx, "calendar", {
+    from, to,
+    ...(q.get("group_id") ? { group_id: q.get("group_id") } : {}),
+    ...(accountIds.length ? { account_ids: accountIds } : {}),
+  }));
 }
 
 async function groups(deps: Deps, ctx: ApiKeyContext): Promise<Response> {
@@ -232,8 +275,11 @@ async function jobsList(req: Request, deps: Deps, ctx: ApiKeyContext): Promise<R
   const admin = deps.admin;
   const q = new URL(req.url).searchParams;
   const limit = Math.min(500, Math.max(1, Number(q.get("limit") ?? 100)));
+  const offset = Math.max(0, Number(q.get("offset") ?? 0) || 0);
   const status = q.get("status");
-  return passthrough(await accountsAction(deps, ctx, "jobs_list", { limit, ...(status ? { status } : {}) }));
+  const extra: Record<string, unknown> = {};
+  for (const k of ["video_id", "account_id", "campaign_id"] as const) if (q.get(k)) extra[k] = q.get(k);
+  return passthrough(await accountsAction(deps, ctx, "jobs_list", { limit, ...(offset ? { offset } : {}), ...(status ? { status } : {}), ...extra }));
 }
 
 async function metrics(deps: Deps, ctx: ApiKeyContext): Promise<Response> {
@@ -576,7 +622,9 @@ function auditRequest(deps: Deps, ctx: ApiKeyContext, req: Request, route: ApiRo
 async function dispatch(req: Request, deps: Deps, ctx: ApiKeyContext, route: ApiRoute): Promise<Response> {
   switch (route.name) {
     case "me": return me(deps, ctx);
-    case "accounts": return accounts(deps, ctx);
+    case "accounts": return accounts(req, deps, ctx);
+    case "accounts_bulk_update": return accountsBulkUpdate(req, deps, ctx);
+    case "calendar": return calendar(req, deps, ctx);
     case "account_update": return accountUpdate(req, deps, ctx, route.id);
     case "accounts_health_check": return accountsHealthCheck(req, deps, ctx);
     case "groups": return groups(deps, ctx);

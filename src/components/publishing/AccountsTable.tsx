@@ -467,6 +467,21 @@ export function AccountsTable({ pub }: { pub: UsePublishing }) {
         <span className="ml-auto text-xs tabular-nums text-muted-foreground">{visible.length} из {pub.accounts.length}</span>
       </div>
 
+      {/* Серверная страница: на большой сети грузим по 200, поиск и фильтры —
+          по загруженным строкам, поэтому честно говорим, сколько ещё за краем. */}
+      {pub.accountsHasMore && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-dashed px-3 py-2 text-xs text-muted-foreground" role="status">
+          <span className="tabular-nums">Загружено {pub.accounts.length} из {pub.accountsTotal}</span>
+          {(filters.search.trim() || attentionOnly) && <span>— поиск и фильтры смотрят только на загруженные</span>}
+          <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={pub.loading} onClick={() => void pub.loadMoreAccounts()}>
+            Показать ещё
+          </Button>
+          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" disabled={pub.loading} onClick={() => void pub.loadAllAccounts()}>
+            Загрузить все
+          </Button>
+        </div>
+      )}
+
       <BulkAccountsBar pub={pub} selected={chosen} onClear={() => setSelected(new Set())} />
 
       {view === "stats" && (

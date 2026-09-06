@@ -1,6 +1,6 @@
 /**
- * Массовые действия над выделенными аккаунтами: одна правка на всю пачку,
- * последовательными вызовами, с честным отчётом о частичном провале.
+ * Массовые действия над выделенными аккаунтами: одна правка на всю пачку
+ * одним запросом, с честным отчётом о частичном провале.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
@@ -13,20 +13,18 @@ vi.mock("sonner", () => ({
   toast: { error: (...a: unknown[]) => toastError(...a), success: (...a: unknown[]) => toastSuccess(...a) },
 }));
 
-const updateAccount = vi.fn().mockResolvedValue({ account: {} });
-const refetch = vi.fn().mockResolvedValue(undefined);
+const bulkUpdateAccounts = vi.fn().mockResolvedValue({ updated: 2, missing: 0 });
 
 const pub = {
   accounts: [], groups: [{ id: "g1", name: "Клиники" }], personas: [{ id: "p1", name: "Врач" }],
-  updateAccount, updateAccountQuiet: updateAccount, refetch,
+  bulkUpdateAccounts,
 } as unknown as UsePublishing;
 
 const renderBar = (selected = ["a1", "a2"]) =>
   render(<BulkAccountsBar pub={pub} selected={selected} onClear={vi.fn()} />);
 
 beforeEach(() => {
-  updateAccount.mockClear().mockResolvedValue({ account: {} });
-  refetch.mockClear();
+  bulkUpdateAccounts.mockClear().mockResolvedValue({ updated: 2, missing: 0 });
   toastError.mockClear();
   toastSuccess.mockClear();
 });
@@ -37,19 +35,19 @@ describe("BulkAccountsBar", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("«Включить» шлёт publish_enabled на каждый выделенный аккаунт", async () => {
+  it("«Включить» шлёт publish_enabled одним запросом на всю пачку", async () => {
     renderBar();
     fireEvent.click(screen.getByRole("button", { name: /Включить/ }));
-    await waitFor(() => expect(updateAccount).toHaveBeenCalledTimes(2));
-    expect(updateAccount).toHaveBeenCalledWith("a1", { publish_enabled: true });
-    expect(updateAccount).toHaveBeenCalledWith("a2", { publish_enabled: true });
+    await waitFor(() => expect(bulkUpdateAccounts).toHaveBeenCalledTimes(1));
+    expect(bulkUpdateAccounts).toHaveBeenCalledWith(["a1", "a2"], { publish_enabled: true });
     await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Публикации включены: 2"));
   });
 
   it("«Разгон выкл» шлёт ramp_enabled: false", async () => {
+    bulkUpdateAccounts.mockResolvedValueOnce({ updated: 1, missing: 0 });
     renderBar(["a1"]);
     fireEvent.click(screen.getByRole("button", { name: /Разгон выкл/ }));
-    await waitFor(() => expect(updateAccount).toHaveBeenCalledWith("a1", { ramp_enabled: false }));
+    await waitFor(() => expect(bulkUpdateAccounts).toHaveBeenCalledWith(["a1"], { ramp_enabled: false }));
   });
 
   it("общий лимит применяется ко всей пачке и валидируется", async () => {
@@ -58,27 +56,25 @@ describe("BulkAccountsBar", () => {
     fireEvent.change(input, { target: { value: "-3" } });
     fireEvent.click(screen.getByRole("button", { name: /Задать/ }));
     expect(toastError).toHaveBeenCalledWith(expect.stringMatching(/целое число/));
-    expect(updateAccount).not.toHaveBeenCalled();
+    expect(bulkUpdateAccounts).not.toHaveBeenCalled();
 
     fireEvent.change(input, { target: { value: "4" } });
     fireEvent.click(screen.getByRole("button", { name: /Задать/ }));
-    await waitFor(() => expect(updateAccount).toHaveBeenCalledWith("a1", { daily_limit: 4 }));
+    await waitFor(() => expect(bulkUpdateAccounts).toHaveBeenCalledWith(["a1", "a2"], { daily_limit: 4 }));
   });
 
-  it("частичный провал сообщает, сколько прошло и что упало", async () => {
-    updateAccount
-      .mockResolvedValueOnce({ account: {} })
-      .mockRejectedValueOnce(new Error("Meta отклонила токен"));
+  it("частичный провал сообщает, сколько прошло и сколько не нашлось", async () => {
+    bulkUpdateAccounts.mockResolvedValueOnce({ updated: 1, missing: 1 });
     renderBar();
     fireEvent.click(screen.getByRole("button", { name: /Выключить/ }));
-    await waitFor(() =>
-      expect(toastError).toHaveBeenCalledWith(expect.stringMatching(/1 из 2, ошибок 1 — Meta отклонила токен/)),
-    );
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith(expect.stringMatching(/1 из 2, не найдено 1/)));
   });
 
-  it("после пачки данные перечитываются", async () => {
+  it("отказ сервера — ошибка с текстом, без успеха", async () => {
+    bulkUpdateAccounts.mockRejectedValueOnce(new Error("группа не из этого проекта"));
     renderBar(["a1"]);
     fireEvent.click(screen.getByRole("button", { name: /Включить/ }));
-    await waitFor(() => expect(refetch).toHaveBeenCalled());
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith(expect.stringMatching(/группа не из этого проекта/)));
+    expect(toastSuccess).not.toHaveBeenCalled();
   });
 });

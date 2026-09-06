@@ -93,6 +93,21 @@ password|cookie`. Сырые ответы площадок — по-прежне
 Статусы: `draft → active ⇄ paused → completed → archived` (`campaign_status` в `publish-accounts`,
 `POST /api/v1/campaigns/:id/start|pause|complete|archive`).
 
+## Календарь и страницы (Phase 2)
+
+- `publish-accounts action=calendar { from, to, account_ids?, group_id? }` — аккаунты и задания
+  (`scheduled_at` в диапазоне, до 31 дня, до 2000 строк, `truncated`). Вкладка «Календарь» —
+  неделя × аккаунт, день считается в поясе аккаунта (`src/lib/publishCalendar.ts`, как `published_day`
+  в SQL); в ячейке «занято/лимит» по статусам `pending, retry, processing, verifying, published,
+  manual_review`. Слоты кампаний появляются в календаре, когда планировщик создал задания (сегодня и завтра).
+- `list { limit?, offset?, q?, platform?, group_id?, status?, publish_enabled? }` → `total`, `has_more`;
+  без `limit` — весь список. `jobs_list { limit ≤ 500, offset, video_id?, account_id?, campaign_id? }`
+  → `counts` по всей очереди, `has_more`. Интерфейс грузит аккаунты по 200 и задания по 200,
+  «Показать ещё» растит страницу (`usePublishing`: `listAccountsUpTo` / `listJobsUpTo`).
+- `accounts_bulk_update { account_ids ≤ 500, patch }` — один `UPDATE` на пачку (панель массовых
+  действий, онбординг); `connect` / `connect_threads` принимают `preset` с теми же полями и применяют
+  его ко всем только что подключённым аккаунтам.
+
 ## Вебхуки (Phase 2)
 
 `publish_webhooks` (адрес https, события, зашифрованный секрет) + `publish_webhook_deliveries`.

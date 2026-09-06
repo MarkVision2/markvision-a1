@@ -25,13 +25,61 @@ import {
  * успеха перечитывают данные; `busy` — имя действия, которое сейчас идёт.
  */
 const JOBS_PAGE = 200;
-/** Потолок publish-accounts jobs_list. */
-const JOBS_MAX = 500;
+/** Потолок одного запроса publish-accounts jobs_list / list — дальше страницами по offset. */
+const SERVER_PAGE = 500;
+/** Аккаунты: первая страница; «Показать ещё» растит лимит, сервер отдаёт total. */
+export const ACCOUNTS_PAGE = 200;
+
+/** Задания до limit включительно: сервер отдаёт не больше SERVER_PAGE за раз — идём по offset. */
+async function listJobsUpTo(
+  pid: string,
+  limit: number,
+  filters: { status?: PublishJobStatus; video_id?: string },
+): Promise<{ jobs: PublishJob[]; counts: JobCounts; hasMore: boolean }> {
+  const jobs: PublishJob[] = [];
+  let counts: JobCounts = {};
+  let hasMore = false;
+  for (let offset = 0; offset < limit; offset += SERVER_PAGE) {
+    const page = Math.min(SERVER_PAGE, limit - offset);
+    const r = await publishingApi.jobsList(pid, { limit: page, ...(offset ? { offset } : {}), ...filters });
+    const got = r.jobs ?? [];
+    jobs.push(...got);
+    counts = r.counts ?? counts;
+    // Старый сервер без has_more: считаем, что хвост есть, пока страница полная.
+    hasMore = typeof r.has_more === "boolean" ? r.has_more : got.length >= page;
+    if (got.length < page || !hasMore) break;
+  }
+  return { jobs, counts, hasMore };
+}
+
+/** Аккаунты до limit включительно — тем же способом. */
+async function listAccountsUpTo(pid: string, limit: number): Promise<{ accounts: PublishAccount[]; role: ProjectRole | null; total: number; hasMore: boolean }> {
+  const accounts: PublishAccount[] = [];
+  let role: ProjectRole | null = null;
+  let total = 0;
+  let hasMore = false;
+  for (let offset = 0; offset < limit; offset += SERVER_PAGE) {
+    const page = Math.min(SERVER_PAGE, limit - offset);
+    const r = await publishingApi.list(pid, { limit: page, offset });
+    const got = r.accounts ?? [];
+    accounts.push(...got);
+    role = r.role ?? role;
+    total = typeof r.total === "number" ? r.total : accounts.length;
+    hasMore = typeof r.has_more === "boolean" ? r.has_more : got.length >= page;
+    if (got.length < page || !hasMore) break;
+  }
+  return { accounts, role, total, hasMore };
+}
 
 export function usePublishing() {
   const { activeId: projectId } = useProjectsStore();
 
   const [accounts, setAccounts] = useState<PublishAccount[]>([]);
+  // Серверная пагинация аккаунтов: total — по всему проекту, страница растёт «Показать ещё».
+  const [accountsTotal, setAccountsTotal] = useState(0);
+  const [accountsHasMore, setAccountsHasMore] = useState(false);
+  const [accountsLimit, setAccountsLimit] = useState(ACCOUNTS_PAGE);
+  const accountsLimitRef = useRef(ACCOUNTS_PAGE);
   const [groups, setGroups] = useState<PublishGroup[]>([]);
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [settings, setSettings] = useState<PublishSettings | null>(null);
@@ -43,6 +91,7 @@ export function usePublishing() {
   const [jobsStatus, setJobsStatusRaw] = useState<PublishJobStatus | "all">("all");
   // Страница заданий: сервер отдаёт до 500, начинаем с 200 и подгружаем по кнопке.
   const [jobsLimit, setJobsLimit] = useState(JOBS_PAGE);
+  const [jobsHasMore, setJobsHasMore] = useState(false);
   // Фильтр «задания этого видео» — из вкладки «Видео».
   const [jobsVideo, setJobsVideoRaw] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -55,6 +104,7 @@ export function usePublishing() {
   // не должен перетирать свежие данные (alive один на все запросы и этого не ловит).
   const loadSeq = useRef(0);
   const jobsSeq = useRef(0);
+  const accountsSeq = useRef(0);
 
   const fetchJobs = useCallback(
     async (status: PublishJobStatus | "all" = jobsStatus, limit: number = jobsLimit, videoId: string | null = jobsVideo) => {
@@ -62,16 +112,16 @@ export function usePublishing() {
       const seq = ++jobsSeq.current;
       setJobsLoading(true);
       try {
-        const r = await publishingApi.jobsList(projectId, {
-          limit,
+        const r = await listJobsUpTo(projectId, limit, {
           ...(status === "all" ? {} : { status }),
           ...(videoId ? { video_id: videoId } : {}),
         });
         // Счётчики приходят тем же ответом — устаревшая выборка не должна
         // перетирать чипы фильтра числами от прошлого запроса.
         if (alive.current && seq === jobsSeq.current) {
-          setJobs(r.jobs ?? []);
-          setJobCounts(r.counts ?? {});
+          setJobs(r.jobs);
+          setJobCounts(r.counts);
+          setJobsHasMore(r.hasMore);
         }
       } finally {
         if (alive.current && seq === jobsSeq.current) setJobsLoading(false);
@@ -86,6 +136,8 @@ export function usePublishing() {
   const refetch = useCallback(async (jobsOverride?: unknown) => {
     if (!projectId) {
       setAccounts([]);
+      setAccountsTotal(0);
+      setAccountsHasMore(false);
       setGroups([]);
       setPersonas([]);
       setSettings(null);
@@ -100,7 +152,7 @@ export function usePublishing() {
     try {
       // Каждый источник — независимо: ошибка одного не должна прятать остальные.
       const [a, g, p, s, m] = await Promise.allSettled([
-        publishingApi.list(projectId),
+        listAccountsUpTo(projectId, accountsLimitRef.current),
         publishingApi.groupList(projectId),
         publishingApi.personaList(projectId),
         publishingApi.settingsGet(projectId),
@@ -109,8 +161,10 @@ export function usePublishing() {
       if (!alive.current || seq !== loadSeq.current) return;
       // Отказ источника обнуляет его данные: иначе после смены проекта на экране
       // оставалась сеть аккаунтов прошлого проекта под баннером ошибки.
-      setAccounts(a.status === "fulfilled" ? a.value.accounts ?? [] : []);
-      setRole(a.status === "fulfilled" ? a.value.role ?? null : null);
+      setAccounts(a.status === "fulfilled" ? a.value.accounts : []);
+      setAccountsTotal(a.status === "fulfilled" ? a.value.total : 0);
+      setAccountsHasMore(a.status === "fulfilled" ? a.value.hasMore : false);
+      setRole(a.status === "fulfilled" ? a.value.role : null);
       setGroups(g.status === "fulfilled" ? g.value.groups ?? [] : []);
       setPersonas(p.status === "fulfilled" ? p.value.personas ?? [] : []);
       setSettings(s.status === "fulfilled" ? s.value : null);
@@ -132,6 +186,8 @@ export function usePublishing() {
     setJobsStatusRaw("all");
     setJobsVideoRaw(null);
     setJobsLimit(JOBS_PAGE);
+    accountsLimitRef.current = ACCOUNTS_PAGE;
+    setAccountsLimit(ACCOUNTS_PAGE);
     void refetch(["all", JOBS_PAGE, null]);
     return () => {
       alive.current = false;
@@ -150,7 +206,28 @@ export function usePublishing() {
   // Новый фильтр — снова первая страница, иначе подгруженный хвост прилипает к другому статусу.
   const setJobsStatus = useCallback((s: PublishJobStatus | "all") => { setJobsStatusRaw(s); setJobsLimit(JOBS_PAGE); }, []);
   const setJobsVideo = useCallback((id: string | null) => { setJobsVideoRaw(id); setJobsLimit(JOBS_PAGE); }, []);
-  const loadMoreJobs = useCallback(() => setJobsLimit((l) => Math.min(l + JOBS_PAGE, JOBS_MAX)), []);
+  const loadMoreJobs = useCallback(() => setJobsLimit((l) => l + JOBS_PAGE), []);
+
+  // «Показать ещё» по аккаунтам: перечитываем только аккаунты, страницу больше.
+  const fetchAccounts = useCallback(async (limit: number) => {
+    if (!projectId) return;
+    accountsLimitRef.current = limit;
+    setAccountsLimit(limit);
+    // Свой счётчик: общий loadSeq отменил бы идущий refetch, и его loading завис бы.
+    const seq = ++accountsSeq.current;
+    try {
+      const r = await listAccountsUpTo(projectId, limit);
+      if (!alive.current || seq !== accountsSeq.current) return;
+      setAccounts(r.accounts);
+      setAccountsTotal(r.total);
+      setAccountsHasMore(r.hasMore);
+      if (r.role) setRole(r.role);
+    } catch (e) {
+      if (alive.current) setError(e instanceof Error ? e.message : "Ошибка загрузки аккаунтов");
+    }
+  }, [projectId]);
+  const loadMoreAccounts = useCallback(() => fetchAccounts(accountsLimitRef.current + ACCOUNTS_PAGE), [fetchAccounts]);
+  const loadAllAccounts = useCallback(() => fetchAccounts(Math.max(accountsTotal, accountsLimitRef.current + ACCOUNTS_PAGE)), [fetchAccounts, accountsTotal]);
 
   const act = useCallback(
     async <T>(name: string, fn: (pid: string) => Promise<T>, reload = true): Promise<T> => {
@@ -170,6 +247,12 @@ export function usePublishing() {
   return {
     projectId,
     accounts,
+    /** Аккаунтов в проекте всего (сервер), загружено — accounts.length. */
+    accountsTotal,
+    accountsHasMore,
+    accountsLimit,
+    loadMoreAccounts,
+    loadAllAccounts,
     groups,
     personas,
     settings,
@@ -183,8 +266,8 @@ export function usePublishing() {
     jobsLimit,
     jobsVideo,
     setJobsVideo,
-    /** Есть ли смысл в «Показать ещё»: выборка упёрлась в лимит и потолок сервера не достигнут. */
-    jobsHasMore: jobs.length >= jobsLimit && jobsLimit < JOBS_MAX,
+    /** Есть ли хвост за загруженной страницей (has_more сервера). */
+    jobsHasMore,
     loadMoreJobs,
     jobsLoading,
     loading,
@@ -194,8 +277,11 @@ export function usePublishing() {
 
     // Мутации — возвращают ответ функции и перечитывают состояние.
     loadAvailable: (metaToken?: string | null) => act("available", (pid) => publishingApi.available(pid, metaToken), false),
-    connect: (pageIds: string[], metaToken?: string | null, groupId?: string | null) =>
-      act("connect", (pid) => publishingApi.connect(pid, pageIds, metaToken, groupId)),
+    connect: (pageIds: string[], metaToken?: string | null, groupId?: string | null, preset?: AccountUpdateInput | null) =>
+      act("connect", (pid) => publishingApi.connect(pid, pageIds, metaToken, groupId, preset)),
+    /** Одна правка на пачку аккаунтов одним запросом (панель массовых действий, онбординг). */
+    bulkUpdateAccounts: (accountIds: string[], patch: AccountUpdateInput) =>
+      act("accounts_bulk_update", (pid) => publishingApi.accountsBulkUpdate(pid, accountIds, patch)),
     connectThreads: (input: { threads_user_id: string; access_token: string; account_name?: string; group_id?: string }) =>
       act("connect_threads", (pid) => publishingApi.connectThreads(pid, input)),
     updateAccount: (accountId: string, patch: AccountUpdateInput) =>
