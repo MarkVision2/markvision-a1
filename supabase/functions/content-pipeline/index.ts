@@ -625,16 +625,75 @@ async function sendReviewRequest(db: SupabaseClient, run: RunRow, item: ItemRow,
   }
 }
 
+/**
+ * Фабрика вариантов: тема × группы → дочерние темы с персоной группы (M2).
+ * Зовётся из интерфейса (пользователь) и из публичного API / MCP (ключ автоматизации).
+ */
+async function createVariants(db: SupabaseClient, item: ItemRow, body: Json, userId: string | null): Promise<Response> {
+    // Фабрика вариантов: тема × группы → дочерние темы с персоной группы (M2).
+    const groupIds = (Array.isArray(body.group_ids) ? body.group_ids : []).map(String).filter(Boolean);
+    if (!groupIds.length) return json({ error: "group_ids обязателен" }, 400);
+    if (item.parent_item_id) return json({ error: "Вариант нельзя разветвить ещё раз" }, 400);
+    const { data: groups } = await db.from("publish_account_groups")
+      .select("id, name, persona_id, review_mode").eq("project_id", item.project_id).in("id", groupIds);
+    const created: Json[] = [];
+    const skipped: Json[] = [];
+    for (const g of (groups ?? []) as { id: string; name: string; persona_id: string | null; review_mode: string }[]) {
+      const persona = await loadPersona(db, g.persona_id);
+      const { data: child, error } = await db.from("content_plan_items").insert({
+        project_id: item.project_id,
+        title: item.title,
+        description: item.description,
+        prompts: [item.prompts ?? "", `Вариант для группы «${g.name}»${persona ? ` (персона ${persona.name})` : ""}.`].filter(Boolean).join("\n"),
+        category: item.category,
+        content_type: "REELS",
+        status: "idea",
+        parent_item_id: item.id,
+        target_group_id: g.id,
+        persona_id: g.persona_id,
+        engine: persona?.engine_default ?? item.engine ?? "heygen",
+        idea_id: item.idea_id,
+        created_by: userId,
+      }).select("id, title, target_group_id").maybeSingle();
+      if (error) {
+        skipped.push({ group_id: g.id, reason: error.code === "23505" ? "вариант для этой группы уже есть" : error.message });
+      } else {
+        created.push({ ...(child as Json), group_name: g.name });
+      }
+    }
+    const requested = new Set(groupIds);
+    for (const g of (groups ?? []) as { id: string }[]) requested.delete(g.id);
+    for (const missing of requested) skipped.push({ group_id: missing, reason: "группа не найдена в проекте" });
+    if (created.length) await kickN8n({ reason: "variants", project_id: item.project_id, item_id: item.id, user_id: userId });
+    return json({ ok: true, created, skipped, ...(await itemDetail(db, item)) });
+}
+
 /* ───────────────────────────── пользовательский API ───────────────────────────── */
 
 async function handleUser(req: Request, segments: string[]): Promise<Response> {
+  const db = admin();
+  const body = req.method === "POST" ? ((await req.json().catch(() => ({}))) as Json) : {};
+
+  // Публичный API / MCP (edge `api`, docs/PUBLIC-API.md) зовёт конвейер ключом
+  // автоматизации: пользователя нет, проект — из тела и обязан совпасть с темой.
+  // Разрешено только POST /items/:id/variants: остальное — решения человека.
+  const viaAutomation = await automationKeyValid(req, db);
+  if (viaAutomation) {
+    const projectId = String(body.project_id ?? "").trim();
+    const itemId = segments[1];
+    if (segments[2] !== "variants" || req.method !== "POST") return json({ error: "по ключу автоматизации доступны только варианты темы" }, 403);
+    if (!projectId || !itemId || !/^[0-9a-f-]{36}$/i.test(itemId)) return json({ error: "project_id и id темы обязательны" }, 400);
+    const item = await loadItem(db, itemId);
+    if (!item || item.project_id !== projectId) return json({ error: "Публикация не найдена" }, 404);
+    const userId = typeof body.user_id === "string" && /^[0-9a-f-]{36}$/i.test(body.user_id) ? body.user_id : null;
+    return await createVariants(db, item, body, userId);
+  }
+
   const auth = await requireUser(req);
   if (!auth.ok) return auth.response;
   const userDb = createClient(env("SUPABASE_URL"), env("SUPABASE_ANON_KEY"), {
     global: { headers: { Authorization: auth.authHeader } },
   });
-  const db = admin();
-  const body = req.method === "POST" ? ((await req.json().catch(() => ({}))) as Json) : {};
 
   // POST /items
   if (segments.length === 1 && req.method === "POST") {
@@ -718,44 +777,7 @@ async function handleUser(req: Request, segments: string[]): Promise<Response> {
     return json({ ok: true, queued: true, kicked, ...(await itemDetail(db, fresh)) });
   }
 
-  if (action === "variants") {
-    // Фабрика вариантов: тема × группы → дочерние темы с персоной группы (M2).
-    const groupIds = (Array.isArray(body.group_ids) ? body.group_ids : []).map(String).filter(Boolean);
-    if (!groupIds.length) return json({ error: "group_ids обязателен" }, 400);
-    if (item.parent_item_id) return json({ error: "Вариант нельзя разветвить ещё раз" }, 400);
-    const { data: groups } = await db.from("publish_account_groups")
-      .select("id, name, persona_id, review_mode").eq("project_id", item.project_id).in("id", groupIds);
-    const created: Json[] = [];
-    const skipped: Json[] = [];
-    for (const g of (groups ?? []) as { id: string; name: string; persona_id: string | null; review_mode: string }[]) {
-      const persona = await loadPersona(db, g.persona_id);
-      const { data: child, error } = await db.from("content_plan_items").insert({
-        project_id: item.project_id,
-        title: item.title,
-        description: item.description,
-        prompts: [item.prompts ?? "", `Вариант для группы «${g.name}»${persona ? ` (персона ${persona.name})` : ""}.`].filter(Boolean).join("\n"),
-        category: item.category,
-        content_type: "REELS",
-        status: "idea",
-        parent_item_id: item.id,
-        target_group_id: g.id,
-        persona_id: g.persona_id,
-        engine: persona?.engine_default ?? item.engine ?? "heygen",
-        idea_id: item.idea_id,
-        created_by: auth.userId,
-      }).select("id, title, target_group_id").maybeSingle();
-      if (error) {
-        skipped.push({ group_id: g.id, reason: error.code === "23505" ? "вариант для этой группы уже есть" : error.message });
-      } else {
-        created.push({ ...(child as Json), group_name: g.name });
-      }
-    }
-    const requested = new Set(groupIds);
-    for (const g of (groups ?? []) as { id: string }[]) requested.delete(g.id);
-    for (const missing of requested) skipped.push({ group_id: missing, reason: "группа не найдена в проекте" });
-    if (created.length) await kickN8n({ reason: "variants", project_id: item.project_id, item_id: itemId, user_id: auth.userId });
-    return json({ ok: true, created, skipped, ...(await itemDetail(db, item)) });
-  }
+  if (action === "variants") return await createVariants(db, item, body, auth.userId);
 
   if (action === "settings") {
     // Цель публикации, персона и движок — только пока запуск не идёт: воркер

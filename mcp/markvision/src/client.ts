@@ -147,6 +147,18 @@ export class MarkVisionClient {
   createRoutine(input: Record<string, unknown>) { return this.request<Record<string, unknown>>("POST", "/routines", input); }
   updateRoutine(id: string, patch: Record<string, unknown>) { return this.request<Record<string, unknown>>("POST", `/routines/${id}`, patch); }
   assignRoutine(id: string, target: { group_ids?: string[]; account_ids?: string[] }) { return this.request<Record<string, unknown>>("POST", `/routines/${id}/assign`, target); }
+  insights(days = 30) { return this.request<{ insights: unknown }>("GET", `/analytics/insights?days=${days}`); }
+  contentItems(opts: { status?: string; roots?: boolean; limit?: number } = {}) {
+    const q = new URLSearchParams();
+    if (opts.status) q.set("status", opts.status);
+    if (opts.roots) q.set("roots", "1");
+    if (opts.limit) q.set("limit", String(opts.limit));
+    const qs = q.toString();
+    return this.request<{ items: unknown[] }>("GET", `/content${qs ? `?${qs}` : ""}`);
+  }
+  createVariations(itemId: string, groupIds: string[]) {
+    return this.request<Record<string, unknown>>("POST", `/content/${itemId}/variants`, { group_ids: groupIds });
+  }
   tasks(status?: string, limit = 100) {
     const q = new URLSearchParams({ limit: String(limit), ...(status ? { status } : {}) });
     return this.request<{ tasks: unknown[] }>("GET", `/tasks?${q}`);

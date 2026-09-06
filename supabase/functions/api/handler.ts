@@ -157,6 +157,58 @@ async function accountsBulkUpdate(req: Request, deps: Deps, ctx: ApiKeyContext):
   return passthrough(await accountsAction(deps, ctx, "accounts_bulk_update", { account_ids: ids, patch }));
 }
 
+/**
+ * POST /jobs/approve | /jobs/reject — согласование публикаций, удержанных политикой AI
+ * (manual_review + awaiting_approval). Для человека и n8n/Telegram; в MCP не выдаётся.
+ */
+async function jobsDecision(req: Request, deps: Deps, ctx: ApiKeyContext, action: "jobs_approve" | "jobs_reject"): Promise<Response> {
+  const body = await readJson(req);
+  const payload: Record<string, unknown> = {};
+  if (typeof body.video_id === "string") payload.video_id = body.video_id;
+  if (Array.isArray(body.job_ids)) payload.job_ids = body.job_ids.map(String);
+  return passthrough(await accountsAction(deps, ctx, action, payload));
+}
+
+/** GET /analytics/insights?days= — AI Content Analyst. */
+async function analyticsInsights(req: Request, deps: Deps, ctx: ApiKeyContext): Promise<Response> {
+  const days = Number(new URL(req.url).searchParams.get("days") ?? 30);
+  return passthrough(await accountsAction(deps, ctx, "analytics_insights", { days: Number.isFinite(days) ? days : 30 }));
+}
+
+const CONTENT_ITEM_FIELDS = "id, title, description, category, status, parent_item_id, target_group_id, persona_id, engine, publish_video_id, created_at, updated_at";
+
+/** GET /content?status=&limit=&parent_id= — темы контент-плана проекта (для вариантов и конвейера). */
+async function contentList(req: Request, deps: Deps, ctx: ApiKeyContext): Promise<Response> {
+  const q = new URL(req.url).searchParams;
+  const limit = Math.min(500, Math.max(1, Number(q.get("limit") ?? 100) || 100));
+  let query = deps.admin.from("content_plan_items").select(CONTENT_ITEM_FIELDS)
+    .eq("project_id", ctx.projectId).order("created_at", { ascending: false }).limit(limit);
+  if (q.get("status")) query = query.eq("status", q.get("status"));
+  if (q.get("parent_id")) query = query.eq("parent_item_id", q.get("parent_id"));
+  if (q.get("roots") === "1") query = query.is("parent_item_id", null);
+  const { data, error } = await query;
+  if (error) return json({ error: error.message }, 500);
+  return json({ ok: true, items: data ?? [] });
+}
+
+/**
+ * POST /content/:id/variants { group_ids } — варианты темы под группы аккаунтов
+ * через content-pipeline (персона группы, дальше конвейер сценарий → видео → согласование).
+ */
+async function contentVariants(req: Request, deps: Deps, ctx: ApiKeyContext, id: string): Promise<Response> {
+  const body = await readJson(req);
+  const groupIds = Array.isArray(body.group_ids) ? body.group_ids.map(String).filter(Boolean) : [];
+  if (!groupIds.length) return json({ error: "group_ids — список uuid групп" }, 400);
+  if (!(await ownsRow(deps.admin, "content_plan_items", id, ctx.projectId))) return json({ error: "тема не найдена" }, 404);
+  const { data: key } = await deps.admin.from("api_keys").select("created_by").eq("id", ctx.keyId).maybeSingle();
+  const r = await callInternal(deps, `content-pipeline/items/${id}/variants`, {
+    project_id: ctx.projectId,
+    group_ids: groupIds,
+    user_id: (key as { created_by?: string | null } | null)?.created_by ?? null,
+  }, { "x-automation-key": await automationKey(deps.admin) });
+  return passthrough(r);
+}
+
 /** GET /calendar?from&to&group_id&account_ids=a,b — задания по аккаунтам за период (до 31 дня). */
 async function calendar(req: Request, deps: Deps, ctx: ApiKeyContext): Promise<Response> {
   const q = new URL(req.url).searchParams;
@@ -344,6 +396,7 @@ async function publicationCreate(req: Request, deps: Deps, ctx: ApiKeyContext): 
     ...(input.client_ref ? { client_ref: input.client_ref } : {}),
     source: "api",
     source_ref: `api_key:${ctx.keyId}`,
+    origin: "api",
     ...(input.target ? { target: input.target } : {}),
   }, { "x-automation-key": await automationKey(admin) });
   return passthrough(r);
@@ -411,7 +464,7 @@ async function publicationJobsCreate(req: Request, deps: Deps, ctx: ApiKeyContex
   const bad = await targetError(admin, ctx, parsed.target);
   if (bad) return json({ error: bad }, 404);
   const r = await callInternal(deps, "publish-intake", {
-    action: "create_jobs", video_id: id, target: parsed.target,
+    action: "create_jobs", video_id: id, target: parsed.target, origin: "api",
   }, { "x-automation-key": await automationKey(admin) });
   return passthrough(r);
 }
@@ -435,6 +488,7 @@ async function publicationsDistribute(req: Request, deps: Deps, ctx: ApiKeyConte
     videos: input.videos,
     batch_id: input.batch_id,
     target: input.target,
+    origin: "api",
   }, { "x-automation-key": await automationKey(admin) });
   return passthrough(r);
 }
@@ -625,6 +679,11 @@ async function dispatch(req: Request, deps: Deps, ctx: ApiKeyContext, route: Api
     case "accounts": return accounts(req, deps, ctx);
     case "accounts_bulk_update": return accountsBulkUpdate(req, deps, ctx);
     case "calendar": return calendar(req, deps, ctx);
+    case "jobs_approve": return jobsDecision(req, deps, ctx, "jobs_approve");
+    case "jobs_reject": return jobsDecision(req, deps, ctx, "jobs_reject");
+    case "analytics_insights": return analyticsInsights(req, deps, ctx);
+    case "content_list": return contentList(req, deps, ctx);
+    case "content_variants": return contentVariants(req, deps, ctx, route.id);
     case "account_update": return accountUpdate(req, deps, ctx, route.id);
     case "accounts_health_check": return accountsHealthCheck(req, deps, ctx);
     case "groups": return groups(deps, ctx);

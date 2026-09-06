@@ -41,6 +41,7 @@ import { DevicesTab } from "@/components/publishing/DevicesTab";
 import { CalendarTab } from "@/components/publishing/CalendarTab";
 import { ConnectInstagramDialog } from "@/components/publishing/ConnectInstagramDialog";
 import { ConnectLinksDialog } from "@/components/publishing/ConnectLinksDialog";
+import { InsightsPanel } from "@/components/publishing/InsightsPanel";
 import { WebhooksSection } from "@/components/publishing/WebhooksSection";
 import { RoutinesSection } from "@/components/publishing/RoutinesSection";
 import { ProjectRolesSection } from "@/components/publishing/ProjectRolesSection";
@@ -49,6 +50,7 @@ import { VideosTab } from "@/components/publishing/VideosTab";
 import { usePublishing, type UsePublishing } from "@/hooks/usePublishing";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import {
+  AI_POLICY_META,
   ENGINE_META,
   NOTIFY_MODE_META,
   PLATFORM_META,
@@ -57,6 +59,7 @@ import {
   publishingApi,
   readOAuthResult,
   startPublishOAuth,
+  type AiPolicy,
   type OAuthPlatform,
   type NotifyMode,
   type Persona,
@@ -317,6 +320,7 @@ export default function Publishing() {
               Всё, что залито вручную, пришло из конвейера контента, монтажа или по API. Отсюда ролик
               выпускается повторно в другие аккаунты и открывается очередь заданий именно по нему.
             </TabIntro>
+            <InsightsPanel projectId={projectId} refreshKey={pub.jobCounts?.published ?? 0} />
             <VideosTab
               pub={pub}
               onRepost={(v) => setRepostVideo(v)}
@@ -1001,6 +1005,8 @@ function SettingsTab({ pub }: { pub: UsePublishing }) {
   const [daily, setDaily] = useState("");
   const [monthly, setMonthly] = useState("");
   const [paused, setPaused] = useState(false);
+  const [aiPolicy, setAiPolicy] = useState<AiPolicy>("manual");
+  const [aiLimit, setAiLimit] = useState("10");
 
   // Форму заполняем с сервера один раз на проект: любое действие на странице
   // перечитывает settings, и правка бюджета, ещё не сохранённая, пропадала бы.
@@ -1014,21 +1020,30 @@ function SettingsTab({ pub }: { pub: UsePublishing }) {
     setDaily(String(s.budget.daily_usd));
     setMonthly(String(s.budget.monthly_usd));
     setPaused(Boolean(s.settings.paused));
+    setAiPolicy(s.settings.ai_policy ?? "manual");
+    setAiLimit(String(s.settings.ai_daily_limit ?? 10));
   }, [s, pub.projectId]);
 
   if (!s) return <EmptyState text="Настройки не загружены — выберите проект или обновите страницу." />;
 
   // Чужой формат chat id площадка молча проглотит, а дайджест потом не придёт.
   const chatValid = chat.trim() === "" || /^-?\d{5,20}$/.test(chat.trim());
+  const aiLimitValid = Number.isInteger(Number(aiLimit)) && Number(aiLimit) >= 0 && Number(aiLimit) <= 10000;
   const dirty =
     notify !== s.settings.notify_mode ||
     chat.trim() !== (s.settings.digest_chat_id ?? "") ||
     daily.trim() !== String(s.budget.daily_usd) ||
-    monthly.trim() !== String(s.budget.monthly_usd);
+    monthly.trim() !== String(s.budget.monthly_usd) ||
+    aiPolicy !== (s.settings.ai_policy ?? "manual") ||
+    aiLimit.trim() !== String(s.settings.ai_daily_limit ?? 10);
 
   const save = async () => {
     if (!chatValid) {
       toast.error("Telegram chat id — число, например -1001234567890");
+      return;
+    }
+    if (!aiLimitValid) {
+      toast.error("Лимит AI-публикаций в сутки — целое число от 0 до 10000");
       return;
     }
     try {
@@ -1037,6 +1052,8 @@ function SettingsTab({ pub }: { pub: UsePublishing }) {
         digest_chat_id: chat.trim() || null,
         daily_usd: numOrNull(daily),
         monthly_usd: numOrNull(monthly),
+        ai_policy: aiPolicy,
+        ai_daily_limit: Number(aiLimit),
       });
       toast.success("Настройки сохранены");
     } catch (e) {
@@ -1131,6 +1148,43 @@ function SettingsTab({ pub }: { pub: UsePublishing }) {
         </div>
       </section>
 
+      {/* Политика AI: ворота для публикаций, поставленных агентом или по API */}
+      <section className="space-y-3 rounded-2xl border bg-card p-4">
+        <div>
+          <h3 className="text-sm font-medium">Политика AI-публикаций</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Что делать с публикациями, которые ставит AI-агент через MCP или внешняя система по API-ключу.
+            Из интерфейса и конвейера публикации идут как раньше.
+          </p>
+        </div>
+        <Field label="Режим">
+          <Select value={aiPolicy} onValueChange={(v) => setAiPolicy(v as AiPolicy)}>
+            <SelectTrigger aria-label="Политика AI-публикаций"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {(Object.keys(AI_POLICY_META) as AiPolicy[]).map((m) => (
+                <SelectItem key={m} value={m}>{AI_POLICY_META[m].label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+        <p className="text-xs text-muted-foreground">{AI_POLICY_META[aiPolicy].hint}</p>
+        {aiPolicy === "assisted" && (
+          <Field label="Без согласования в сутки">
+            <Input
+              type="number" min={0} max={10000} step={1}
+              aria-label="Лимит AI-публикаций в сутки"
+              aria-invalid={!aiLimitValid}
+              className={cn(!aiLimitValid && "border-destructive")}
+              value={aiLimit}
+              onChange={(e) => setAiLimit(e.target.value)}
+            />
+          </Field>
+        )}
+        <p className="text-xs text-muted-foreground">
+          Удержанные публикации видны во вкладке «Задания» баннером «Ждут согласования»; сменить политику через MCP агент не может.
+        </p>
+      </section>
+
       {/* Бюджет */}
       <section className="space-y-3 rounded-2xl border bg-card p-4">
         <div>
@@ -1173,7 +1227,7 @@ function SettingsTab({ pub }: { pub: UsePublishing }) {
       </section>
 
       <div className="flex flex-wrap items-center gap-3 lg:col-span-2">
-        <Button onClick={() => void save()} disabled={disabled || !dirty || !chatValid}>
+        <Button onClick={() => void save()} disabled={disabled || !dirty || !chatValid || !aiLimitValid}>
           {pub.busy === "settings_upsert" && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />} Сохранить
         </Button>
         {dirty && <span className="text-xs text-muted-foreground">Есть несохранённые изменения.</span>}

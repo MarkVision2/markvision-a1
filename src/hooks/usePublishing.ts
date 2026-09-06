@@ -300,6 +300,9 @@ export function usePublishing() {
     jobRetry: (jobId: string) => act(`job_retry:${jobId}`, (pid) => publishingApi.jobRetry(pid, jobId)),
     jobCancel: (jobId: string) => act(`job_cancel:${jobId}`, (pid) => publishingApi.jobCancel(pid, jobId)),
     jobsRetryFailed: (videoId?: string | null) => act("jobs_retry_failed", (pid) => publishingApi.jobsRetryFailed(pid, videoId)),
+    /** Согласование AI-публикаций (политика проекта): одобрить / отклонить удержанные. */
+    jobsApprove: (scope: { video_id?: string | null; job_ids?: string[] } = {}) => act("jobs_approve", (pid) => publishingApi.jobsApprove(pid, scope)),
+    jobsReject: (scope: { video_id?: string | null; job_ids?: string[] } = {}) => act("jobs_reject", (pid) => publishingApi.jobsReject(pid, scope)),
     videoDelete: (videoId: string, force = false) => act(`video_delete:${videoId}`, (pid) => publishingApi.videoDelete(pid, videoId, force)),
     /** Без перечитывания: ничего не меняет, только проверяет доставку. */
     notifyTest: () => act("notify_test", (pid) => publishingApi.notifyTest(pid), false),

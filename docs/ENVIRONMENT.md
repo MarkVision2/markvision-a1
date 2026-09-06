@@ -28,6 +28,10 @@
 
 `MARKVISION_API_KEY` (`mv_live_…`), `MARKVISION_API_URL` (`https://<проект>.supabase.co/functions/v1/api/v1`).
 
+Удалённый вариант (`node dist/http.js`): `MARKVISION_API_URL` обязателен, ключа в окружении нет — он
+приходит в `Authorization: Bearer` каждого запроса; `MARKVISION_MCP_PORT` (8787), `MARKVISION_MCP_HOST`
+(`127.0.0.1`; `0.0.0.0` только за TLS-прокси), `MARKVISION_MCP_PATH` (`/mcp`). Health — `GET /healthz`.
+
 ## Окружения
 
 Один прод-проект Supabase (`szfgdruhlebfvcmlvxdk`). Для staging — второй проект с теми же миграциями

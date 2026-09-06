@@ -20,7 +20,7 @@ import { initials } from "@/components/publishing/PostPreview";
 import { videoLabel } from "@/components/publishing/VideosTab";
 import type { UsePublishing } from "@/hooks/usePublishing";
 import { JobDetailDialog } from "@/components/publishing/JobDetailDialog";
-import { jobActions, jobErrorHint, JOB_STATUS_META, PLATFORM_META, VERIFICATION_META, type PublishJob, type PublishJobStatus } from "@/lib/publishingClient";
+import { AWAITING_APPROVAL_CODE, jobActions, jobErrorHint, JOB_STATUS_META, PLATFORM_META, VERIFICATION_META, type PublishJob, type PublishJobStatus } from "@/lib/publishingClient";
 import { fmtExact, fmtRelative } from "@/lib/publishingFormat";
 import { cn } from "@/lib/utils";
 
@@ -59,6 +59,10 @@ function JobOutcome({ job }: { job: PublishJob }) {
 
   if (job.status === "published") {
     return <span className="text-xs text-muted-foreground">Пост ушёл в аккаунт{job.attempts > 1 ? ` с ${job.attempts}-й попытки` : ""}.</span>;
+  }
+  // Удержано политикой AI — не ошибка площадки, а ворота согласования.
+  if (job.status === "manual_review" && job.error_code === AWAITING_APPROVAL_CODE) {
+    return <span className="text-xs text-amber-700 dark:text-amber-300">{raw || "Ждёт согласования: политика AI проекта"}</span>;
   }
   if (!raw && !hint) {
     const idle: Partial<Record<PublishJobStatus, string>> = {
@@ -134,6 +138,22 @@ export function JobsTab({ pub }: { pub: UsePublishing }) {
   };
   const videoFilter = pub.jobsVideo ? pub.metrics?.videos?.find((v) => v.id === pub.jobsVideo) ?? null : null;
 
+  /** Согласование AI-публикаций: одобрить или отклонить всё удержанное (в рамках фильтра по видео). */
+  const decideAll = async (kind: "approve" | "reject") => {
+    const n = counts.awaiting_approval ?? 0;
+    const scope = pub.jobsVideo ? "по этому видео" : "в проекте";
+    const verb = kind === "approve" ? "Согласовать" : "Отклонить";
+    if (!window.confirm(`${verb} все публикации от AI ${scope} (${n})?`)) return;
+    try {
+      const r = kind === "approve" ? await pub.jobsApprove({ video_id: pub.jobsVideo }) : await pub.jobsReject({ video_id: pub.jobsVideo });
+      const done = kind === "approve" ? r.approved : r.rejected;
+      if (r.skipped) toast.warning(`${verb}: ${done}, пропущено ${r.skipped}`);
+      else toast.success(kind === "approve" ? `В очередь: ${done}` : `Отклонено: ${done}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Ошибка");
+    }
+  };
+
   const filters: { value: PublishJobStatus | "all"; label: string; count: number }[] = [
     { value: "all", label: "Все", count: counts.all ?? pub.jobs.length },
     ...ORDER.map((s) => ({ value: s, label: JOB_STATUS_META[s].label, count: counts[s] ?? 0 })),
@@ -142,6 +162,22 @@ export function JobsTab({ pub }: { pub: UsePublishing }) {
   return (
     <TooltipProvider delayDuration={200}>
       <div className="space-y-3">
+        {(counts.awaiting_approval ?? 0) > 0 && (
+          <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm" role="status">
+            <span>
+              Ждут согласования: <b className="tabular-nums">{counts.awaiting_approval}</b> — публикации поставил AI-агент или внешняя система по API,
+              политика проекта требует подтверждения человека.
+            </span>
+            <div className="ml-auto flex items-center gap-1.5">
+              <Button type="button" size="sm" className="h-8" disabled={busy} onClick={() => void decideAll("approve")}>
+                {pub.busy === "jobs_approve" && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />} Согласовать все
+              </Button>
+              <Button type="button" size="sm" variant="outline" className="h-8" disabled={busy} onClick={() => void decideAll("reject")}>
+                {pub.busy === "jobs_reject" && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />} Отклонить все
+              </Button>
+            </div>
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-1.5">
           {filters.map((f) => {
             const active = pub.jobsStatus === f.value;

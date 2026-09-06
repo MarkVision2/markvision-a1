@@ -12,7 +12,7 @@
 | `publish_account_groups` | группы | стратегия, темп, окно, `review_mode` (`review_required|auto_publish|paused`), персона |
 | `personas` | tone of voice, движок по умолчанию | |
 | `publish_videos` | библиотека медиа для очереди | `file_url`, `title`, `base_caption`, `caption_variants`, `hashtags`, `status` (`ready|queued|publishing|done|failed`), `source`, `source_ref`, `client_ref` (UNIQUE в проекте) |
-| `publish_jobs` | одно задание = одна публикация в одном аккаунте | `status` (см. `JOBS.md`), `attempts`, `poll_count`, `locked_at`, `container_id`, `external_post_id/url`, `published_at`, `verification_status`, `verified_at`, `verify_attempts`, `error_code`, `error_class`, `error_message`, `trace_id`, `metrics_unavailable_reason`; `UNIQUE (video_id, account_id)` |
+| `publish_jobs` | одно задание = одна публикация в одном аккаунте | `status` (см. `JOBS.md`), `attempts`, `poll_count`, `locked_at`, `container_id`, `external_post_id/url`, `published_at`, `verification_status`, `verified_at`, `verify_attempts`, `error_code` (`awaiting_approval` — удержано политикой AI), `error_class`, `error_message`, `trace_id`, `metrics_unavailable_reason`, `origin` (`api` — из публичного API / MCP), `campaign_id`; `UNIQUE (video_id, account_id)` |
 | `publish_slots` | брони планировщика | `UNIQUE (account_id, slot_at)` |
 | `publish_job_events` | трасса шагов | `job_id`, `trace_id`, `step`, `level`, `message`, `data` |
 | `publish_logs` | сырые ответы площадок | `job_id`, `level`, `message`, `raw_response` |
@@ -25,7 +25,7 @@
 | `publish_routines` / `publish_tasks` | рутины и их задачи | `steps jsonb`, `is_default` (одна на проект); tasks: `task_type` (`ACCOUNT_HEALTH_CHECK|TOKEN_CHECK|METRICS_SYNC`), `run_at`, `status` (`pending|running|done|failed|skipped`); `publish_accounts.routine_id`, `publish_account_groups.routine_id` |
 | `project_members` | участие и роль в проекте | `role` (`admin|manager|content_manager|operator|viewer`, legacy `member`); `project_role_of(project)` |
 | `publish_oauth_states` | одноразовый state OAuth | TTL 1 ч (GC) |
-| `publish_project_settings`, `project_budgets`, `usage_ledger` | пауза, уведомления, бюджеты, расход | |
+| `publish_project_settings`, `project_budgets`, `usage_ledger` | пауза, уведомления, бюджеты, расход | `paused`, `features jsonb`, `ai_policy` (`manual|assisted|automatic`), `ai_daily_limit` |
 
 ## Витрины (security_invoker, читаются `authenticated`)
 

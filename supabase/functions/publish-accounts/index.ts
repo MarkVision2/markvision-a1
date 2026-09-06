@@ -38,6 +38,9 @@
  *   { action: "notification_read", project_id, notification_id? | all: true }
  *   { action: "job_retry" | "job_cancel", project_id, job_id }   — повтор остановленного / отмена не ушедшего
  *   { action: "jobs_retry_failed", project_id, video_id? }        — повтор всей пачки упавших разом
+ *   { action: "jobs_approve" | "jobs_reject", project_id, video_id? | job_ids? } — согласование AI-публикаций
+ *       (manual_review + awaiting_approval → pending | cancelled), политика — settings.ai_policy
+ *   { action: "analytics_insights", project_id, days? }           — AI Content Analyst: часы, площадки, аккаунты, ошибки, рекомендации
  *   { action: "video_delete", project_id, video_id, force? }      — убрать ролик из библиотеки (с заданиями)
  *   { action: "notify_test", project_id }                         — проверить, дойдёт ли уведомление в Telegram
  *   { action: "publish_video", project_id, file_url | video_id, group_id?, account_ids?, mode?, title?, caption?, hashtags? }
@@ -61,6 +64,8 @@ import {
   sanitizePlatforms,
 } from "../_lib/publishConnectLinks.ts";
 import { generateWebhookSecret, isWebhookEvent } from "../_lib/webhooks.ts";
+import { AWAITING_APPROVAL_CODE, isAiPolicy } from "../_lib/publishAiPolicy.ts";
+import { buildContentInsights, type InsightFailure, type InsightPublication } from "../_lib/publishInsights.ts";
 import {
   automationKeyValid,
   CORS_HEADERS,
@@ -713,7 +718,7 @@ Deno.serve(async (req) => {
       const sp = (Array.isArray(spend) ? spend[0] : spend) as { spent_today_usd?: number; spent_month_usd?: number } | null;
       return json({
         ok: true,
-        settings: s ?? { project_id: projectId, notify_mode: "digest", digest_chat_id: null, max_parallel_workers: 3, paused: false, features: {} },
+        settings: s ?? { project_id: projectId, notify_mode: "digest", digest_chat_id: null, max_parallel_workers: 3, paused: false, features: {}, ai_policy: "manual", ai_daily_limit: 10 },
         budget: b ?? { project_id: projectId, daily_usd: 20, monthly_usd: 300 },
         spend: { today_usd: Number(sp?.spent_today_usd ?? 0), month_usd: Number(sp?.spent_month_usd ?? 0) },
       });
@@ -723,6 +728,7 @@ Deno.serve(async (req) => {
       const touchesSettings = typeof body?.notify_mode === "string"
         || typeof body?.digest_chat_id === "string" || body?.digest_chat_id === null
         || typeof body?.paused === "boolean"
+        || typeof body?.ai_policy === "string" || typeof body?.ai_daily_limit === "number"
         || (body?.features && typeof body.features === "object");
       if (touchesSettings) {
         const row: Record<string, unknown> = { project_id: projectId };
@@ -738,6 +744,17 @@ Deno.serve(async (req) => {
         }
         // Аварийная пауза: claim_publish_jobs и plan_publish_slots читают этот флаг напрямую.
         if (typeof body?.paused === "boolean") row.paused = body.paused;
+        // Политика AI: ворота для публикаций через API / MCP (publish-intake → applyAiPolicy).
+        if (typeof body?.ai_policy === "string") {
+          if (!isAiPolicy(body.ai_policy)) return json({ error: "ai_policy — manual, assisted или automatic" }, 400);
+          row.ai_policy = body.ai_policy;
+        }
+        if (typeof body?.ai_daily_limit === "number") {
+          if (!Number.isInteger(body.ai_daily_limit) || body.ai_daily_limit < 0 || body.ai_daily_limit > 10000) {
+            return json({ error: "ai_daily_limit — целое число от 0 до 10000" }, 400);
+          }
+          row.ai_daily_limit = body.ai_daily_limit;
+        }
         if (body?.features && typeof body.features === "object" && !Array.isArray(body.features)) {
           // Флаги — только булевы по известным ключам; остальное отбрасываем.
           const allowed = ["ai_autopublish_enabled", "winner_replication_enabled", "tiktok_direct_publish_enabled", "phonegrid_enabled"];
@@ -1232,6 +1249,14 @@ Deno.serve(async (req) => {
       }));
       const counts = Object.fromEntries(counted) as Record<string, number>;
       counts.all = counted.reduce((sum, [, n]) => sum + n, 0);
+      // Отдельно — сколько из manual_review ждут согласования по политике AI (баннер «Согласовать»).
+      {
+        let c = admin.from("publish_jobs").select("id", { count: "exact", head: true })
+          .eq("project_id", projectId).eq("status", "manual_review").eq("error_code", AWAITING_APPROVAL_CODE);
+        if (typeof body?.video_id === "string") c = c.eq("video_id", body.video_id);
+        const { count } = await c;
+        counts.awaiting_approval = count ?? 0;
+      }
       const totalForFilter = typeof body?.status === "string" ? counts[body.status] ?? 0 : counts.all;
       return json({ ok: true, jobs, counts, offset, limit, has_more: offset + jobs.length < totalForFilter });
     }
@@ -1455,6 +1480,62 @@ Deno.serve(async (req) => {
         else retried += 1;
       }
       return json({ ok: true, retried, skipped });
+    }
+
+    /* ── согласование AI-публикаций (политика проекта, _lib/publishAiPolicy.ts) ── */
+    if (action === "jobs_approve" || action === "jobs_reject") {
+      if (!projectId) return json({ error: "project_id обязателен" }, 400);
+      const videoId = typeof body?.video_id === "string" ? body.video_id : null;
+      const jobIds = Array.isArray(body?.job_ids) ? body.job_ids.map(String).filter(Boolean).slice(0, 500) : [];
+      let q = admin.from("publish_jobs").select("id, scheduled_at").eq("project_id", projectId)
+        .eq("status", "manual_review").eq("error_code", AWAITING_APPROVAL_CODE);
+      if (videoId) q = q.eq("video_id", videoId);
+      if (jobIds.length) q = q.in("id", jobIds);
+      const { data: rows, error: listErr } = await q.limit(500);
+      if (listErr) return json({ error: listErr.message }, 500);
+      const found = (rows ?? []) as { id: string; scheduled_at: string | null }[];
+      if (!found.length) return json({ ok: true, approved: 0, rejected: 0, skipped: 0 });
+      const now = new Date().toISOString();
+      let done = 0;
+      let skipped = 0;
+      for (const j of found) {
+        // Слот в будущем сохраняем; прошедший — публикуем сейчас.
+        const at = j.scheduled_at && j.scheduled_at > now ? j.scheduled_at : now;
+        const patch = action === "jobs_approve"
+          ? { status: "pending", attempts: 0, scheduled_at: at, next_attempt_at: at, locked_at: null, error_code: null, error_message: null }
+          : { status: "cancelled", error_code: null, error_message: "Отклонено при согласовании" };
+        const { error } = await admin.from("publish_jobs").update(patch).eq("id", j.id).eq("status", "manual_review");
+        if (error) skipped += 1; else done += 1;
+      }
+      await admin.from("publish_notifications").update({ read_at: now })
+        .eq("project_id", projectId).eq("kind", "ai_pending_approval").is("read_at", null);
+      return json({ ok: true, approved: action === "jobs_approve" ? done : 0, rejected: action === "jobs_reject" ? done : 0, skipped });
+    }
+
+    /* ── AI Content Analyst: инсайты по публикациям за период ── */
+    if (action === "analytics_insights") {
+      if (!projectId) return json({ error: "project_id обязателен" }, 400);
+      const days = Math.min(Math.max(Math.round(Number(body?.days ?? 30)) || 30, 1), 365);
+      const since = new Date(Date.now() - days * 86_400_000).toISOString();
+      const [{ data: pubs, error: pubErr }, { data: accs }, { data: fails }] = await Promise.all([
+        admin.from("publish_publications")
+          .select("publication_id, content_id, content_title, account_id, account_name, platform, status, verification_status, published_at, views, reach, likes, comments, shares, saves, score, metrics_checkpoint")
+          .eq("project_id", projectId).gte("published_at", since).order("published_at", { ascending: false }).limit(5000),
+        admin.from("publish_accounts").select("id, timezone").eq("project_id", projectId),
+        admin.from("publish_jobs").select("error_class, platform").eq("project_id", projectId)
+          .in("status", ["failed", "manual_review"]).neq("error_code", AWAITING_APPROVAL_CODE).gte("created_at", since).limit(5000),
+      ]);
+      if (pubErr) return json({ error: pubErr.message }, 500);
+      const timezones: Record<string, string | null> = {};
+      for (const a of (accs ?? []) as { id: string; timezone: string | null }[]) timezones[a.id] = a.timezone;
+      const insights = buildContentInsights({
+        publications: (pubs ?? []) as InsightPublication[],
+        failures: (fails ?? []) as InsightFailure[],
+        timezones,
+        periodDays: days,
+        defaultTimezone: "Asia/Almaty",
+      });
+      return json({ ok: true, insights, generated_at: new Date().toISOString() });
     }
 
     /* ── библиотека: убрать ролик вместе с его заданиями ── */
