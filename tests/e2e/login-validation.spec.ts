@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 test.describe("Login form validation", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/login");
-    await expect(page.getByRole("heading", { name: "Добро пожаловать" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Вход в систему" })).toBeVisible();
   });
 
   test("показывает ошибки при пустой отправке", async ({ page }) => {
@@ -15,11 +15,12 @@ test.describe("Login form validation", () => {
   });
 
   test("кнопка показывает/скрывает пароль", async ({ page }) => {
-    const pw = page.getByLabel("Пароль");
+    const pw = page.getByLabel("Пароль", { exact: true });
     await pw.fill("secret123");
     await expect(pw).toHaveAttribute("type", "password");
-    // Eye button — ближайшая кнопка справа от input
-    await page.locator("button[type=button]").filter({ has: page.locator("svg") }).last().click();
+    // Кнопка-глаз подписана для скринридера — не ищем «последнюю кнопку с иконкой»,
+    // рядом с формой теперь панель с другими кнопками.
+    await page.getByRole("button", { name: "Показать пароль" }).click();
     await expect(pw).toHaveAttribute("type", "text");
   });
 

@@ -5,16 +5,16 @@ test.describe("Smoke", () => {
     await page.goto("/login");
 
     await expect(page).toHaveTitle(/MarkVision/i);
-    await expect(page.getByRole("heading", { name: "Добро пожаловать" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Вход в систему" })).toBeVisible();
     await expect(page.getByLabel("Email или Логин")).toBeVisible();
-    await expect(page.getByLabel("Пароль")).toBeVisible();
+    await expect(page.getByLabel("Пароль", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: /Войти в платформу/i })).toBeVisible();
   });
 
   test("неавторизованный пользователь перенаправляется на /login", async ({ page }) => {
     await page.goto("/dashboard");
     await page.waitForURL((url) => url.pathname === "/login", { timeout: 15_000 });
-    await expect(page.getByRole("heading", { name: "Добро пожаловать" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Вход в систему" })).toBeVisible();
   });
 
   test("страница 404 показывает NotFound", async ({ page }) => {
