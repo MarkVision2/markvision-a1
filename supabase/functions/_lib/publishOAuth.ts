@@ -344,10 +344,15 @@ export function returnUrlWith(returnUrl: string, params: Record<string, string>)
  *     (в карточке приложения Meta это раздел Instagram → API setup with
  *     Instagram login, а не Facebook Login).
  */
+/**
+ * Только то, что приложение реально делает: читает профиль и публикует. Право на
+ * комментарии здесь не запрашиваем — функции под него нет, а в App Review каждое
+ * запрошенное право надо показать в деле, иначе заявку отклоняют целиком
+ * (docs/INSTAGRAM-APP-REVIEW.md). Понадобится — добавить сюда и в заявку вместе.
+ */
 export const INSTAGRAM_LOGIN_SCOPES = [
   "instagram_business_basic",
   "instagram_business_content_publish",
-  "instagram_business_manage_comments",
 ].join(",");
 
 /** Право, без которого публиковать нечем. */
