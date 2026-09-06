@@ -1,7 +1,7 @@
 {
-  "git_sha": "eb45fda",
-  "git_sha_full": "eb45fdaae8db3b506118c0b9faf34d9004e83f35",
-  "updated_at": "2026-09-06T18:07:18+04:00",
-  "label": "feat(devices): окно телефона — пульт с вкладками вместо простыни форм [vercel-deploy]",
+  "git_sha": "bd2baff",
+  "git_sha_full": "bd2baff00b0ae72aa59c339bc855f5b9fca44908",
+  "updated_at": "2026-09-06T18:20:33+04:00",
+  "label": "fix(devices): вход больше не выглядит ошибкой там, где он прошёл [vercel-deploy]",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
