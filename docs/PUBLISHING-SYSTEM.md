@@ -314,10 +314,12 @@ account_name, day, scheduled_at }] }`. Снаружи — `POST /publications/di
 Facebook и `INSTAGRAM_APP_ID` / `INSTAGRAM_APP_SECRET` для входа в Instagram
 (Meta App → Instagram → API setup with Instagram login). Адрес возврата каждой
 регистрируется в своей консоли, иначе человек увидит «URL Blocked» уже после
-ввода пароля; что задано и какой адрес вписывать — `GET /publish-oauth/diag`, а принят ли
-адрес площадкой — `GET /publish-oauth/probe-instagram` (JWT или `x-automation-key`):
-Instagram Login отбивает незарегистрированный адрес сразу, Facebook — только после
-входа человека, поэтому у facebook-двери проверка подтверждает лишь ключи.
+ввода пароля; что задано и какой адрес вписывать — `GET /publish-oauth/diag`.
+`GET /publish-oauth/probe-instagram` (JWT или `x-automation-key`) спрашивает у обеих
+площадок страницу согласия: он ловит явный отказ (незарегистрированный адрес, чужой
+client id, ошибка в параметрах), но исправность не доказывает — redirect_uri обе
+площадки сверяют уже после ввода пароля, и «увели на вход» выглядит одинаково в обоих
+случаях. Полная проверка — живое подключение.
 
 Существующие `instagram_accounts` перенесены миграцией автоматически (токен
 открытым текстом, как лежал; после первого reconnect перезапишется шифротекстом).

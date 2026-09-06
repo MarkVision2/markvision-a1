@@ -304,11 +304,12 @@ function instagramLoginCredentials(): { clientId: string; clientSecret: string }
  * Живая проверка входа в Instagram: спрашиваем у площадки страницу согласия и
  * смотрим, что она отвечает ДО входа человека.
  *
- * Ловит ровно ту беду, которую иначе видно только по жалобе клиента: адрес
- * возврата не зарегистрирован в приложении. Instagram Login отбивает такой
- * запрос сразу («Invalid redirect_uri»), а Facebook Login — только ПОСЛЕ
- * ввода пароля, поэтому для facebook-двери проверяется лишь то, что ключи
- * приняты и страница согласия открывается.
+ * Что она может: поймать явный отказ площадки — незарегистрированный адрес
+ * возврата, чужой client id, любую ошибку в параметрах. Чего она НЕ может:
+ * подтвердить исправность. Обе площадки сверяют redirect_uri уже ПОСЛЕ ввода
+ * пароля, поэтому «увели на страницу входа» ничего не доказывает — так же
+ * выглядит и незарегистрированный адрес. Единственная полная проверка —
+ * живое подключение.
  */
 async function probeInstagram(req: Request, admin: SupabaseClient): Promise<Response> {
   if (!(await automationKeyValid(req, admin))) {
@@ -339,22 +340,33 @@ async function probeInstagram(req: Request, admin: SupabaseClient): Promise<Resp
     let location: string | null = null;
     let verdict = "неизвестно";
     let redirectRegistered: boolean | null = null;
+    let landing: string | null = null;
     try {
       const r = await fetch(url, { redirect: "manual" });
       status = r.status;
       location = r.headers.get("location");
+      const target = location ? new URL(location, "https://www.instagram.com") : null;
+      landing = target ? `${target.host}${target.pathname}` : null;
       const body = status === 200 ? (await r.text()).slice(0, 4000) : "";
-      const seen = `${location ?? ""} ${body}`;
-      if (/redirect_uri|URL Blocked|Invalid platform app/i.test(seen)) {
+      // Смотрим ТОЛЬКО явные признаки отказа. Слово redirect_uri само по себе
+      // ничего не значит: уводя на страницу входа, площадка кладёт весь наш
+      // запрос в параметр next — там оно и встречается у исправной настройки.
+      const errorParam = target
+        ? (target.searchParams.get("error_description") ?? target.searchParams.get("error") ?? target.searchParams.get("error_type"))
+        : null;
+      const badRedirect = /Invalid\s+redirect_uri|URL Blocked|redirect_uri.{0,40}(not|isn't)\s+allowed|Invalid platform app/i;
+      const loginPage = /\/(accounts\/login|login|oauth\/authorize)/i.test(target?.pathname ?? "");
+      if (badRedirect.test(`${errorParam ?? ""} ${body}`)) {
         redirectRegistered = false;
         verdict = `площадка не принимает адрес возврата — зарегистрируйте ${uri}`;
-      } else if (/Invalid Client ID|Invalid App ID|invalid_client/i.test(seen)) {
+      } else if (/Invalid Client ID|Invalid App ID|invalid_client/i.test(`${errorParam ?? ""} ${body}`)) {
         verdict = "площадка не принимает client id приложения";
-      } else if (status === 200 || (status >= 300 && status < 400)) {
-        redirectRegistered = mode === "instagram" ? true : null;
-        verdict = mode === "instagram"
-          ? "Instagram отдал страницу входа — адрес возврата принят"
-          : "Facebook отдал страницу входа; адрес возврата он сверяет только ПОСЛЕ входа человека";
+      } else if (errorParam) {
+        verdict = `площадка вернула ошибку: ${errorParam.slice(0, 160)}`;
+      } else if (loginPage || status === 200 || (status >= 300 && status < 400)) {
+        // Обе площадки сверяют адрес возврата уже ПОСЛЕ входа человека, поэтому
+        // «увели на вход» — не доказательство, что адрес зарегистрирован.
+        verdict = "площадка увела на свой вход без ошибки; адрес возврата она сверяет уже ПОСЛЕ ввода пароля — проверить можно только живым подключением";
       }
     } catch (e) {
       verdict = `запрос к площадке не удался: ${e instanceof Error ? e.message : String(e)}`;
@@ -365,7 +377,9 @@ async function probeInstagram(req: Request, admin: SupabaseClient): Promise<Resp
       ready: true,
       client_id_prefix: `${creds.clientId.slice(0, 2)}…`,
       status,
-      location_host: location ? new URL(location, "https://www.instagram.com").host : null,
+      /** Куда увела площадка (хост и путь, без нашего запроса в параметрах). */
+      landing,
+      /** true/false — только когда площадка сказала это прямо; null — не проверяется до входа. */
       redirect_registered: redirectRegistered,
       verdict,
     });
