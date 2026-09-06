@@ -38,6 +38,7 @@ export const routeImports = {
   SettingsConnection: () => import("@/pages/SettingsConnection"),
   ProjectStrategy: () => import("@/pages/ProjectStrategy"),
   ClientDashboard: () => import("@/pages/ClientDashboard"),
+  ConnectAccount: () => import("@/pages/ConnectAccount"),
   ProjectIntegrationWizard: () => import("@/pages/ProjectIntegrationWizard"),
 };
 

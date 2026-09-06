@@ -98,6 +98,8 @@ export const ACTION_LEVELS: Record<string, PermissionLevel> = {
   accounts_bulk_update: "manage",
   group_upsert: "manage", group_delete: "manage", persona_upsert: "manage", persona_delete: "manage",
   settings_upsert: "manage", api_key_create: "manage", api_key_revoke: "manage",
+  // ссылки-приглашения — тот же уровень, что и подключение руками
+  connect_link_list: "manage", connect_link_create: "manage", connect_link_revoke: "manage", connect_link_delete: "manage",
   webhook_upsert: "manage", webhook_delete: "manage", routine_upsert: "manage", routine_delete: "manage", routine_assign: "manage",
   // роли участников — только администратор и владелец
   member_role_set: "admin",

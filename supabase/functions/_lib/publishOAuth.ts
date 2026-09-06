@@ -21,6 +21,107 @@ export function isOAuthPlatform(v: unknown): v is OAuthPlatform {
   return typeof v === "string" && (OAUTH_PLATFORMS as readonly string[]).includes(v);
 }
 
+/**
+ * Instagram по ссылке-приглашению: клиент входит в свой Facebook, мы забираем
+ * его страницы и подключаем привязанный Instagram Business. Отличается от
+ * трёх площадок выше тем, что аккаунт не один — сначала список страниц, потом
+ * выбор, — поэтому в общий OAuthPlatform не входит и живёт отдельными
+ * функциями (meta*). Токен страницы не истекает, refresh не нужен.
+ */
+export type ConnectPlatform = OAuthPlatform | "instagram";
+export const CONNECT_PLATFORMS: readonly ConnectPlatform[] = ["instagram", "tiktok", "youtube", "threads"];
+
+export function isConnectPlatform(v: unknown): v is ConnectPlatform {
+  return typeof v === "string" && (CONNECT_PLATFORMS as readonly string[]).includes(v);
+}
+
+/** Права Meta, которых хватает ровно на публикацию в Instagram и чтение статистики. */
+export const META_SCOPES = [
+  "pages_show_list",
+  "pages_read_engagement",
+  "business_management",
+  "instagram_basic",
+  "instagram_content_publish",
+  "instagram_manage_insights",
+].join(",");
+
+export const META_GRAPH = "https://graph.facebook.com/v21.0";
+
+export function metaAuthorizeUrl(p: { clientId: string; redirectUri: string; state: string }): string {
+  const u = new URL("https://www.facebook.com/v21.0/dialog/oauth");
+  u.searchParams.set("client_id", p.clientId);
+  u.searchParams.set("redirect_uri", p.redirectUri);
+  u.searchParams.set("scope", META_SCOPES);
+  u.searchParams.set("response_type", "code");
+  u.searchParams.set("state", p.state);
+  return u.toString();
+}
+
+export function metaCodeExchangeUrl(p: AppCredentials & { code: string; redirectUri: string }): string {
+  const u = new URL(`${META_GRAPH}/oauth/access_token`);
+  u.searchParams.set("client_id", p.clientId);
+  u.searchParams.set("client_secret", p.clientSecret);
+  u.searchParams.set("redirect_uri", p.redirectUri);
+  u.searchParams.set("code", p.code);
+  return u.toString();
+}
+
+/** Короткий пользовательский токен → долгий (60 дней). Page-токены из него уже бессрочные. */
+export function metaLongLivedUrl(p: AppCredentials & { shortToken: string }): string {
+  const u = new URL(`${META_GRAPH}/oauth/access_token`);
+  u.searchParams.set("grant_type", "fb_exchange_token");
+  u.searchParams.set("client_id", p.clientId);
+  u.searchParams.set("client_secret", p.clientSecret);
+  u.searchParams.set("fb_exchange_token", p.shortToken);
+  return u.toString();
+}
+
+export function metaPagesUrl(userToken: string): string {
+  const u = new URL(`${META_GRAPH}/me/accounts`);
+  u.searchParams.set(
+    "fields",
+    "id,name,access_token,instagram_business_account{id,username,name,profile_picture_url,followers_count}",
+  );
+  u.searchParams.set("limit", "100");
+  u.searchParams.set("access_token", userToken);
+  return u.toString();
+}
+
+export interface MetaPageOption {
+  page_id: string;
+  page_name: string | null;
+  ig_user_id: string | null;
+  ig_username: string | null;
+  ig_name: string | null;
+  ig_avatar_url: string | null;
+  ig_followers: number | null;
+  /** Страница без Instagram Business/Creator публиковать не может. */
+  connectable: boolean;
+  page_token: string | null;
+}
+
+/** Ответ /me/accounts → список страниц для выбора. Страницы без токена бесполезны. */
+export function parseMetaPages(body: unknown): MetaPageOption[] {
+  const rows = ((body ?? {}) as { data?: unknown }).data;
+  if (!Array.isArray(rows)) return [];
+  return rows.map((raw) => {
+    const p = (raw ?? {}) as Record<string, unknown>;
+    const ig = (p.instagram_business_account ?? null) as Record<string, unknown> | null;
+    const pageToken = typeof p.access_token === "string" ? p.access_token : null;
+    return {
+      page_id: String(p.id ?? ""),
+      page_name: typeof p.name === "string" ? p.name : null,
+      ig_user_id: ig?.id ? String(ig.id) : null,
+      ig_username: typeof ig?.username === "string" ? ig.username : null,
+      ig_name: typeof ig?.name === "string" ? ig.name : null,
+      ig_avatar_url: typeof ig?.profile_picture_url === "string" ? ig.profile_picture_url : null,
+      ig_followers: typeof ig?.followers_count === "number" ? ig.followers_count : null,
+      connectable: Boolean(ig?.id && pageToken),
+      page_token: pageToken,
+    };
+  }).filter((p) => p.page_id);
+}
+
 export const SCOPES: Record<OAuthPlatform, string> = {
   threads: "threads_basic,threads_content_publish",
   // Login Kit + Display API + Content Posting API — каталог в tiktokApi.ts.

@@ -43,6 +43,8 @@
  *   { action: "publish_video", project_id, file_url | video_id, group_id?, account_ids?, mode?, title?, caption?, hashtags? }
  *   { action: "metrics", project_id } → { publish, radar, videos, groups, accounts } — accounts из publish_account_metrics
  *   { action: "metrics", project_id } — витрины publish_metrics / radar_metrics
+ *   { action: "connect_link_list" | "connect_link_create" | "connect_link_revoke" | "connect_link_delete", project_id, ... }
+ *       — ссылки-приглашения: клиент открывает /connect/<token> и подключает свой аккаунт сам
  *   { action: "api_key_list" | "api_key_create" | "api_key_revoke", project_id, name?, scopes?, expires_days?, key_id? }
  *       — API-ключи проекта для edge-функции api (docs/PUBLIC-API.md); ключ отдаётся один раз при создании
  */
@@ -52,6 +54,12 @@ import { ASSIGNABLE_ROLES, canDo, isProjectRole, levelForAction, type ProjectRol
 import { generateApiKey, hashApiKey, normalizeScopes } from "../_lib/apiKeys.ts";
 import { resolveMetaAccessToken } from "../_lib/metaToken.ts";
 import { resolveCapabilities, tokenKindOf } from "../_lib/publishCapabilities.ts";
+import {
+  connectLinkState,
+  connectLinkUrl,
+  generateConnectToken,
+  sanitizePlatforms,
+} from "../_lib/publishConnectLinks.ts";
 import { generateWebhookSecret, isWebhookEvent } from "../_lib/webhooks.ts";
 import {
   automationKeyValid,
@@ -80,6 +88,34 @@ interface MetaPage {
 }
 
 /** Пояс из списка IANA: иначе опечатка всплывёт не здесь, а в AT TIME ZONE при планировании слотов. */
+interface ConnectLinkRow {
+  id: string;
+  token: string;
+  label: string;
+  note: string | null;
+  platforms: string[] | null;
+  group_id: string | null;
+  persona_id: string | null;
+  max_uses: number | null;
+  used_count: number;
+  expires_at: string | null;
+  revoked_at: string | null;
+  last_used_at: string | null;
+  created_at: string;
+}
+
+interface ConnectLinkAccount {
+  platform: string;
+  account_name: string;
+  handle: string | null;
+  status: string;
+}
+
+/** Корень приложения для ссылки /connect/<token>; интерфейс всё равно подставит свой origin. */
+function appOrigin(): string {
+  return (Deno.env.get("PUBLIC_APP_URL") ?? Deno.env.get("IG_PUBLIC_LINK_ORIGIN") ?? "https://www.markvision.kz").replace(/\/+$/, "");
+}
+
 function validTimeZone(tz: string): boolean {
   try {
     new Intl.DateTimeFormat("en", { timeZone: tz });
@@ -295,7 +331,7 @@ Deno.serve(async (req) => {
       const offset = Math.max(Number(body?.offset ?? 0) || 0, 0);
       let f = admin.from("publish_accounts")
         .select(
-          "id, platform, account_name, handle, external_account_id, fb_page_id, status, publish_enabled, daily_limit, last_post_at, consecutive_errors, last_error, token_expires_at, group_id, persona_id, timezone, window_start, window_end, ramp_enabled, ramp_started_at, health_score, health_reasons, last_checked_at, published_today, published_day, token_refreshed_at, followers, oauth_scope, capabilities, connection_type, auth_status, routine_id, notes",
+          "id, platform, account_name, handle, external_account_id, fb_page_id, status, publish_enabled, daily_limit, last_post_at, consecutive_errors, last_error, token_expires_at, group_id, persona_id, timezone, window_start, window_end, ramp_enabled, ramp_started_at, health_score, health_reasons, last_checked_at, published_today, published_day, token_refreshed_at, followers, oauth_scope, capabilities, connection_type, auth_status, routine_id, notes, connected_via, connect_link_id",
           { count: "exact" },
         )
         .eq("project_id", projectId);
@@ -1487,6 +1523,86 @@ Deno.serve(async (req) => {
         return json({ error: `Telegram не принял сообщение: ${tg?.description ?? "нет ответа"}` }, 400);
       }
       return json({ ok: true, chat_id: target, own_chat: Boolean(chatId) });
+    }
+
+    /* ─── ссылки-приглашения: клиент подключает свой аккаунт сам ─── */
+
+    if (action === "connect_link_list") {
+      const { data, error } = await admin.from("publish_connect_links")
+        .select("id, token, label, note, platforms, group_id, persona_id, max_uses, used_count, expires_at, revoked_at, last_used_at, created_at")
+        .eq("project_id", pid).order("created_at", { ascending: false });
+      if (error) return json({ error: error.message }, 500);
+      const rows = (data ?? []) as ConnectLinkRow[];
+      // Сколько аккаунтов реально приехало по каждой ссылке — счётчик может
+      // отставать (аккаунт удалили руками), а список показывает правду.
+      const { data: accs } = await admin.from("publish_accounts")
+        .select("connect_link_id, platform, account_name, handle, status")
+        .eq("project_id", pid).not("connect_link_id", "is", null);
+      const byLink = new Map<string, { platform: string; account_name: string; handle: string | null; status: string }[]>();
+      for (const a of (accs ?? []) as (ConnectLinkAccount & { connect_link_id: string })[]) {
+        const list = byLink.get(a.connect_link_id) ?? [];
+        list.push({ platform: a.platform, account_name: a.account_name, handle: a.handle, status: a.status });
+        byLink.set(a.connect_link_id, list);
+      }
+      return json({
+        ok: true,
+        links: rows.map((l) => ({
+          ...l,
+          state: connectLinkState(l),
+          url: connectLinkUrl(appOrigin(), l.token),
+          accounts: byLink.get(l.id) ?? [],
+        })),
+      });
+    }
+
+    if (action === "connect_link_create") {
+      const label = String(body?.label ?? "").trim();
+      if (!label) return json({ error: "label обязателен — по нему видно, кому выдана ссылка" }, 400);
+      const group = await ownedRef("publish_account_groups", body?.group_id);
+      if (!group.ok) return json({ error: "Группа не найдена в проекте" }, 400);
+      const persona = await ownedRef("personas", body?.persona_id);
+      if (!persona.ok) return json({ error: "Персона не найдена в проекте" }, 400);
+
+      const days = Number(body?.expires_days);
+      const maxUses = Number(body?.max_uses);
+      const { data, error } = await admin.from("publish_connect_links").insert({
+        project_id: pid,
+        token: generateConnectToken(),
+        label: label.slice(0, 120),
+        note: typeof body?.note === "string" && body.note.trim() ? body.note.trim().slice(0, 500) : null,
+        platforms: sanitizePlatforms(body?.platforms),
+        group_id: group.value ?? null,
+        persona_id: persona.value ?? null,
+        max_uses: Number.isFinite(maxUses) && maxUses > 0 ? Math.min(Math.trunc(maxUses), 500) : null,
+        expires_at: Number.isFinite(days) && days > 0
+          ? new Date(Date.now() + Math.min(Math.trunc(days), 365) * 86_400_000).toISOString()
+          : null,
+        created_by: userId,
+      }).select("id, token, label, note, platforms, group_id, persona_id, max_uses, used_count, expires_at, revoked_at, last_used_at, created_at").single();
+      if (error || !data) return json({ error: error?.message ?? "не удалось создать ссылку" }, 500);
+      const link = data as ConnectLinkRow;
+      return json({ ok: true, link: { ...link, state: connectLinkState(link), url: connectLinkUrl(appOrigin(), link.token), accounts: [] } });
+    }
+
+    if (action === "connect_link_revoke") {
+      const id = String(body?.link_id ?? "");
+      if (!id) return json({ error: "link_id обязателен" }, 400);
+      // revoke=false — вернуть ссылку в строй (менеджер отозвал по ошибке).
+      const revoke = body?.revoke !== false;
+      const { error } = await admin.from("publish_connect_links")
+        .update({ revoked_at: revoke ? new Date().toISOString() : null })
+        .eq("id", id).eq("project_id", pid);
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true, revoked: revoke });
+    }
+
+    if (action === "connect_link_delete") {
+      const id = String(body?.link_id ?? "");
+      if (!id) return json({ error: "link_id обязателен" }, 400);
+      // Аккаунты остаются: у них connect_link_id обнулится (ON DELETE SET NULL).
+      const { error } = await admin.from("publish_connect_links").delete().eq("id", id).eq("project_id", pid);
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true });
     }
 
     if (action === "disconnect") {

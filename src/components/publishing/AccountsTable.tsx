@@ -12,7 +12,7 @@
  * контрольными точками d1/d3/d7 — у свежих постов показы честно пустые.
  */
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowDown, ArrowUp, Loader2, MoreHorizontal, RotateCcw, Search, ShieldCheck, Sparkles } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, Link2, Loader2, MoreHorizontal, RotateCcw, Search, ShieldCheck, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -174,6 +174,18 @@ function Identity({ a, personaName, groupName, followers }: { a: PublishAccount;
             </Tooltip>
           )}
           {personaName && <span className="shrink-0 truncate">· {personaName}</span>}
+          {/* Кто подключил: аккаунт клиента ведёт себя иначе — доступ можно
+              отозвать с той стороны, и это надо видеть до разбора ошибки. */}
+          {a.connected_via === "invite" && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="inline-flex shrink-0 cursor-help items-center gap-0.5" aria-label="Подключён клиентом по ссылке">
+                  <Link2 className="h-3 w-3" />
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>Клиент подключил сам по ссылке-приглашению</TooltipContent>
+            </Tooltip>
+          )}
         </div>
       </div>
     </div>

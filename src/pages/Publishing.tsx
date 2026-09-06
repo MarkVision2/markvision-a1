@@ -1,6 +1,6 @@
 import { cloneElement, isValidElement, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { AlertCircle, ChevronDown, ExternalLink, Instagram, KeyRound, Loader2, PauseCircle, Plus, RefreshCw, Search, Send, Trash2, Upload } from "lucide-react";
+import { AlertCircle, ChevronDown, ExternalLink, Instagram, KeyRound, Link2, Loader2, PauseCircle, Plus, RefreshCw, Search, Send, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -40,6 +40,7 @@ import { NetworkTab } from "@/components/publishing/NetworkTab";
 import { NotificationsPanel } from "@/components/publishing/NotificationsPanel";
 import { CampaignsTab } from "@/components/publishing/CampaignsTab";
 import { CalendarTab } from "@/components/publishing/CalendarTab";
+import { ConnectLinksDialog } from "@/components/publishing/ConnectLinksDialog";
 import { WebhooksSection } from "@/components/publishing/WebhooksSection";
 import { RoutinesSection } from "@/components/publishing/RoutinesSection";
 import { ProjectRolesSection } from "@/components/publishing/ProjectRolesSection";
@@ -125,7 +126,7 @@ export default function Publishing() {
   const { activeId: projectId } = useProjectsStore();
   const pub = usePublishing();
   const disabled = pub.busy != null;
-  const [dialog, setDialog] = useState<"instagram" | "threads" | "video" | null>(null);
+  const [dialog, setDialog] = useState<"instagram" | "threads" | "video" | "links" | null>(null);
   // Вкладка управляется снаружи: «Задания по видео» из библиотеки переключает на очередь.
   const [tab, setTab] = useState("accounts");
   // Повтор ролика из библиотеки — тот же композер без заливки файла.
@@ -166,8 +167,8 @@ export default function Publishing() {
         <PageHeader
           icon={Send}
           iconAccent="pink"
-          title="Публикации"
-          description="Сеть аккаунтов площадок, группы, персоны и очередь автопубликации."
+          title="Сетка аккаунтов"
+          description="Все аккаунты площадок проекта: подключение, статусы, статистика и очередь автопубликации."
           actions={
             <>
               <Button variant="ghost" size="sm" onClick={() => void pub.refetch()} disabled={disabled || pub.loading} aria-label="Обновить">
@@ -205,6 +206,11 @@ export default function Publishing() {
                     );
                   })}
                   <DropdownMenuSeparator />
+                  {/* Вторая дорога: аккаунт не наш и доступа к нему нет — пусть
+                      владелец подключит его сам по ссылке. */}
+                  <DropdownMenuItem onSelect={() => setDialog("links")}>
+                    <Link2 className="mr-2 h-3.5 w-3.5" /> Ссылка для клиента…
+                  </DropdownMenuItem>
                   <DropdownMenuItem onSelect={() => setDialog("threads")}>
                     <KeyRound className="mr-2 h-3.5 w-3.5" /> Threads по токену
                   </DropdownMenuItem>
@@ -331,6 +337,7 @@ export default function Publishing() {
       </div>
 
       <ConnectInstagramDialog open={dialog === "instagram"} onClose={() => setDialog(null)} pub={pub} />
+      <ConnectLinksDialog open={dialog === "links"} onClose={() => setDialog(null)} pub={pub} />
       <ConnectThreadsDialog open={dialog === "threads"} onClose={() => setDialog(null)} pub={pub} />
       <UploadPublishDialog
         open={dialog === "video" || repostVideo != null}
