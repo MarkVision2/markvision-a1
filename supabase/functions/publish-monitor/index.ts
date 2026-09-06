@@ -1,9 +1,12 @@
 /**
  * Сторож контура публикаций: токены и аварийные аккаунты.
  *
- *   { mode: "tokens" } — крон раз в сутки. Проверяет живость токена каждого
- *     активного аккаунта, помечает мёртвые token_expired и присылает в
- *     Telegram список тех, кого надо переподключить.
+ *   { mode: "tokens", project_id?, account_ids? } — крон раз в сутки. Проверяет
+ *     живость токена каждого активного аккаунта, помечает мёртвые token_expired +
+ *     auth_status=reconnect_required и присылает в Telegram список тех, кого надо
+ *     переподключить. С project_id / account_ids — только выбранные (проверка
+ *     продления на первых аккаунтах сети, ТЗ docs/TZ-instagram-100-accounts.md, этап 4);
+ *     в ответе — results по каждому аккаунту: продлён ли токен, новый срок, живость.
  *   { mode: "errors" } — крон каждые 15 минут. Аккаунт с серией отказов
  *     гасится (status=error, publish_enabled=false), чтобы очередь не долбила
  *     площадку и не копила бан.
@@ -39,6 +42,7 @@ import { notifyCenter } from "../_lib/publishTrace.ts";
 import { requireProjectAccess } from "../_lib/auth.ts";
 import { computeHealth } from "../_lib/publishHealth.ts";
 import { pickWinners, replicateContent, type WinnerRow } from "../_lib/publishReplication.ts";
+import { expiresAtFromRefresh, refreshPlan } from "../_lib/publishTokenRefresh.ts";
 
 /** Сколько отказов подряд считаем поломкой аккаунта, а не невезением. */
 const ERROR_STREAK_LIMIT = 3;
@@ -50,8 +54,6 @@ const WALL_CLOCK_BUDGET_MS = 45_000;
 const GRAPH_IG = "https://graph.instagram.com/v21.0";
 const GRAPH_FB = "https://graph.facebook.com/v21.0";
 const GRAPH_THREADS = "https://graph.threads.net/v1.0";
-/** За сколько дней до истечения обновляем long-lived токен. */
-const TOKEN_REFRESH_DAYS = 10;
 /** Метка в last_error для отказов ежедневного автопродления TikTok/YouTube. */
 const REFRESH_ERROR_PREFIX = "автопродление:";
 
@@ -72,8 +74,7 @@ async function refreshLongLivedToken(
     const res = await fetch(url);
     const body = await res.json().catch(() => ({}));
     if (body?.error || !body?.access_token) return { error: String(body?.error?.message ?? "refresh failed") };
-    const expiresIn = Number(body.expires_in ?? 60 * 86400);
-    return { token: String(body.access_token), expiresAt: new Date(Date.now() + expiresIn * 1000).toISOString() };
+    return { token: String(body.access_token), expiresAt: expiresAtFromRefresh(body.expires_in) };
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
   }
@@ -158,6 +159,19 @@ async function probeAccount(admin: SupabaseClient, account: PublishAccount): Pro
   return { alive: r.alive, reason: r.reason ?? null };
 }
 
+/**
+ * auth_status для реестра аккаунтов: мёртвый токен — reconnect_required; у площадок
+ * без refresh_token (Instagram/Threads) близкий срок — expiring/expired; иначе connected.
+ * Одна функция на режимы health и tokens, чтобы сетка не показывала разное.
+ */
+function authStatusFor(account: PublishAccount, alive: boolean): NonNullable<PublishAccount["auth_status"]> {
+  if (!alive) return "reconnect_required";
+  if (isOAuthPlatform(account.platform)) return "connected";
+  if (tokenNeedsRefresh(account.token_expires_at, Date.now(), 0)) return "expired";
+  if (tokenNeedsRefresh(account.token_expires_at, Date.now(), TOKEN_WARN_DAYS * 86_400)) return "expiring";
+  return "connected";
+}
+
 /** Исходы за 30 дней — вход для доли ошибок в формуле. */
 async function outcomes30d(admin: SupabaseClient, accountIds: string[]): Promise<Map<string, { failed: number; published: number }>> {
   const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
@@ -212,13 +226,7 @@ async function checkHealth(admin: SupabaseClient, projectId: string | null, acco
       published30d: o.published,
     });
     // auth_status и возможности — для реестра аккаунтов (Account Registry, docs/ARCHITECTURE.md).
-    const authStatus = probe.alive === false
-      ? "reconnect_required"
-      : tokenNeedsRefresh(account.token_expires_at, Date.now(), 0) && !isOAuthPlatform(account.platform)
-      ? "expired"
-      : tokenNeedsRefresh(account.token_expires_at, Date.now(), TOKEN_WARN_DAYS * 86_400) && !isOAuthPlatform(account.platform)
-      ? "expiring"
-      : "connected";
+    const authStatus = authStatusFor(account, probe.alive !== false);
     let tokenKind: ReturnType<typeof tokenKindOf> = "unknown";
     try { tokenKind = tokenKindOf(await decryptSecret(account.access_token_encrypted)); } catch { tokenKind = "unknown"; }
     const capabilities = resolveCapabilities({
@@ -261,12 +269,30 @@ async function checkHealth(admin: SupabaseClient, projectId: string | null, acco
   return { checked: accounts.length - skipped, token_expired: dead.length, skipped, accounts: out };
 }
 
-async function checkTokens(admin: SupabaseClient) {
-  const { data, error } = await admin.from("publish_accounts")
-    .select("*").in("status", ["active", "limited"]);
+interface TokenCheckResult {
+  id: string;
+  account_name: string;
+  handle: string | null;
+  platform: string;
+  /** instagram_login (IGAA…, 60 дней) / threads / page (EAA…, вечный) / other (TikTok, YouTube). */
+  token_kind: string;
+  alive: boolean;
+  refreshed: boolean;
+  refresh_reason: string;
+  refresh_error: string | null;
+  token_expires_at: string | null;
+  token_refreshed_at: string | null;
+  auth_status: string;
+}
+
+async function checkTokens(admin: SupabaseClient, projectId: string | null = null, accountIds: string[] | null = null) {
+  let q = admin.from("publish_accounts").select("*").in("status", ["active", "limited"]);
+  if (projectId) q = q.eq("project_id", projectId);
+  if (accountIds?.length) q = q.in("id", accountIds);
+  const { data, error } = await q;
   // Ошибку БД возвращаем наружу, а не глотаем: пустой ответ и «таблицы нет» —
   // разные вещи, и диагностика готовности должна их различать.
-  if (error) return { checked: 0, token_expired: 0, expiring_soon: 0, refreshed: 0, refresh_errors: [], accounts: [], error: error.message };
+  if (error) return { checked: 0, token_expired: 0, expiring_soon: 0, refreshed: 0, refresh_errors: [], accounts: [], results: [], error: error.message };
   const accounts = (data ?? []) as PublishAccount[];
 
   const dead: PublishAccount[] = [];
@@ -275,70 +301,107 @@ async function checkTokens(admin: SupabaseClient) {
   // Нефатальные отказы refresh (сеть, ключи приложения, ответ без токена): без
   // этого списка «refreshed: 0» в ответе ничего не объясняет.
   const refreshErrors: { id: string; account_name: string; platform: string; error: string }[] = [];
+  const results: TokenCheckResult[] = [];
   const soon = Date.now() + TOKEN_WARN_DAYS * 86_400_000;
-  const refreshBefore = Date.now() + TOKEN_REFRESH_DAYS * 86_400_000;
 
   const deadline = Date.now() + WALL_CLOCK_BUDGET_MS;
   const processed: PublishAccount[] = [];
 
+  const noteRefreshError = async (account: PublishAccount, message: string) => {
+    refreshErrors.push({ id: account.id, account_name: account.account_name, platform: account.platform, error: message });
+    console.error(`[publish-monitor] автопродление ${account.platform} «${account.account_name}»: ${message}`);
+    await admin.from("publish_accounts").update({ last_error: `${REFRESH_ERROR_PREFIX} ${message}` }).eq("id", account.id);
+  };
+  const clearRefreshError = async (account: PublishAccount) => {
+    if (account.last_error?.startsWith(REFRESH_ERROR_PREFIX)) {
+      await admin.from("publish_accounts").update({ last_error: null }).eq("id", account.id);
+      account.last_error = null;
+    }
+  };
+
   for (const account of accounts) {
     if (Date.now() > deadline) break;
     processed.push(account);
+    const result: TokenCheckResult = {
+      id: account.id, account_name: account.account_name, handle: account.handle, platform: account.platform,
+      token_kind: "other", alive: true, refreshed: false, refresh_reason: "", refresh_error: null,
+      token_expires_at: account.token_expires_at, token_refreshed_at: account.token_refreshed_at ?? null,
+      auth_status: account.auth_status ?? "connected",
+    };
+    results.push(result);
     let token: string | null = null;
     try { token = await decryptSecret(account.access_token_encrypted); } catch { token = null; }
-    if (!token) { dead.push(account); continue; }
+    if (!token) { dead.push(account); result.alive = false; result.refresh_reason = "токен не расшифровался"; continue; }
 
     // TikTok / YouTube: раз в сутки обновляем access-токен refresh_token'ом
     // (у TikTok он живёт 24 часа) и этим же подтверждаем живость.
     if (account.platform === "tiktok" || account.platform === "youtube") {
+      result.refresh_reason = "refresh_token площадки";
       const fresh = await ensureFreshToken(admin, { ...account, token_expires_at: new Date(0).toISOString() }, token);
-      if (fresh.error && /invalid_grant|invalid_token|access_token_invalid|revoked|reconnect/i.test(fresh.error)) dead.push(account);
-      else if (!fresh.error) {
+      if (fresh.error && /invalid_grant|invalid_token|access_token_invalid|revoked|reconnect/i.test(fresh.error)) {
+        dead.push(account);
+        result.alive = false;
+        result.refresh_error = fresh.error;
+      } else if (!fresh.error) {
         refreshed++;
-        if (fresh.expiresAt) account.token_expires_at = fresh.expiresAt;
-        if (account.last_error?.startsWith(REFRESH_ERROR_PREFIX)) {
-          await admin.from("publish_accounts").update({ last_error: null }).eq("id", account.id);
-        }
+        result.refreshed = true;
+        if (fresh.expiresAt) { account.token_expires_at = fresh.expiresAt; result.token_expires_at = fresh.expiresAt; }
+        await clearRefreshError(account);
       } else {
-        refreshErrors.push({ id: account.id, account_name: account.account_name, platform: account.platform, error: fresh.error });
-        console.error(`[publish-monitor] автопродление ${account.platform} «${account.account_name}»: ${fresh.error}`);
-        await admin.from("publish_accounts").update({ last_error: `${REFRESH_ERROR_PREFIX} ${fresh.error}` }).eq("id", account.id);
+        result.refresh_error = fresh.error;
+        await noteRefreshError(account, fresh.error);
       }
       if (account.token_expires_at && new Date(account.token_expires_at).getTime() < soon) expiring.push(account);
       continue;
     }
 
     // Обновление long-lived токена до истечения — иначе через 60 дней вся сеть встанет.
-    // Instagram Login (IG…) без записанного срока — тот же случай: срок неизвестен,
-    // значит обновляем сейчас и запоминаем, когда истечёт. Page-токены (не IG…) вечные.
-    const expiresAt = account.token_expires_at ? new Date(account.token_expires_at).getTime() : null;
-    const unknownIgExpiry = expiresAt == null && (account.platform === "threads" || /^IG/i.test(token));
-    if (unknownIgExpiry || (expiresAt != null && expiresAt < refreshBefore)) {
+    // Правило (кому, когда, почему нет) — _lib/publishTokenRefresh.ts; здесь только
+    // исполнение. Отказ продления не глотаем: он попадает в refresh_errors и в
+    // last_error аккаунта, чтобы сеть не встала молча.
+    const plan = refreshPlan({
+      platform: account.platform, token,
+      tokenExpiresAt: account.token_expires_at, tokenRefreshedAt: account.token_refreshed_at,
+    });
+    result.token_kind = plan.kind;
+    result.refresh_reason = plan.reason;
+    if (plan.refresh) {
       const r = await refreshLongLivedToken(account.platform, token);
       if (r && "token" in r) {
         try {
+          const refreshedAt = new Date().toISOString();
           await admin.from("publish_accounts").update({
             access_token_encrypted: await encryptSecret(r.token),
             token_expires_at: r.expiresAt,
-            token_refreshed_at: new Date().toISOString(),
+            token_refreshed_at: refreshedAt,
           }).eq("id", account.id);
           token = r.token;
           account.token_expires_at = r.expiresAt;
+          account.token_refreshed_at = refreshedAt;
+          result.token_expires_at = r.expiresAt;
+          result.token_refreshed_at = refreshedAt;
+          result.refreshed = true;
           refreshed++;
+          await clearRefreshError(account);
         } catch (e) {
           // Не смогли сохранить обновлённый токен (нет PUBLISH_TOKEN_KEY) — старый ещё жив, идём дальше.
-          console.error("[publish-monitor] сохранение токена:", e instanceof Error ? e.message : String(e));
+          const message = `сохранение токена: ${e instanceof Error ? e.message : String(e)}`;
+          result.refresh_error = message;
+          await noteRefreshError(account, message);
         }
+      } else if (r && "error" in r) {
+        result.refresh_error = r.error;
+        await noteRefreshError(account, r.error);
       }
     }
-    if (account.token_expires_at && new Date(account.token_expires_at).getTime() < soon && !(expiresAt != null && expiresAt < refreshBefore)) {
+    if (!result.refreshed && account.token_expires_at && new Date(account.token_expires_at).getTime() < soon) {
       expiring.push(account);
     }
 
     const alive = account.platform === "threads"
       ? await threadsTokenAlive(account.external_account_id, token)
       : await instagramTokenAlive(account.external_account_id, token);
-    if (!alive.alive) dead.push(account);
+    if (!alive.alive) { dead.push(account); result.alive = false; }
   }
 
   const deadIds = new Set(dead.map((a) => a.id));
@@ -357,12 +420,26 @@ async function checkTokens(admin: SupabaseClient) {
       failed30d: o.failed,
       published30d: o.published,
     });
+    // Мёртвый токен — это reconnect_required в реестре аккаунтов (как в режиме health),
+    // иначе сетка и дайджест показывают «подключён» у аккаунта, который не публикует.
+    const authStatus = authStatusFor(account, !isDead);
     await admin.from("publish_accounts").update({
       health_score: h.score,
       health_reasons: h.reasons,
       last_checked_at: now,
+      auth_status: authStatus,
       ...(isDead ? { status: "token_expired", last_error: "токен не проходит проверку — нужен reconnect" } : {}),
     }).eq("id", account.id);
+    const r = results.find((x) => x.id === account.id);
+    if (r) r.auth_status = authStatus;
+    if (isDead) {
+      await notifyCenter(admin, {
+        projectId: account.project_id, kind: "account.reconnect_required", severity: "error",
+        title: `Нужен reconnect: ${account.account_name} (${account.platform})`,
+        body: "токен не проходит проверку у площадки — публикации остановлены",
+        entityType: "publish_account", entityId: account.id, dedupeKey: `account:${account.id}:reconnect`,
+      });
+    }
   }
 
   // Одно сообщение на проект, а не на аккаунт: иначе при массовом протухании
@@ -388,6 +465,7 @@ async function checkTokens(admin: SupabaseClient) {
     refreshed,
     refresh_errors: refreshErrors,
     accounts: dead.map((a) => ({ id: a.id, account_name: a.account_name, platform: a.platform })),
+    results,
   };
 }
 
@@ -730,7 +808,7 @@ Deno.serve(async (req) => {
 
   try {
     if (mode === "health") return json({ ok: true, mode, ...(await checkHealth(admin, projectId, accountIds)) });
-    if (mode === "tokens") return json({ ok: true, mode, ...(await checkTokens(admin)) });
+    if (mode === "tokens") return json({ ok: true, mode, ...(await checkTokens(admin, projectId, accountIds)) });
     if (mode === "errors") return json({ ok: true, mode, ...(await checkErrors(admin)) });
     if (mode === "digest") return json({ ok: true, mode, ...(await sendDigests(admin)) });
     if (mode === "daily_report") return json({ ok: true, mode, ...(await sendDailyReports(admin, projectId, body?.dry_run === true)) });

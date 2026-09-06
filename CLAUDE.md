@@ -64,6 +64,12 @@
   репозитория, стоит в `~/video-creative-system`, скиллы `video-*` на уровне пользователя):
   производит файл, MarkVision его публикует через MCP/публичный API. Лицензия, установка,
   ограничения провайдеров и мост — `docs/VIDEO-CREATIVE-SYSTEM.md`.
+- **Сеть Instagram-аккаунтов (100 профилей с прокси)**: ТЗ `docs/TZ-instagram-100-accounts.md`;
+  скилл **`instagram-connect`** (`.claude/skills/instagram-connect/`) ведёт профили через MCP `phonegrid`
+  (`manage_browser`, `browser_operate`), а `scripts/instagram-connect.mjs` (`links` → `ip` → `status` →
+  `preset` → `tokens` → `trace`, `totp`) выдаёт ссылки пачкой и принимает этапы через backend
+  с `AUTOMATION_KEY`. Команда «подключи пачку аккаунтов» = этот скилл. Продление токенов —
+  `publish-monitor mode=tokens` (правило в `_lib/publishTokenRefresh.ts`).
 - **Подключение TikTok** (Настройки → Подключения → TikTok, `/settings?tab=tiktok`; компонент
   `src/components/settings/TikTokConnect.tsx`, старый `/marketing/tiktok` редиректит; витрина для App review TikTok for Developers):
   Login Kit → Display API (профиль, видео) → Content Posting API (Direct Post / inbox) → отключение

@@ -218,7 +218,17 @@ account_name, day, scheduled_at }] }`. Снаружи — `POST /publications/di
 
 ### `POST publish-monitor`
 
-`{ "mode": "tokens" }` — проверка живости токенов (крон, раз в сутки).
+`{ "mode": "tokens", "project_id"?, "account_ids"? }` — проверка живости токенов и продление
+long-lived токенов Instagram Login / Threads (крон, раз в сутки). С `project_id` / `account_ids` —
+только выбранные аккаунты: так проверяют продление на первых 3–5 аккаунтах сети, пока их мало
+(ТЗ `docs/TZ-instagram-100-accounts.md`, этап 4). Ответ — `results` по каждому аккаунту:
+`token_kind` (`instagram_login` IGAA… 60 дней / `page` EAA… вечный / `threads` / `other`),
+`refreshed`, `refresh_reason`, `refresh_error`, новые `token_expires_at` и `token_refreshed_at`,
+`alive`, `auth_status`. Правило продления — `_lib/publishTokenRefresh.ts`: за 10 дней до
+истечения, срок неизвестен — сейчас, токену меньше 24 часов — площадка не даст, пропускаем с
+причиной. Отказ продления не глотается: `refresh_errors` в ответе и `last_error` аккаунта
+(`автопродление: …`). Мёртвый токен → `status token_expired`, `auth_status reconnect_required`,
+уведомление в центре (`account.reconnect_required`), строка в дайджесте.
 `{ "mode": "errors" }` — гашение аккаунтов с серией отказов (крон, раз в 15 минут).
 
 ### `POST publish-accounts`
@@ -420,6 +430,20 @@ YouTube отвечает `redirect_uri_mismatch` — адрес
 `TIKTOK_CLIENT_KEY/SECRET`, `GOOGLE_OAUTH_CLIENT_ID/SECRET` и `PUBLIC_APP_URL`
 заданы; `THREADS_APP_ID/SECRET` — нет, поэтому кнопка Threads у клиента неактивна
 с подписью «не заданы».
+
+### Сеть из 100 аккаунтов: конвейер подключения
+
+Пачкой через Instagram Login подключить нельзя — один аккаунт = один OAuth = одно нажатие
+«Разрешить» (ограничение Meta). Поэтому сотня подключается конвейером: браузерный профиль с
+прокси на аккаунт (MCP `phonegrid`: `manage_browser`, `browser_operate`), в нём живая сессия
+Instagram, ссылка-приглашение открывается там — площадка показывает только экран согласия, без
+пароля. Маршрут, факты проверки и приёмка этапов — ТЗ `docs/TZ-instagram-100-accounts.md`;
+оркестрация — скилл `.claude/skills/instagram-connect/`; всё, что идёт через backend с ключом
+автоматизации, — `scripts/instagram-connect.mjs`: `links` (одноразовые ссылки пачкой, реестр
+`work/ig-connect/<batch>.json`), `status` (приёмка: `auth_status`, право публикации в
+`oauth_scope`, `connection_type`, неиспользованные ссылки), `ip` (реестр «профиль → @хэндл → IP»
+без повторов), `preset` (настройки на пачку), `tokens` (продление на первых аккаунтах), `trace`
+(трасса публикации и точки `post_metrics`), `totp` (код двухфакторки, секрет со stdin).
 
 ### Instagram блокирует вход с компьютера
 
