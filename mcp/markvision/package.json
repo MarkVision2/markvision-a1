@@ -1,6 +1,6 @@
 {
   "name": "markvision-mcp",
-  "version": "0.1.0",
+  "version": "0.4.0",
   "description": "MCP-сервер MarkVision: загрузка видео и постановка публикаций по API-ключу проекта",
   "type": "module",
   "private": true,

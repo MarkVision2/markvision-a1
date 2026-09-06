@@ -36,6 +36,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { AccountsTable, PLATFORM_DOT } from "@/components/publishing/AccountsTable";
 import { JobsTab } from "@/components/publishing/JobsTab";
 import { NetworkTab } from "@/components/publishing/NetworkTab";
+import { NotificationsPanel } from "@/components/publishing/NotificationsPanel";
+import { CampaignsTab } from "@/components/publishing/CampaignsTab";
+import { WebhooksSection } from "@/components/publishing/WebhooksSection";
+import { RoutinesSection } from "@/components/publishing/RoutinesSection";
+import { ProjectRolesSection } from "@/components/publishing/ProjectRolesSection";
 import { UploadPublishDialog } from "@/components/publishing/UploadPublishDialog";
 import { VideosTab } from "@/components/publishing/VideosTab";
 import { usePublishing, type UsePublishing } from "@/hooks/usePublishing";
@@ -60,6 +65,7 @@ import {
   type PublishStrategy,
   type PublishVideo,
   type ReviewMode,
+  roleAllows,
 } from "@/lib/publishingClient";
 import { fmtRelative } from "@/lib/publishingFormat";
 import { cn } from "@/lib/utils";
@@ -147,8 +153,9 @@ export default function Publishing() {
               <Button variant="ghost" size="sm" onClick={() => void pub.refetch()} disabled={disabled || pub.loading} aria-label="Обновить">
                 <RefreshCw className={cn("h-4 w-4", pub.loading && "animate-spin")} />
               </Button>
-              {/* Пять одинаковых кнопок в шапке кричали наперебой — площадки под одним меню. */}
-              <DropdownMenu>
+              {/* Пять одинаковых кнопок в шапке кричали наперебой — площадки под одним меню.
+                  Подключение — уровень manage, заливка — publish (RBAC): не по роли — прячем. */}
+              {roleAllows(pub.role, "manage") && <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" disabled={disabled || !projectId || oauthBusy != null}>
                     {oauthBusy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Plus className="mr-1.5 h-4 w-4" />}
@@ -182,11 +189,11 @@ export default function Publishing() {
                     <KeyRound className="mr-2 h-3.5 w-3.5" /> Threads по токену
                   </DropdownMenuItem>
                 </DropdownMenuContent>
-              </DropdownMenu>
+              </DropdownMenu>}
               {/* Пока аккаунты грузятся, композер открылся бы с пустым выбором. */}
-              <Button size="sm" onClick={() => setDialog("video")} disabled={disabled || pub.loading || !projectId}>
+              {roleAllows(pub.role, "publish") && <Button size="sm" onClick={() => setDialog("video")} disabled={disabled || pub.loading || !projectId}>
                 <Upload className="mr-1.5 h-4 w-4" /> Залить видео
-              </Button>
+              </Button>}
             </>
           }
         />
@@ -208,6 +215,7 @@ export default function Publishing() {
         )}
 
         {projectId && <SummaryBar pub={pub} />}
+        <NotificationsPanel projectId={projectId} refreshKey={pub.jobs.length + pub.accounts.length} />
 
         {/* Шесть вкладок: статистика по аккаунтам живёт видом внутри «Аккаунтов»,
             сводка по группам — над их настройками, «Видео» — библиотека роликов с
@@ -218,6 +226,7 @@ export default function Publishing() {
             <TabsTrigger value="accounts">Аккаунты</TabsTrigger>
             <TabsTrigger value="groups">Группы</TabsTrigger>
             <TabsTrigger value="personas">Персоны</TabsTrigger>
+            <TabsTrigger value="campaigns">Кампании</TabsTrigger>
             <TabsTrigger value="videos">Видео</TabsTrigger>
             <TabsTrigger value="jobs">Задания</TabsTrigger>
             <TabsTrigger value="settings">Настройки</TabsTrigger>
@@ -242,9 +251,13 @@ export default function Publishing() {
               onShowJobs={(v) => { pub.setJobsVideo(v.id); setTab("jobs"); }}
             />
           </TabsContent>
+          <TabsContent value="campaigns" className="mt-3"><CampaignsTab pub={pub} /></TabsContent>
           <TabsContent value="jobs" className="mt-3"><JobsTab pub={pub} /></TabsContent>
           <TabsContent value="settings" className="mt-3 space-y-4">
             <SettingsTab pub={pub} />
+            <RoutinesSection pub={pub} />
+            <ProjectRolesSection projectId={pub.projectId} role={pub.role} />
+            <WebhooksSection projectId={pub.projectId} />
             <div className="max-w-xl rounded-2xl border border-dashed border-border/60 p-4 text-sm text-muted-foreground">
               Ключи API и подключение Claude через MCP — в{" "}
               <Link to="/settings?tab=api" className="font-medium text-primary hover:underline">Настройках → API и MCP</Link>.

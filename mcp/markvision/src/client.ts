@@ -101,6 +101,41 @@ export class MarkVisionClient {
     return this.request<{ jobs: unknown[] }>("GET", `/jobs?${q}`);
   }
   metrics() { return this.request<Record<string, unknown>>("GET", "/metrics"); }
+  job(id: string) { return this.request<Record<string, unknown>>("GET", `/jobs/${id}`); }
+  contentAnalytics(opts: { limit?: number; winners?: boolean } = {}) {
+    const q = new URLSearchParams({ limit: String(opts.limit ?? 50), ...(opts.winners ? { winners: "1" } : {}) });
+    return this.request<{ content: unknown[] }>("GET", `/analytics/content?${q}`);
+  }
+  contentAnalyticsItem(id: string) { return this.request<Record<string, unknown>>("GET", `/analytics/content/${id}`); }
+  accountAnalytics(id: string) { return this.request<Record<string, unknown>>("GET", `/analytics/accounts/${id}`); }
+  notifications(opts: { limit?: number; unread?: boolean } = {}) {
+    const q = new URLSearchParams({ limit: String(opts.limit ?? 50), ...(opts.unread ? { unread: "1" } : {}) });
+    return this.request<{ notifications: unknown[]; unread: number }>("GET", `/notifications?${q}`);
+  }
+  readNotification(id: string) { return this.request<Record<string, unknown>>("POST", `/notifications/${id}/read`); }
+
+  campaigns() { return this.request<{ campaigns: unknown[]; metrics: unknown[] }>("GET", "/campaigns"); }
+  campaign(id: string) { return this.request<Record<string, unknown>>("GET", `/campaigns/${id}`); }
+  createCampaign(input: Record<string, unknown>) { return this.request<Record<string, unknown>>("POST", "/campaigns", input); }
+  updateCampaign(id: string, patch: Record<string, unknown>) { return this.request<Record<string, unknown>>("POST", `/campaigns/${id}`, patch); }
+  campaignAddItems(id: string, videoIds: string[]) { return this.request<Record<string, unknown>>("POST", `/campaigns/${id}/items`, { video_ids: videoIds }); }
+  campaignRemoveItems(id: string, videoIds: string[]) { return this.request<Record<string, unknown>>("POST", `/campaigns/${id}/items-remove`, { video_ids: videoIds }); }
+  campaignAction(id: string, action: "start" | "pause" | "complete" | "archive" | "plan") { return this.request<Record<string, unknown>>("POST", `/campaigns/${id}/${action}`); }
+  webhooks() { return this.request<{ webhooks: unknown[] }>("GET", "/webhooks"); }
+  createWebhook(input: Record<string, unknown>) { return this.request<Record<string, unknown>>("POST", "/webhooks", input); }
+  updateWebhook(id: string, patch: Record<string, unknown>) { return this.request<Record<string, unknown>>("POST", `/webhooks/${id}`, patch); }
+  deleteWebhook(id: string) { return this.request<Record<string, unknown>>("POST", `/webhooks/${id}/delete`); }
+  webhookDeliveries(id: string) { return this.request<{ deliveries: unknown[] }>("GET", `/webhooks/${id}/deliveries`); }
+  dailyReport() { return this.request<{ report: unknown }>("GET", "/reports/daily"); }
+  members() { return this.request<{ members: unknown[] }>("GET", "/members"); }
+  routines() { return this.request<{ routines: unknown[]; groups: unknown[]; accounts: unknown[] }>("GET", "/routines"); }
+  createRoutine(input: Record<string, unknown>) { return this.request<Record<string, unknown>>("POST", "/routines", input); }
+  updateRoutine(id: string, patch: Record<string, unknown>) { return this.request<Record<string, unknown>>("POST", `/routines/${id}`, patch); }
+  assignRoutine(id: string, target: { group_ids?: string[]; account_ids?: string[] }) { return this.request<Record<string, unknown>>("POST", `/routines/${id}/assign`, target); }
+  tasks(status?: string, limit = 100) {
+    const q = new URLSearchParams({ limit: String(limit), ...(status ? { status } : {}) });
+    return this.request<{ tasks: unknown[] }>("GET", `/tasks?${q}`);
+  }
 
   /** Файл с диска → presigned URL → PUT байтов напрямую в хранилище → публичная ссылка. */
   async uploadFile(filePath: string): Promise<UploadResult> {

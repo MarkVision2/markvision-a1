@@ -128,4 +128,8 @@ export interface PublishAccount {
   /** Проверка здоровья (миграция publish_account_health): когда и почему. */
   last_checked_at?: string | null;
   health_reasons?: string[];
+  /** Ядро Phase 1 (миграция 20260908140000): возможности и тип подключения. */
+  capabilities?: Record<string, boolean> | null;
+  connection_type?: "oauth" | "device" | "hybrid";
+  auth_status?: "connected" | "expiring" | "expired" | "reconnect_required";
 }

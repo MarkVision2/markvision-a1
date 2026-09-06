@@ -20,6 +20,19 @@
  *   GET  /api/v1/publications/:id            — видео и задания по аккаунтам
  *   POST /api/v1/publications/:id/jobs       — задания на уже принятое видео
  *   POST /api/v1/jobs/:id/cancel | /retry    — отмена и повтор задания
+ *   GET  /api/v1/jobs/:id                    — задание с трассой шагов, журналом и метриками
+ *   GET  /api/v1/analytics/content           — аналитика по видео (витрина publish_content_metrics, победители)
+ *   GET  /api/v1/analytics/content/:id       — одно видео: сводка и публикации по аккаунтам
+ *   GET  /api/v1/analytics/accounts/:id      — аккаунт: витрина publish_account_metrics и последние публикации
+ *   GET  /api/v1/notifications?unread=1      — центр уведомлений проекта
+ *   POST /api/v1/notifications/:id/read      — отметить прочитанным
+ *   GET|POST /api/v1/campaigns, GET|POST /campaigns/:id, POST /campaigns/:id/items | items-remove |
+ *        start | pause | complete | archive | plan — кампании (publish)
+ *   GET|POST /api/v1/webhooks, POST /webhooks/:id | /delete, GET /webhooks/:id/deliveries — вебхуки (manage)
+ *   GET  /api/v1/reports/daily                — отчёт за сутки по проекту
+ *   GET  /api/v1/members, POST /members/:userId/role — участники проекта и роли (RBAC)
+ *   GET|POST /api/v1/routines, POST /routines/:id | /delete | /assign — рутины (шаги вокруг публикации)
+ *   GET  /api/v1/tasks?status=&limit=         — задачи рутин
  *
  * Сама функция тонкая: проверяет ключ и границы проекта, а работу делают
  * существующие функции (publish-intake, r2-presign-upload, publish-accounts),
@@ -134,7 +147,13 @@ const GROUP_FIELDS = [
   "name", "account_ids", "platform", "publish_strategy", "per_hour", "persona_id", "review_mode",
   "timezone", "window_start", "window_end", "min_gap_minutes", "jitter_minutes",
 ] as const;
-const SETTINGS_FIELDS = ["notify_mode", "digest_chat_id", "paused", "daily_usd", "monthly_usd"] as const;
+const SETTINGS_FIELDS = ["notify_mode", "digest_chat_id", "paused", "daily_usd", "monthly_usd", "features"] as const;
+const CAMPAIGN_FIELDS = [
+  "name", "objective", "start_date", "end_date", "timezone", "group_id", "account_ids",
+  "posts_per_day", "slot_times", "weekdays", "mode", "distribution",
+] as const;
+const WEBHOOK_FIELDS = ["name", "url", "events", "enabled", "rotate_secret"] as const;
+const ROUTINE_FIELDS = ["name", "description", "steps", "is_default"] as const;
 
 /** Только известные поля — чужие ключи тела в соседнюю функцию не утекают. */
 function pick(body: Record<string, unknown>, fields: readonly string[]): Record<string, unknown> {
@@ -276,6 +295,7 @@ async function publicationCreate(req: Request, deps: Deps, ctx: ApiKeyContext): 
     caption_variants: input.caption_variants,
     hashtags: input.hashtags,
     duration_sec: input.duration_sec,
+    ...(input.client_ref ? { client_ref: input.client_ref } : {}),
     source: "api",
     source_ref: `api_key:${ctx.keyId}`,
     ...(input.target ? { target: input.target } : {}),
@@ -381,6 +401,178 @@ async function jobAction(deps: Deps, ctx: ApiKeyContext, id: string, action: "jo
   return passthrough(await accountsAction(deps, ctx, action, { job_id: id }));
 }
 
+/* ───────────── трасса задания, аналитика, уведомления ───────────── */
+
+async function jobGet(deps: Deps, ctx: ApiKeyContext, id: string): Promise<Response> {
+  const admin = deps.admin;
+  const { data } = await admin.from("publish_jobs").select("id, project_id").eq("id", id).maybeSingle();
+  const job = data as { id: string; project_id: string } | null;
+  if (!job || job.project_id !== ctx.projectId) return json({ error: "задание не найдено" }, 404);
+  return passthrough(await accountsAction(deps, ctx, "job_get", { job_id: id }));
+}
+
+async function analyticsContent(req: Request, deps: Deps, ctx: ApiKeyContext): Promise<Response> {
+  const admin = deps.admin;
+  const q = new URL(req.url).searchParams;
+  const limit = Math.min(200, Math.max(1, Number(q.get("limit") ?? 50)));
+  const winners = q.get("winners") === "1";
+  let query = admin.from("publish_content_metrics").select("*").eq("project_id", ctx.projectId)
+    .order("score", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false }).limit(limit);
+  if (winners) query = query.eq("is_winner", true);
+  const { data, error } = await query;
+  if (error) return json({ error: error.message }, 500);
+  return json({ ok: true, content: data ?? [] });
+}
+
+async function analyticsContentItem(deps: Deps, ctx: ApiKeyContext, id: string): Promise<Response> {
+  const admin = deps.admin;
+  const { data: content, error } = await admin.from("publish_content_metrics").select("*")
+    .eq("content_id", id).eq("project_id", ctx.projectId).maybeSingle();
+  if (error) return json({ error: error.message }, 500);
+  if (!content) return json({ error: "видео не найдено" }, 404);
+  const { data: publications } = await admin.from("publish_publications").select("*")
+    .eq("content_id", id).eq("project_id", ctx.projectId).order("published_at", { ascending: false });
+  return json({ ok: true, content, publications: publications ?? [] });
+}
+
+async function analyticsAccount(deps: Deps, ctx: ApiKeyContext, id: string): Promise<Response> {
+  const admin = deps.admin;
+  const { data: account, error } = await admin.from("publish_account_metrics").select("*")
+    .eq("account_id", id).eq("project_id", ctx.projectId).maybeSingle();
+  if (error) return json({ error: error.message }, 500);
+  if (!account) return json({ error: "аккаунт не найден" }, 404);
+  const { data: publications } = await admin.from("publish_publications").select("*")
+    .eq("account_id", id).eq("project_id", ctx.projectId).order("published_at", { ascending: false }).limit(50);
+  return json({ ok: true, account, publications: publications ?? [] });
+}
+
+async function notificationsList(req: Request, deps: Deps, ctx: ApiKeyContext): Promise<Response> {
+  const q = new URL(req.url).searchParams;
+  const limit = Math.min(200, Math.max(1, Number(q.get("limit") ?? 50)));
+  return passthrough(await accountsAction(deps, ctx, "notifications_list", { limit, unread_only: q.get("unread") === "1" }));
+}
+
+async function notificationRead(deps: Deps, ctx: ApiKeyContext, id: string): Promise<Response> {
+  const admin = deps.admin;
+  if (!(await ownsRow(admin, "publish_notifications", id, ctx.projectId))) return json({ error: "уведомление не найдено" }, 404);
+  return passthrough(await accountsAction(deps, ctx, "notification_read", { notification_id: id }));
+}
+
+/* ───────────── кампании, вебхуки, отчёт ───────────── */
+
+async function campaignUpsert(req: Request, deps: Deps, ctx: ApiKeyContext, id: string | null): Promise<Response> {
+  const admin = deps.admin;
+  if (id && !(await ownsRow(admin, "publish_campaigns", id, ctx.projectId))) return json({ error: "кампания не найдена" }, 404);
+  const body = pick(await readJson(req), CAMPAIGN_FIELDS);
+  if (!id && (typeof body.name !== "string" || !body.name.trim())) return json({ error: "name обязателен" }, 400);
+  if (id && !Object.keys(body).length) return json({ error: `нечего менять — поля: ${CAMPAIGN_FIELDS.join(", ")}` }, 400);
+  if (typeof body.group_id === "string" && !(await ownsRow(admin, "publish_account_groups", body.group_id, ctx.projectId))) return json({ error: "группа не найдена" }, 404);
+  return passthrough(await accountsAction(deps, ctx, "campaign_upsert", { ...(id ? { campaign_id: id } : {}), ...body }));
+}
+
+async function campaignItems(req: Request, deps: Deps, ctx: ApiKeyContext, id: string, action: "campaign_items_add" | "campaign_items_remove"): Promise<Response> {
+  const admin = deps.admin;
+  if (!(await ownsRow(admin, "publish_campaigns", id, ctx.projectId))) return json({ error: "кампания не найдена" }, 404);
+  const body = await readJson(req);
+  const ids = Array.isArray(body.video_ids) ? body.video_ids.map(String) : Array.isArray(body.publication_ids) ? body.publication_ids.map(String) : [];
+  if (!ids.length) return json({ error: "video_ids — список id видео (publication id)" }, 400);
+  return passthrough(await accountsAction(deps, ctx, action, { campaign_id: id, video_ids: ids }));
+}
+
+async function campaignStatus(deps: Deps, ctx: ApiKeyContext, id: string, status: string): Promise<Response> {
+  if (!(await ownsRow(deps.admin, "publish_campaigns", id, ctx.projectId))) return json({ error: "кампания не найдена" }, 404);
+  return passthrough(await accountsAction(deps, ctx, "campaign_status", { campaign_id: id, status }));
+}
+
+async function campaignSimple(deps: Deps, ctx: ApiKeyContext, id: string, action: "campaign_get" | "campaign_plan_now"): Promise<Response> {
+  if (!(await ownsRow(deps.admin, "publish_campaigns", id, ctx.projectId))) return json({ error: "кампания не найдена" }, 404);
+  return passthrough(await accountsAction(deps, ctx, action, { campaign_id: id }));
+}
+
+async function webhookUpsert(req: Request, deps: Deps, ctx: ApiKeyContext, id: string | null): Promise<Response> {
+  if (id && !(await ownsRow(deps.admin, "publish_webhooks", id, ctx.projectId))) return json({ error: "вебхук не найден" }, 404);
+  const body = pick(await readJson(req), WEBHOOK_FIELDS);
+  if (!id && (typeof body.url !== "string" || typeof body.name !== "string")) return json({ error: "name и url обязательны" }, 400);
+  if (id && !Object.keys(body).length) return json({ error: `нечего менять — поля: ${WEBHOOK_FIELDS.join(", ")}` }, 400);
+  return passthrough(await accountsAction(deps, ctx, "webhook_upsert", { ...(id ? { webhook_id: id } : {}), ...body }));
+}
+
+async function webhookSimple(deps: Deps, ctx: ApiKeyContext, id: string, action: "webhook_delete" | "webhook_deliveries"): Promise<Response> {
+  if (!(await ownsRow(deps.admin, "publish_webhooks", id, ctx.projectId))) return json({ error: "вебхук не найден" }, 404);
+  return passthrough(await accountsAction(deps, ctx, action, { webhook_id: id }));
+}
+
+async function reportDaily(deps: Deps, ctx: ApiKeyContext): Promise<Response> {
+  const r = await callInternal(deps, "publish-monitor", { mode: "daily_report", project_id: ctx.projectId, dry_run: true }, {
+    "x-automation-key": await automationKey(deps.admin),
+  });
+  if (r.status >= 400) return passthrough(r);
+  const reports = (r.body.reports as unknown[] | undefined) ?? [];
+  return json({ ok: true, report: reports[0] ?? null });
+}
+
+/* ───────────── участники, рутины, задачи ───────────── */
+
+async function memberRoleSet(req: Request, deps: Deps, ctx: ApiKeyContext, userId: string): Promise<Response> {
+  const body = await readJson(req);
+  if (typeof body.role !== "string") return json({ error: "role обязателен" }, 400);
+  return passthrough(await accountsAction(deps, ctx, "member_role_set", { user_id: userId, role: body.role }));
+}
+
+async function routineUpsert(req: Request, deps: Deps, ctx: ApiKeyContext, id: string | null): Promise<Response> {
+  if (id && !(await ownsRow(deps.admin, "publish_routines", id, ctx.projectId))) return json({ error: "рутина не найдена" }, 404);
+  const body = pick(await readJson(req), ROUTINE_FIELDS);
+  if (!id && typeof body.name !== "string") return json({ error: "name обязателен" }, 400);
+  if (id && !Object.keys(body).length) return json({ error: `нечего менять — поля: ${ROUTINE_FIELDS.join(", ")}` }, 400);
+  return passthrough(await accountsAction(deps, ctx, "routine_upsert", { ...(id ? { routine_id: id } : {}), ...body }));
+}
+
+async function routineAssign(req: Request, deps: Deps, ctx: ApiKeyContext, id: string): Promise<Response> {
+  if (!(await ownsRow(deps.admin, "publish_routines", id, ctx.projectId))) return json({ error: "рутина не найдена" }, 404);
+  const body = await readJson(req);
+  return passthrough(await accountsAction(deps, ctx, "routine_assign", {
+    routine_id: id,
+    group_ids: Array.isArray(body.group_ids) ? body.group_ids.map(String) : [],
+    account_ids: Array.isArray(body.account_ids) ? body.account_ids.map(String) : [],
+  }));
+}
+
+async function routineDelete(deps: Deps, ctx: ApiKeyContext, id: string): Promise<Response> {
+  if (!(await ownsRow(deps.admin, "publish_routines", id, ctx.projectId))) return json({ error: "рутина не найдена" }, 404);
+  return passthrough(await accountsAction(deps, ctx, "routine_delete", { routine_id: id }));
+}
+
+async function tasksList(req: Request, deps: Deps, ctx: ApiKeyContext): Promise<Response> {
+  const q = new URL(req.url).searchParams;
+  const limit = Math.min(500, Math.max(1, Number(q.get("limit") ?? 100)));
+  const status = q.get("status");
+  return passthrough(await accountsAction(deps, ctx, "tasks_list", { limit, ...(status ? { status } : {}) }));
+}
+
+/** Аудит вызова (api_request_logs): ключ, маршрут, статус, хэш параметров — без содержимого и без ожидания. */
+async function paramsHash(url: URL, bodyText: string | null): Promise<string | null> {
+  const src = `${url.search}${bodyText ?? ""}`;
+  if (!src) return null;
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(src));
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function auditRequest(deps: Deps, ctx: ApiKeyContext, req: Request, route: ApiRoute, status: number, startedAt: number, bodyText: string | null): void {
+  const url = new URL(req.url);
+  void paramsHash(url, bodyText).then((hash) =>
+    deps.admin.from("api_request_logs").insert({
+      api_key_id: ctx.keyId,
+      project_id: ctx.projectId,
+      method: req.method.toUpperCase(),
+      route: route.name,
+      path: url.pathname.slice(0, 300),
+      status,
+      params_hash: hash,
+      duration_ms: Math.max(0, deps.now() - startedAt),
+    }),
+  ).then(() => {}, () => {});
+}
+
 async function dispatch(req: Request, deps: Deps, ctx: ApiKeyContext, route: ApiRoute): Promise<Response> {
   switch (route.name) {
     case "me": return me(deps, ctx);
@@ -403,6 +595,34 @@ async function dispatch(req: Request, deps: Deps, ctx: ApiKeyContext, route: Api
     case "publication_jobs_create": return publicationJobsCreate(req, deps, ctx, route.id);
     case "job_cancel": return jobAction(deps, ctx, route.id, "job_cancel");
     case "job_retry": return jobAction(deps, ctx, route.id, "job_retry");
+    case "job_get": return jobGet(deps, ctx, route.id);
+    case "analytics_content": return analyticsContent(req, deps, ctx);
+    case "analytics_content_item": return analyticsContentItem(deps, ctx, route.id);
+    case "analytics_account": return analyticsAccount(deps, ctx, route.id);
+    case "notifications_list": return notificationsList(req, deps, ctx);
+    case "notification_read": return notificationRead(deps, ctx, route.id);
+    case "campaigns_list": return passthrough(await accountsAction(deps, ctx, "campaign_list", {}));
+    case "campaign_create": return campaignUpsert(req, deps, ctx, null);
+    case "campaign_get": return campaignSimple(deps, ctx, route.id, "campaign_get");
+    case "campaign_update": return campaignUpsert(req, deps, ctx, route.id);
+    case "campaign_items_add": return campaignItems(req, deps, ctx, route.id, "campaign_items_add");
+    case "campaign_items_remove": return campaignItems(req, deps, ctx, route.id, "campaign_items_remove");
+    case "campaign_status": return campaignStatus(deps, ctx, route.id, route.status);
+    case "campaign_plan": return campaignSimple(deps, ctx, route.id, "campaign_plan_now");
+    case "webhooks_list": return passthrough(await accountsAction(deps, ctx, "webhook_list", {}));
+    case "webhook_create": return webhookUpsert(req, deps, ctx, null);
+    case "webhook_update": return webhookUpsert(req, deps, ctx, route.id);
+    case "webhook_delete": return webhookSimple(deps, ctx, route.id, "webhook_delete");
+    case "webhook_deliveries": return webhookSimple(deps, ctx, route.id, "webhook_deliveries");
+    case "report_daily": return reportDaily(deps, ctx);
+    case "members_list": return passthrough(await accountsAction(deps, ctx, "member_list", {}));
+    case "member_role_set": return memberRoleSet(req, deps, ctx, route.id);
+    case "routines_list": return passthrough(await accountsAction(deps, ctx, "routine_list", {}));
+    case "routine_create": return routineUpsert(req, deps, ctx, null);
+    case "routine_update": return routineUpsert(req, deps, ctx, route.id);
+    case "routine_delete": return routineDelete(deps, ctx, route.id);
+    case "routine_assign": return routineAssign(req, deps, ctx, route.id);
+    case "tasks_list": return tasksList(req, deps, ctx);
   }
 }
 
@@ -430,9 +650,20 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
     return json({ error: "слишком много запросов, подождите" }, 429, { "Retry-After": String(rate.retryAfterSec) });
   }
 
+  // Тело читаем один раз здесь: обработчикам отдаём клон, хэш — в аудит.
+  const startedAt = deps.now();
+  let bodyText: string | null = null;
+  let reqForHandler = req;
+  if (req.method === "POST") {
+    bodyText = await req.text().catch(() => "");
+    reqForHandler = new Request(req.url, { method: req.method, headers: req.headers, body: bodyText || undefined });
+  }
   try {
-    return await dispatch(req, deps, auth.ctx, route);
+    const res = await dispatch(reqForHandler, deps, auth.ctx, route);
+    auditRequest(deps, auth.ctx, req, route, res.status, startedAt, bodyText);
+    return res;
   } catch (e) {
+    auditRequest(deps, auth.ctx, req, route, 500, startedAt, bodyText);
     return json({ error: e instanceof Error ? e.message : String(e) }, 500);
   }
 }

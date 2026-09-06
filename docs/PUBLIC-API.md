@@ -61,6 +61,34 @@ Authorization: Bearer mv_live_…        (или заголовок x-api-key: m
 | `POST /publications/distribute` | publish | пачка принятых видео по сети: один ролик → один аккаунт |
 | `POST /jobs/:id/cancel` | publish | отменить не ушедшее задание |
 | `POST /jobs/:id/retry` | publish | вернуть упавшее задание в очередь |
+| `GET /jobs/:id` | read | задание целиком: статус, верификация, `error_class`, трасса шагов (`events`), журнал площадки (`logs`), снятые метрики |
+| `GET /analytics/content?limit=&winners=1` | read | витрина по видео: публикаций, сумма/среднее просмотров, реакции, лучший аккаунт, `score` 0–100, `is_winner` |
+| `GET /analytics/content/:id` | read | одно видео и его публикации по аккаунтам с последней точкой метрик |
+| `GET /analytics/accounts/:id` | read | витрина аккаунта (`publish_account_metrics`) и последние публикации |
+| `GET /notifications?unread=1&limit=` | read | центр уведомлений проекта (`unread` — счётчик непрочитанных) |
+| `POST /notifications/:id/read` | read | отметить уведомление прочитанным |
+| `GET /campaigns` | read | кампании проекта с метриками (`publish_campaign_metrics`) |
+| `POST /campaigns` | publish | создать кампанию: `name`, `objective`, `start_date`, `end_date`, `timezone`, `group_id`, `account_ids`, `posts_per_day`, `slot_times` (`["10:00","19:00"]`), `weekdays` (1..7), `mode` (`drip|now`), `distribution` (`fanout|spread`) |
+| `GET /campaigns/:id` | read | кампания, очередь контента (`items`) и задания |
+| `POST /campaigns/:id` | publish | частичная правка правил |
+| `POST /campaigns/:id/items` | publish | `video_ids` → в очередь кампании |
+| `POST /campaigns/:id/items-remove` | publish | убрать ещё не запланированные видео |
+| `POST /campaigns/:id/start` \| `pause` \| `complete` \| `archive` | publish | статус; `start` сразу планирует сегодня и завтра |
+| `POST /campaigns/:id/plan` | publish | спланировать ближайшие дни сейчас |
+| `GET /webhooks` | read | подписки проекта |
+| `POST /webhooks` | manage | создать: `name`, `url` (https), `events` (список или `["*"]`); ответ несёт `secret` один раз |
+| `POST /webhooks/:id` | manage | `name`, `url`, `events`, `enabled`, `rotate_secret: true` (новый секрет в ответе) |
+| `POST /webhooks/:id/delete` | manage | удалить |
+| `GET /webhooks/:id/deliveries` | read | последние доставки: статус, попытки, код ответа |
+| `GET /reports/daily` | read | отчёт за сутки (аккаунты, задания, успешность, просмотры за 7 дней, топ контента) |
+| `GET /members` | read | участники проекта и их роли (RBAC) |
+| `POST /members/:userId/role` | manage | `role`: `admin` (только владелец) \| `manager` \| `content_manager` \| `operator` \| `viewer` |
+| `GET /routines` | read | рутины проекта, назначения группам/аккаунтам |
+| `POST /routines` | manage | создать: `name`, `description`, `steps` (`[{action, offset_minutes}]`), `is_default` |
+| `POST /routines/:id` | manage | частичная правка |
+| `POST /routines/:id/assign` | manage | `group_ids`, `account_ids` |
+| `POST /routines/:id/delete` | manage | удалить |
+| `GET /tasks?status=&limit=` | read | задачи рутин |
 
 ### Загрузка файла
 
@@ -118,6 +146,9 @@ curl -X POST "$API/publications/distribute" -H "Authorization: Bearer $KEY" -H "
   с минимальным интервалом и дневным лимитом; `daily` — по одному в день.
 - Без `group_id` и `account_ids` задания ставятся на **все активные аккаунты проекта**.
 - `caption_variants` раздаются аккаунтам по кругу, хэштеги подклеиваются к подписи.
+- `client_ref` (до 200 символов) — ключ идемпотентности: повторный вызов с тем же `client_ref` в проекте
+  вернёт то же `video_id` с `idempotent: true` и не заведёт второй ролик; задания по-прежнему уникальны
+  на пару видео + аккаунт.
 - Ответ: `{ ok, video_id, caption_preview, created, skipped, accounts: [{ id, account_name, scheduled_at }] }`.
 
 Проверка входа: `file_url` — https на `.mp4/.mov/.m4v`; по ссылке должно лежать видео
@@ -149,8 +180,15 @@ curl -X POST "$API/settings" -H "Authorization: Bearer $KEY" -H "Content-Type: a
 и `publication.jobs[]` с `status, scheduled_at, published_at, external_post_url, error_code,
 error_message, publish_accounts.account_name`.
 
-Статусы заданий: `pending → processing → published`, а также `retry`, `failed`,
-`manual_review`, `cancelled`.
+Статусы заданий: `pending → processing → verifying → published`, а также `retry`, `failed`,
+`manual_review`, `cancelled`. `verifying` — площадка приняла пост, воркер ещё не прочитал его обратно;
+у `published` поле `verification_status` = `verified` / `unverified` / `skipped` (`docs/JOBS.md`).
+Класс ошибки — `error_class` (`AUTH_EXPIRED`, `RATE_LIMIT`, `MEDIA_INVALID`, …), сырой код площадки — `error_code`.
+
+### Аудит
+
+Каждый вызов пишется в `api_request_logs` (ключ, маршрут, статус, sha256 параметров, длительность) —
+основа AI audit log: кто, что и когда запустил через MCP.
 
 ## MCP-сервер
 
@@ -170,11 +208,20 @@ Cursor. Установка, конфиг и список инструменто�
 - Подключение аккаунтов через API (OAuth-онбординг только из интерфейса).
 - Удалённый MCP (HTTP): сейчас сервер локальный, stdio.
 
+## Вебхуки: проверка подписи
+
+Каждая доставка — `POST` JSON `{ event, project_id, occurred_at, data, delivery_id, attempt }` с заголовками
+`X-MarkVision-Event`, `X-MarkVision-Delivery`, `X-MarkVision-Timestamp`, `X-MarkVision-Signature: t=<unix>,v1=<hex>`,
+где `v1 = HMAC-SHA256(secret, "<t>.<raw body>")`. Отбрасывайте `t` старше 5 минут. Ответ 2xx — доставлено;
+5xx/429 — повтор (1 → 5 → 15 → 60 → 180 мин, 5 попыток); прочие 4xx — отказ без повтора. События и
+их данные — `docs/JOBS.md`.
+
 ## Где код
 
 | Что | Где |
 |---|---|
 | Таблица ключей | `supabase/migrations/20260907130000_api_keys.sql` |
+| Аудит вызовов, уведомления, витрины аналитики | `supabase/migrations/20260908140000_content_factory_core.sql` |
 | Генерация, хэш, проверка, лимит | `supabase/functions/_lib/apiKeys.ts` |
 | Маршруты и разбор тела | `supabase/functions/_lib/publicApi.ts` |
 | Сама функция | `supabase/functions/api/index.ts` (вход) + `handler.ts` (логика с зависимостями наружу); `verify_jwt = false` в `config.toml` |

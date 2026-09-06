@@ -18,6 +18,7 @@ export type PublishJobStatus =
   | "pending"
   | "retry"
   | "processing"
+  | "verifying"
   | "published"
   | "failed"
   | "manual_review"
@@ -55,7 +56,15 @@ export interface PublishAccount {
   followers: number | null;
   /** Права OAuth площадки (TikTok без video.list не отдаёт метрики). */
   oauth_scope?: string | null;
+  /** Ядро Phase 1: возможности аккаунта этим токеном, тип подключения, состояние авторизации. */
+  capabilities?: Record<string, boolean> | null;
+  connection_type?: "oauth" | "device" | "hybrid";
+  auth_status?: PublishAuthStatus;
+  routine_id?: string | null;
 }
+
+export type PublishAuthStatus = "connected" | "expiring" | "expired" | "reconnect_required";
+export type PublishVerificationStatus = "pending" | "verified" | "unverified" | "skipped";
 
 export interface AvailablePage {
   page_id: string;
@@ -107,7 +116,7 @@ export interface Persona {
 }
 
 export interface PublishSettings {
-  settings: { notify_mode: NotifyMode; digest_chat_id: string | null; max_parallel_workers: number; paused?: boolean };
+  settings: { notify_mode: NotifyMode; digest_chat_id: string | null; max_parallel_workers: number; paused?: boolean; features?: Record<string, boolean> };
   budget: { daily_usd: number; monthly_usd: number };
   spend: { today_usd: number; month_usd: number };
 }
@@ -121,10 +130,18 @@ export interface PublishJob {
   scheduled_at: string | null;
   attempts: number;
   next_attempt_at: string | null;
+  external_post_id?: string | null;
   external_post_url: string | null;
   error_code: string | null;
+  /** Канонический класс ошибки (AUTH_EXPIRED, RATE_LIMIT, MEDIA_INVALID…). */
+  error_class?: string | null;
   error_message: string | null;
   published_at: string | null;
+  /** Верификация: пост прочитан обратно у площадки (verified) или нет. */
+  verification_status?: PublishVerificationStatus;
+  verified_at?: string | null;
+  verify_attempts?: number;
+  trace_id?: string | null;
   /** Площадка не отдаёт статистику по посту (удалён / чужой токен / нет прав) — метрики не собираем до reconnect. */
   metrics_unavailable_reason?: string | null;
   /** Аренда воркера; processing без свежей аренды — зависшее задание. */
@@ -281,6 +298,7 @@ export const JOB_STATUS_META: Record<PublishJobStatus, { label: string; cls: str
   pending: { label: "В очереди", cls: "bg-muted text-muted-foreground" },
   retry: { label: "Повтор", cls: "bg-violet-500/10 text-violet-700 dark:text-violet-300" },
   processing: { label: "Публикуется", cls: "bg-amber-500/10 text-amber-700 dark:text-amber-300" },
+  verifying: { label: "Проверяется", cls: "bg-blue-500/10 text-blue-700 dark:text-blue-300" },
   published: { label: "Опубликовано", cls: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" },
   failed: { label: "Ошибка", cls: "bg-destructive/10 text-destructive" },
   manual_review: { label: "Ручная проверка", cls: "bg-sky-500/10 text-sky-700 dark:text-sky-300" },
@@ -303,6 +321,8 @@ export const JOB_ACTIONS: Record<PublishJobStatus, { retry: boolean; cancel: boo
   pending: { retry: false, cancel: true },
   retry: { retry: true, cancel: true },
   processing: { retry: false, cancel: false },
+  // Площадка уже приняла пост — повтор дал бы дубль, отмена бессмысленна.
+  verifying: { retry: false, cancel: false },
   published: { retry: false, cancel: false },
   failed: { retry: true, cancel: false },
   manual_review: { retry: true, cancel: true },
@@ -518,7 +538,7 @@ export interface PublishVideoInput {
 }
 
 export const publishingApi = {
-  list: (project_id: string) => call<{ accounts: PublishAccount[] }>("list", { project_id }),
+  list: (project_id: string) => call<{ accounts: PublishAccount[]; role?: ProjectRole }>("list", { project_id }),
   /** meta_token — вставленный вручную User Access Token, когда токены проекта площадка отклоняет. */
   available: (project_id: string, meta_token?: string | null) =>
     call<{ pages: AvailablePage[] }>("available", { project_id, ...(meta_token ? { meta_token } : {}) }),
@@ -552,6 +572,43 @@ export const publishingApi = {
   jobsList: (project_id: string, opts: { status?: PublishJobStatus; limit?: number; video_id?: string } = {}) =>
     call<{ jobs: PublishJob[] }>("jobs_list", { project_id, ...opts }),
   metrics: (project_id: string) => call<MetricsResponse>("metrics", { project_id }),
+  jobGet: (project_id: string, job_id: string) => call<JobDetail>("job_get", { project_id, job_id }),
+
+  memberList: (project_id: string) => call<{ members: ProjectMember[]; me: { user_id: string | null; role: ProjectRole }; assignable: ProjectRole[] }>("member_list", { project_id }),
+  memberRoleSet: (project_id: string, user_id: string, role: ProjectRole) => call<{ member: { user_id: string; role: string } }>("member_role_set", { project_id, user_id, role }),
+  routineList: (project_id: string) =>
+    call<{ routines: PublishRoutine[]; groups: { id: string; name: string; routine_id: string | null }[]; accounts: { id: string; account_name: string; routine_id: string | null }[] }>("routine_list", { project_id }),
+  routineUpsert: (project_id: string, input: { routine_id?: string; name?: string; description?: string | null; steps?: RoutineStep[]; is_default?: boolean }) =>
+    call<{ routine: PublishRoutine }>("routine_upsert", { project_id, ...input }),
+  routineDelete: (project_id: string, routine_id: string) => call<{ ok: true }>("routine_delete", { project_id, routine_id }),
+  routineAssign: (project_id: string, routine_id: string | null, target: { group_ids?: string[]; account_ids?: string[] }) =>
+    call<{ groups: number; accounts: number }>("routine_assign", { project_id, routine_id, ...target }),
+  tasksList: (project_id: string, opts: { status?: PublishTask["status"]; limit?: number } = {}) =>
+    call<{ tasks: (PublishTask & { job_id: string | null; publish_accounts: { account_name: string } | null })[] }>("tasks_list", { project_id, ...opts }),
+
+  campaignList: (project_id: string) => call<{ campaigns: PublishCampaign[]; metrics: CampaignMetrics[] }>("campaign_list", { project_id }),
+  campaignGet: (project_id: string, campaign_id: string) =>
+    call<{ campaign: PublishCampaign; metrics: CampaignMetrics | null; items: CampaignItem[]; jobs: PublishJob[] }>("campaign_get", { project_id, campaign_id }),
+  campaignUpsert: (project_id: string, input: CampaignUpsertInput) => call<{ campaign: PublishCampaign }>("campaign_upsert", { project_id, ...input }),
+  campaignItemsAdd: (project_id: string, campaign_id: string, video_ids: string[]) =>
+    call<{ added: number; skipped: number }>("campaign_items_add", { project_id, campaign_id, video_ids }),
+  campaignItemsRemove: (project_id: string, campaign_id: string, video_ids: string[]) =>
+    call<{ removed: number }>("campaign_items_remove", { project_id, campaign_id, video_ids }),
+  campaignStatus: (project_id: string, campaign_id: string, status: CampaignStatus) =>
+    call<{ campaign: PublishCampaign; planned: { planned: number; jobs_created: number } | null }>("campaign_status", { project_id, campaign_id, status }),
+  campaignPlanNow: (project_id: string, campaign_id: string) =>
+    call<{ result: { planned: number; jobs_created: number; completed: boolean } }>("campaign_plan_now", { project_id, campaign_id }),
+
+  webhookList: (project_id: string) => call<{ webhooks: PublishWebhook[] }>("webhook_list", { project_id }),
+  webhookUpsert: (project_id: string, input: { webhook_id?: string; name?: string; url?: string; events?: string[]; enabled?: boolean; rotate_secret?: boolean }) =>
+    call<{ webhook: PublishWebhook; secret?: string }>("webhook_upsert", { project_id, ...input }),
+  webhookDelete: (project_id: string, webhook_id: string) => call<{ ok: true }>("webhook_delete", { project_id, webhook_id }),
+  webhookDeliveries: (project_id: string, webhook_id: string) =>
+    call<{ deliveries: WebhookDelivery[] }>("webhook_deliveries", { project_id, webhook_id }),
+  notificationsList: (project_id: string, opts: { unread_only?: boolean; limit?: number } = {}) =>
+    call<{ notifications: PublishNotification[]; unread: number }>("notifications_list", { project_id, ...opts }),
+  notificationRead: (project_id: string, input: { notification_id?: string; all?: boolean }) =>
+    call<{ ok: true }>("notification_read", { project_id, ...input }),
   jobRetry: (project_id: string, job_id: string) => call<{ ok: true; status: "pending" }>("job_retry", { project_id, job_id }),
   jobCancel: (project_id: string, job_id: string) => call<{ ok: true; status: "cancelled" }>("job_cancel", { project_id, job_id }),
   publishVideo: (project_id: string, input: PublishVideoInput) =>
@@ -563,6 +620,275 @@ export const publishingApi = {
     call<{ key: string; api_key: ApiKey }>("api_key_create", { project_id, ...input }),
   apiKeyRevoke: (project_id: string, key_id: string) => call<{ ok: true }>("api_key_revoke", { project_id, key_id }),
 };
+
+/* ───────────────────────────── трасса задания и уведомления ───────────────────────────── */
+
+export interface JobEvent {
+  id: number;
+  step: string;
+  level: "info" | "warning" | "error";
+  message: string | null;
+  data: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface JobDetail {
+  job: PublishJob & {
+    poll_count?: number;
+    container_id?: string | null;
+    updated_at?: string;
+    publish_accounts: { account_name: string; handle: string | null; platform?: PublishPlatform } | null;
+  };
+  events: JobEvent[];
+  logs: { id: string; level: string; message: string; created_at: string }[];
+  metrics: { checkpoint: string; captured_at: string; views: number; reach: number; likes: number; comments: number; shares: number; saves: number; followers: number | null }[];
+  tasks?: PublishTask[];
+}
+
+export interface PublishNotification {
+  id: string;
+  kind: string;
+  severity: "info" | "warning" | "error";
+  title: string;
+  body: string | null;
+  entity_type: string | null;
+  entity_id: string | null;
+  read_at: string | null;
+  created_at: string;
+}
+
+/** Подпись верификации для интерфейса; pending на опубликованном — старые задания до миграции. */
+export const VERIFICATION_META: Record<PublishVerificationStatus, { label: string; cls: string; hint: string }> = {
+  pending: { label: "ждёт проверки", cls: "text-muted-foreground", hint: "Площадка приняла пост, воркер ещё не прочитал его обратно." },
+  verified: { label: "подтверждено", cls: "text-emerald-600 dark:text-emerald-400", hint: "Пост найден у площадки после публикации." },
+  unverified: { label: "не подтверждено", cls: "text-amber-600 dark:text-amber-400", hint: "Площадка вернула id поста, но прочитать его обратно не удалось — проверьте вручную." },
+  skipped: { label: "без проверки", cls: "text-muted-foreground", hint: "Площадка не даёт прочитать пост этим токеном (нет прав) или задание старше верификации." },
+};
+
+/** Человекочитаемые шаги трассы (publish_job_events.step). */
+export const TRACE_STEP_LABELS: Record<string, string> = {
+  JOB_CREATED: "Задание создано",
+  JOB_CLAIMED: "Воркер взял задание",
+  AUTH_OK: "Токен проверен",
+  AUTH_REFRESHED: "Токен обновлён",
+  AUTH_FAILED: "Ошибка авторизации",
+  CAPABILITY_OK: "Возможности аккаунта проверены",
+  CAPABILITY_MISSING: "Аккаунт не имеет нужного права",
+  MEDIA_OK: "Медиа проверено",
+  UPLOAD_STARTED: "Загрузка на площадку",
+  PROVIDER_PROCESSING: "Площадка обрабатывает медиа",
+  MEDIA_CREATED: "Площадка приняла пост",
+  VERIFY_STARTED: "Проверка публикации",
+  VERIFIED: "Публикация подтверждена",
+  VERIFY_PENDING: "Пост ещё не виден — проверим позже",
+  VERIFY_SKIPPED: "Проверка недоступна",
+  UNVERIFIED: "Публикация не подтверждена",
+  SUCCESS: "Готово",
+  RETRY: "Повтор",
+  FAILED: "Ошибка",
+  MANUAL_REVIEW: "Ручной разбор",
+  CANCELLED: "Отменено",
+  BUDGET_EXCEEDED: "Не успели за тик — вернули в очередь",
+};
+
+/* ───────────────────────────── кампании и вебхуки ───────────────────────────── */
+
+export type CampaignStatus = "draft" | "active" | "paused" | "completed" | "archived";
+
+export interface PublishCampaign {
+  id: string;
+  name: string;
+  objective: string | null;
+  status: CampaignStatus;
+  start_date: string;
+  end_date: string | null;
+  timezone: string | null;
+  group_id: string | null;
+  account_ids: string[];
+  posts_per_day: number;
+  slot_times: string[];
+  weekdays: number[];
+  mode: "drip" | "now";
+  distribution: "fanout" | "spread";
+  planned_until: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
+export interface CampaignMetrics {
+  campaign_id: string;
+  accounts_eligible: number;
+  items_total: number;
+  items_queued: number;
+  items_planned: number;
+  jobs_total: number;
+  jobs_published: number;
+  jobs_failed: number;
+  jobs_open: number;
+  next_slot_at: string | null;
+  views_total: number;
+  reach_total: number;
+  engagements_total: number;
+}
+
+export interface CampaignItem {
+  id: string;
+  video_id: string;
+  position: number;
+  status: "queued" | "planned" | "skipped";
+  planned_at: string | null;
+  jobs_count: number;
+  note: string | null;
+  publish_videos: { title: string | null; file_url: string; thumbnail_url: string | null } | null;
+}
+
+export interface CampaignUpsertInput {
+  campaign_id?: string;
+  name?: string;
+  objective?: string | null;
+  start_date?: string;
+  end_date?: string | null;
+  timezone?: string | null;
+  group_id?: string | null;
+  account_ids?: string[];
+  posts_per_day?: number;
+  slot_times?: string[];
+  weekdays?: number[];
+  mode?: "drip" | "now";
+  distribution?: "fanout" | "spread";
+}
+
+export const CAMPAIGN_STATUS_META: Record<CampaignStatus, { label: string; cls: string }> = {
+  draft: { label: "Черновик", cls: "bg-muted text-muted-foreground" },
+  active: { label: "Идёт", cls: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" },
+  paused: { label: "Пауза", cls: "bg-amber-500/10 text-amber-700 dark:text-amber-300" },
+  completed: { label: "Завершена", cls: "bg-sky-500/10 text-sky-700 dark:text-sky-300" },
+  archived: { label: "Архив", cls: "bg-muted text-muted-foreground" },
+};
+
+/** Переходы статуса кампании (зеркало publish-accounts campaign_status). */
+export const CAMPAIGN_TRANSITIONS: Record<CampaignStatus, CampaignStatus[]> = {
+  draft: ["active", "archived"],
+  active: ["paused", "completed", "archived"],
+  paused: ["active", "completed", "archived"],
+  completed: ["archived", "active"],
+  archived: ["draft"],
+};
+
+/** Времена слотов по правилу кампании — зеркало SQL publish_campaign_slot_times. */
+export function campaignSlotTimes(slotTimes: string[], postsPerDay: number): string[] {
+  if (slotTimes.length) return [...slotTimes].sort();
+  const n = Math.max(postsPerDay, 1);
+  if (n === 1) return ["12:00"];
+  return Array.from({ length: n }, (_, i) => {
+    const minutes = 10 * 60 + Math.round((9 * 60 * i) / (n - 1));
+    return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+  });
+}
+
+export interface PublishWebhook {
+  id: string;
+  name: string;
+  url: string;
+  events: string[];
+  enabled: boolean;
+  created_at: string;
+  last_delivery_at: string | null;
+  last_status: number | null;
+}
+
+export interface WebhookDelivery {
+  id: number;
+  event: string;
+  status: "pending" | "retry" | "delivered" | "failed";
+  attempts: number;
+  next_attempt_at: string;
+  response_status: number | null;
+  last_error: string | null;
+  delivered_at: string | null;
+  created_at: string;
+}
+
+export const WEBHOOK_EVENT_OPTIONS: { value: string; label: string }[] = [
+  { value: "*", label: "Все события" },
+  { value: "publication.published", label: "Публикация подтверждена" },
+  { value: "publication.failed", label: "Публикация не удалась" },
+  { value: "publication.needs_human", label: "Нужен ручной разбор" },
+  { value: "publication.unverified", label: "Публикация не подтверждена" },
+  { value: "account.reconnect_required", label: "Нужен reconnect аккаунта" },
+  { value: "campaign.completed", label: "Кампания завершена" },
+  { value: "report.daily", label: "Ежедневный отчёт" },
+];
+
+/* ───────────────────────────── роли и рутины ───────────────────────────── */
+
+export type ProjectRole = "owner" | "admin" | "manager" | "content_manager" | "operator" | "viewer";
+
+export const PROJECT_ROLE_LABELS: Record<ProjectRole, string> = {
+  owner: "Владелец",
+  admin: "Администратор",
+  manager: "Менеджер",
+  content_manager: "Контент-менеджер",
+  operator: "Оператор",
+  viewer: "Наблюдатель",
+};
+
+const ROLE_RANK: Record<ProjectRole, number> = { viewer: 0, operator: 1, content_manager: 2, manager: 3, admin: 4, owner: 5 };
+export type PermissionLevel = "read" | "operate" | "publish" | "manage" | "admin";
+const LEVEL_RANK: Record<PermissionLevel, number> = { read: 0, operate: 1, publish: 2, manage: 3, admin: 4 };
+
+/** Зеркало _lib/rbac.ts: хватает ли роли для уровня действия (интерфейс прячет кнопки, сервер решает). */
+export function roleAllows(role: ProjectRole | null | undefined, level: PermissionLevel): boolean {
+  if (!role) return true; // роль ещё не известна — не прячем, сервер откажет сам
+  return ROLE_RANK[role] >= LEVEL_RANK[level];
+}
+
+export interface ProjectMember {
+  user_id: string;
+  name: string | null;
+  member_role: string;
+  global_role: string | null;
+  is_owner: boolean;
+  since: string;
+}
+
+export type RoutineAction = "ACCOUNT_HEALTH_CHECK" | "TOKEN_CHECK" | "METRICS_SYNC";
+export interface RoutineStep { action: RoutineAction; offset_minutes: number }
+
+export interface PublishRoutine {
+  id: string;
+  name: string;
+  description: string | null;
+  steps: RoutineStep[];
+  is_default: boolean;
+  created_at: string;
+}
+
+export const ROUTINE_ACTION_LABELS: Record<RoutineAction, string> = {
+  ACCOUNT_HEALTH_CHECK: "Проверка аккаунта",
+  TOKEN_CHECK: "Проверка токена",
+  METRICS_SYNC: "Снять метрики",
+};
+
+export interface PublishTask {
+  id: number;
+  task_type: RoutineAction;
+  run_at: string;
+  status: "pending" | "running" | "done" | "failed" | "skipped";
+  attempts: number;
+  result: Record<string, unknown> | null;
+  error: string | null;
+  finished_at: string | null;
+}
+
+/** Разбор строки шагов «-15 health, +20 metrics» не нужен: форма собирает шаги по строкам. */
+export function formatOffset(minutes: number): string {
+  const sign = minutes < 0 ? "−" : "+";
+  const abs = Math.abs(minutes);
+  if (abs % 1440 === 0 && abs >= 1440) return `${sign}${abs / 1440} д`;
+  if (abs % 60 === 0 && abs >= 60) return `${sign}${abs / 60} ч`;
+  return `${sign}${abs} мин`;
+}
 
 /* ───────────────────────────── проверка здоровья ───────────────────────────── */
 

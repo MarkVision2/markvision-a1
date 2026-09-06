@@ -15,8 +15,9 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:install": "playwright install chromium",
     "typecheck": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json",
-    "ci": "npm run verify:audit && npm run lint && npm run typecheck && npm run test && npm run build",
-    "verify:audit": "bash scripts/verify-audit-plan.sh"
+    "ci": "npm run verify:audit && npm run lint && npm run typecheck && npm run typecheck:functions && npm run test && npm run build",
+    "verify:audit": "bash scripts/verify-audit-plan.sh",
+    "typecheck:functions": "tsc -p supabase/functions/_types/tsconfig.check.json"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
