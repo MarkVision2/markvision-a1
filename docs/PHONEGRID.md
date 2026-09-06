@@ -1,0 +1,196 @@
+# PhoneGrid — облачные Android-телефоны
+
+PhoneGrid (phonegrid.com) — сервис облачных Android-устройств: каждый телефон = отдельная среда
+с своим прокси, отпечатком, TikTok/Instagram-аккаунтом.
+
+## Зачем телефоны, если публикация идёт через официальные API
+
+**Публикация роликов через телефоны не идёт и не планируется.** Ролики уходят через контур
+`docs/PUBLISHING-SYSTEM.md` (Instagram Graph API, TikTok Content Posting API, YouTube, Threads) —
+очередь, слоты, ретраи, метрики. Телефоны — это **станок для заведения и прогрева аккаунтов**,
+которые потом подключаются к этому контуру по OAuth.
+
+Что официальные API не делают вообще:
+
+| Задача | API | Телефон |
+|---|---|---|
+| Опубликовать ролик | **да** | не нужен |
+| Расписание, ретраи, метрики | **да** | не нужен |
+| Создать аккаунт | нет | **да** |
+| Перевести в Business/Creator, привязать Facebook-страницу | нет | **да** |
+| Прогрев: лента, лайки, подписки, директ | нет | **да** |
+| TikTok до прохождения App Review | только приватные посты (`SELF_ONLY`) | **да** |
+| Пройти проверку личности после блокировки | нет | **да** |
+
+Отсюда рабочая схема и экономика:
+
+1. Телефон включается → на нём регистрируется аккаунт → 3–7 дней лёгкого прогрева.
+2. Аккаунт переводится в Business/Creator, привязывается к Facebook-странице.
+3. Аккаунт подключается по OAuth в «Публикации» → дальше публикует **API**.
+4. **Телефон выключается.** Публикация через официальный API не привязана к IP и не считается
+   площадкой сменой устройства, поэтому держать телефон включённым не нужно.
+
+Следствия: 2–3 телефона по очереди заводят хоть 100 аккаунтов — ферма из 100 телефонов не нужна;
+прокси нужен только на время регистрации и прогрева, а не постоянно на каждые 3–5 аккаунтов;
+поминутная оплата PhoneGrid под такую схему выгодна.
+
+Чего эта схема не даёт: аккаунты, подключённые к одному Meta-приложению, связаны между собой
+по определению — так работают все SMM-сервисы. Если нужна сеть аккаунтов, между которыми нет
+вообще никакой связи, официальный API не подходит и публиковать придётся с телефонов.
+
+Три канала доступа, у каждого своя авторизация.
+
+## 1. Local API — клиент на этой машине
+
+- Требует запущенный `PhoneGrid.app` (Electron) и вход в аккаунт. Слушает `http://127.0.0.1:30000`,
+  только с этой машины.
+- Ключ — «Local API» из раздела клиента **API & MCP**; хранится в `.env` как `PHONEGRID_LOCAL_API_KEY`.
+- Заголовок: `Authorization: Bearer <ключ>` (варианты `x-api-key`, `api-key`, `token` не принимаются —
+  ответ `401 Недействительный API-ключ`).
+- Все методы `POST` с JSON, кроме `GET /api/envtag/all`. Ответ всегда
+  `{"code":0,"msg":null,"data":…,"requestId":…}`; `code≠0` — ошибка (например `99006` — валидация,
+  `msg` на русском: `id: не должно равняться null`).
+
+Основные пути (полная схема — https://www.phonegrid.com/en/docs/api-reference/local-api/local-api):
+
+| Что | Path | Обязательные поля |
+|---|---|---|
+| Список телефонов | `/api/cloudphone/page` | `pageNo`, `pageSize` (+`keyword`, `bindIp`) |
+| Карточка | `/api/cloudphone/info` | `id` |
+| Создать (платно) | `/api/cloudphone/create` | `quantity` 1–10 (+`skuId`, `proxyId`, `country`, `timezone`, `language`, `envRemark`, `groupId`, `tags`) |
+| Вкл / выкл | `/api/cloudphone/powerOn`, `/powerOff` | `id` |
+| Сброс устройства | `/api/cloudphone/newMachine` | `id` |
+| ADB вкл/выкл | `/api/cloudphone/updateAdb` | `ids[]`, `enableAdb` |
+| Shell-команда | `/api/cloudphone/exeCommand` | `id`, `command` |
+| Залить файл | `/api/cloudphone/uploadFile` (multipart) | `id`, `file`, `uploadDest` (`/Download`) |
+| Каталог приложений | `/api/cloudphone/app/page` | `appName` (TikTok → `com.zhiliaoapp.musically`, 7 версий) |
+| Установить | `/api/cloudphone/app/install` | `id` + `appVersionId` (или `packageName`+`versionCode`) |
+| Установленные | `/api/cloudphone/app/installedList` | `id` |
+| Запуск / стоп | `/api/cloudphone/app/start`, `/restart`, `/stop`, `/uninstall` | `id`, `packageName` |
+| Прокси | `/api/proxyInfo/page`, `/add`, `/update`, `/delete` | — |
+| Группы, теги | `/api/envgroup/*`, `/api/envtag/*` | — |
+| Браузерные профили | `/api/env/*` | — |
+
+Обёртка: `node scripts/phonegrid.mjs phones | phone <id> | apps [name] | installed <id> | power on|off <id> |
+install <id> <appVersionId> | start-app <id> <pkg> | exec <id> "<cmd>" | upload <id> <file> [dest] | call <path> '<json>'`.
+Тесты без сети — `node --test scripts/phonegrid.test.mjs`.
+
+### Прокси и смена IP
+
+Один мобильный прокси на 3–5 телефонов, аккаунты работают по очереди, между телефонами — смена IP по ссылке
+продавца прокси (refresh URL). Команды:
+
+```bash
+node scripts/phonegrid.mjs proxy add "socks5://логин:пароль@хост:порт" --name KZ-mobile --refresh "https://…/changeip?key=…"
+node scripts/phonegrid.mjs proxy list                 # id, статус проверки PhoneGrid, refreshUrl
+node scripts/phonegrid.mjs bind 1724272301022428 <proxyId>
+node scripts/phonegrid.mjs ip                          # IP/страна/город через прокси (curl -x с этого Mac)
+node scripts/phonegrid.mjs rotate                      # открыть refresh URL, подождать 15 с, показать IP до/после
+node scripts/phonegrid.mjs switch <phoneId>            # выключить остальные телефоны → rotate → включить этот
+```
+
+Переменные `.env`: `PHONEGRID_PROXY_URL` (если проверять IP не через запись PhoneGrid), `PHONEGRID_PROXY_REFRESH_URL`
+(если ссылка не сохранена в записи прокси), `PHONEGRID_ROTATE_WAIT_MS` (пауза после смены, по умолчанию 15000).
+`proxy add` выключает мониторинг смены IP (`ipMonitor:false`), иначе PhoneGrid блокировал бы телефон при штатной ротации.
+
+### Автоматизация (RPA) — прогрев аккаунтов
+
+Раздел «Автоматизация» в клиенте = RPA-движок PhoneGrid: готовые сценарии из маркетплейса,
+которые сами включают телефон, открывают приложение и листают ленту как человек.
+Через Local API доступны `/api/cloudphone/rpa/*` (маркетплейс, свои шаблоны, разовые задачи,
+расписания, история). Публикация роликов у нас идёт через официальные API площадок, поэтому из
+маркетплейса нам нужны только **шаблоны прогрева**.
+
+**Три жёстких требования — иначе задача падает не начавшись:**
+
+| Требование | Проверка | Ошибка при нарушении |
+|---|---|---|
+| Точная версия приложения | Instagram — ровно `412.0.0.35.87` (`appVersionId 1682134957917431`) | `33603 app is not installed or the version is incompatible` |
+| Язык телефона | ровно `en-US` (`automaticLanguage:false` + перезагрузка) | то же `33603` |
+| Телефон **выключен** | RPA включает его сам (`powerOnTime` в истории) | `33309 Super administrator is using the cloud phone` |
+
+Требования шаблона видны только в клиенте: **Автоматизация → Маркетплейс → «Просмотр»** — API их
+не отдаёт, а проверка версии идёт на сервере PhoneGrid, поэтому в `logcat` телефона при отказе пусто.
+Для TikTok-шаблона требуемая версия ещё не выяснена (43.8.3 и 46.7.3 отклонены) — посмотреть в UI
+и вписать в `WARMUP_TEMPLATES.tt` в `scripts/phonegrid.mjs`.
+
+Состояния задачи (`taskState`): 0 ожидает, 1 выполняется, 2 выполнена, 3 отменена, 4 ошибка,
+5 останавливается. **Пока задача выполняется, телефон занят**: `exeCommand`, `download` и прочие
+ручные операции над ним отвечают `99002 The current request is not authorized for this operation`.
+Отменить задачу — `call /api/cloudphone/rpa/task/cancel '{"id":<id задачи>}'`.
+
+**Команды обёртки:**
+
+```bash
+node scripts/phonegrid.mjs rpa templates          # шаблоны маркетплейса
+node scripts/phonegrid.mjs warmup-plan            # план прогрева по дням 1…16
+node scripts/phonegrid.mjs warmup <phoneId> ig 3  # прогрев по плану 3-го дня
+node scripts/phonegrid.mjs rpa history 10         # что выполнялось и почему упало
+```
+
+`warmup` сам проверяет все три требования и объясняет, что именно поправить, до создания задачи.
+
+**Логика прогрева.** Новый аккаунт, который сразу начинает публиковать, выглядит ботом, поэтому
+активность нарастает: дни 1–2 — только просмотр, без единого действия; дни 3–4 — первые лайки;
+дни 5–7 — первые подписки; дни 8–14 — выход на обычную активность; с 15-го дня аккаунт считается
+прогретым и подключается к контуру публикации. Внутри дня число видео и вероятности берутся
+с разбросом, чтобы дни не были одинаковыми.
+
+### ADB — прямой доступ к телефону
+
+Даёт то, чего нет в `exec`: `uiautomator` (структура экрана), `logcat`, быстрый `push/pull`,
+`input tap/swipe`. Включается один раз: `call /api/cloudphone/updateAdb '{"enableAdb":true,"ids":[…]}'`.
+
+Android 13/14/15A/16 требуют SSH-туннель (Android 12/15 — прямой `adb connect`). Готовая команда и
+пароль лежат в `adbInfo` телефона (`/api/cloudphone/page`, поле есть только у включённого телефона,
+живёт ~сутки — `expireTime`):
+
+```bash
+adb connect localhost:<adbPort>   # после туннеля ssh -L <adbPort>:localhost:1 s@<host> -p 1824
+```
+
+Пароль длинный, вводится в ssh (`sshpass -p …`). После каждой перезагрузки телефона туннель
+рвётся и `adb devices` показывает `offline` — поднять туннель заново и `adb connect`.
+Нужен `adb` (`brew install --cask android-platform-tools`) и `sshpass`.
+
+## 2. Open API — серверный доступ (для n8n / edge-функций)
+
+- База `https://api.phonegrid.com`, те же пути, но без префикса `/api` (`/cloudphone/page`, …) плюс RPA:
+  `/cloudphone/rpa/template/market/page`, `/rpa/task/save`, `/rpa/onceTask/save`, `/rpa/subTask/page`.
+- Авторизация OAuth2 client_credentials: `POST /oauth2/token` с JSON
+  `{"client_id": "<API ID>", "client_secret": "<API Key>", "grant_type": "client_credentials"}` →
+  `data.access_token` (JWT, `expires_in: 3600`), далее `Authorization: Bearer <access_token>`.
+  `GET /oauth2/userinfo` — проверка токена.
+- **API ID** — числовой (вида `1672940217990530`), показывается в клиенте рядом с ключом Open API.
+  В `.env`: `PHONEGRID_OPEN_API_ID` + `PHONEGRID_OPEN_API_KEY`. Без API ID любой запрос отвечает
+  `35002 API authentication failed`.
+- Обёртка: `node scripts/phonegrid.mjs token` и `open <path> '<json>'`.
+
+## 3. MCP-сервер `phonegrid-mcp`
+
+- Бинарник клиент скачивает сам: `~/Library/Caches/PhoneGrid/mcp/phonegrid-mcp` (stdio, без ключей —
+  общается с запущенным клиентом). Зарегистрирован в Claude Code как `phonegrid` (user scope, `~/.claude.json`).
+- Инструменты только для **браузерных профилей**, не для облачных телефонов:
+  `manage_browser` (create/start/close) и `browser_operate` (screenshot, navigate, click, fill, act/extract
+  через Stagehand). Телефонами управлять через Local API / Open API.
+
+## Состояние аккаунта (06.09.2026)
+
+- Команда «zapoinov95 team», API ID в `.env`. Группа «MarkVision» (`1724273590341163`).
+- **CP-1** `1724272301022428`: Android 14, язык en-US. Instagram 445 (авторизован пользователем),
+  TikTok 43.8.3. Выключен.
+- **CP-2** `1724291827605374`: Android 14, язык en-US, Instagram **412.0.0.35.87** (версия под RPA),
+  аккаунт ещё не заведён. Выключен.
+- Прокси `1724289163800349` (SX.ORG, HTTP `212.8.248.20:10498`) привязан к обоим. **Это ротационный
+  резидентный пул, а не выделенный мобильный**: за час IP сам сменился с Tele2 Уральск на
+  Kazakhtelecom Алматы. Ссылки смены IP от продавца нет — `rotate`/`switch` не работают.
+  Для сети аккаунтов нужен выделенный мобильный.
+- RPA проверен: с Instagram 412 + en-US + выключенным телефоном задача уходит в работу
+  (`taskState 1`, PhoneGrid сам включает телефон). Прогревать пока нечего — на CP-2 нет аккаунта.
+- Оплата поминутная (`billingType 1`) — телефоны выключать после работы.
+
+Известные коды: `33100` нет прокси, `33301` телефон выключен, `33014` слишком много запросов,
+`33309` телефон занят (для RPA его надо выключить), `33603` версия приложения или язык не совпали
+с требованиями шаблона, `99002` телефон занят RPA-задачей.
+`envStatus` 2 выключен → 3 загружается (~60 с) → 4 работает. `/api/proxyInfo/page` не отдаёт порт
+прокси — обёртка добирает его из `/api/cloudphone/info`.

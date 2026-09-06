@@ -8,15 +8,18 @@
  * Чего эта функция НЕ делает намеренно:
  *   • не хранит и не принимает пароли площадок — вход в приложение делает человек
  *     руками на самом телефоне, платформа знает только id устройства;
- *   • не создаёт телефоны (платная операция) — только привязывает уже существующие;
+ *   • не удаляет телефоны — списание и возврат средств остаются в кабинете PhoneGrid;
  *   • не публикует — публикация идёт через официальные API площадок.
  *
  * Действия (POST { action, project_id, … }):
  *   phones        — телефоны PhoneGrid: статус, прокси, аккаунт и день прогрева
  *   accounts_free — аккаунты проекта без телефона (для привязки из списка устройств)
+ *   options       — что предложить в форме создания: модели, прокси, группы PhoneGrid
+ *   create_phone  — создать устройство (ПЛАТНО, до 10 за раз)
+ *   proxy_add     — добавить прокси строкой socks5://логин:пароль@хост:порт
  *   attach        — привязать телефон к аккаунту (одно устройство = один аккаунт)
  *   detach        — отвязать
- *   power         — включить / выключить телефон
+ *   power         — включить / выключить телефон (по phone_id или по аккаунту)
  *   warmup        — поставить прогрев на сегодня (RPA-задача)
  *   warmup_status — план прогрева и итог последних прогонов
  *
@@ -29,8 +32,10 @@ import { projectRoleOf, requireProjectAccess, requireUser } from "../_lib/auth.t
 import { canDo } from "../_lib/rbac.ts";
 import { CORS_HEADERS, json } from "../_lib/publishing.ts";
 import {
+  parseProxyUrl,
   phonegridCall,
   phonegridConfig,
+  PHONE_MODELS,
   RPA_STATE,
   summarizePhone,
   warmupDayFrom,
@@ -138,6 +143,61 @@ Deno.serve(async (req) => {
       return json({ ok: true, accounts: data ?? [] });
     }
 
+    if (action === "options") {
+      // Всё, что нужно форме создания устройства: модели, свободные прокси и группы.
+      const [proxies, groups] = await Promise.all([
+        phonegridCall<{ dataList?: Record<string, unknown>[] }>(cfg, "/proxyInfo/page", { ...PAGE, isCloudPhoneProxy: true }),
+        phonegridCall<{ dataList?: Record<string, unknown>[] }>(cfg, "/envgroup/page", PAGE),
+      ]);
+      return json({
+        ok: true,
+        models: PHONE_MODELS,
+        proxies: (proxies.dataList ?? []).map((p) => ({
+          id: String(p.id ?? ""),
+          name: String(p.proxyName ?? ""),
+          ip: String(p.proxyIp ?? ""),
+          country: (p.countryCode as string) ?? null,
+        })),
+        groups: (groups.dataList ?? []).map((g) => ({ id: String(g.id ?? ""), name: String(g.groupName ?? "") })),
+      });
+    }
+
+    if (action === "proxy_add") {
+      const url = String(body.url ?? "").trim();
+      if (!url) return json({ error: "Укажите строку прокси" }, 400);
+      const parsed = parseProxyUrl(url);
+      const added = await phonegridCall(cfg, "/proxyInfo/add", {
+        ...parsed,
+        proxyName: String(body.name ?? "") || `${parsed.proxyIp}:${parsed.proxyPort}`,
+        refreshUrl: String(body.refresh_url ?? ""),
+        // Мониторинг смены IP выключаем: у мобильного прокси адрес меняется штатно,
+        // иначе PhoneGrid блокирует телефон при каждой ротации.
+        ipMonitor: false,
+        ipChangeAction: 1,
+      });
+      return json({ ok: true, proxy: added });
+    }
+
+    if (action === "create_phone") {
+      const quantity = Math.min(Math.max(Number(body.quantity ?? 1), 1), 10);
+      const skuId = String(body.sku_id ?? "");
+      if (!PHONE_MODELS.some((m) => m.skuId === skuId)) return json({ error: "Выберите модель устройства" }, 400);
+      const proxyId = body.proxy_id ? Number(body.proxy_id) : null;
+      // Без прокси телефон создастся, но не включится (PhoneGrid отвечает 33100).
+      const created = await phonegridCall<string[]>(cfg, "/cloudphone/create", {
+        skuId,
+        quantity,
+        envRemark: String(body.remark ?? ""),
+        ...(proxyId ? { proxyId } : {}),
+        ...(body.group_id ? { groupId: Number(body.group_id) } : {}),
+        automaticGeo: true,
+        automaticLanguage: true,
+        automaticLocation: true,
+        ...(Array.isArray(body.tags) && body.tags.length ? { tags: body.tags } : {}),
+      });
+      return json({ ok: true, created: created ?? [], quantity });
+    }
+
     if (action === "attach" || action === "detach") {
       const accountId = String(body.account_id ?? "");
       const account = await loadAccount(accountId, projectId);
@@ -172,11 +232,16 @@ Deno.serve(async (req) => {
     }
 
     if (action === "power") {
-      const accountId = String(body.account_id ?? "");
-      const account = await loadAccount(accountId, projectId);
-      if (!account?.device_phone_id) return json({ error: "К аккаунту не привязан телефон" }, 400);
+      // Телефон включается и без привязанного аккаунта: с этого начинается заведение
+      // нового аккаунта — сначала поднять устройство, потом зарегистрироваться на нём.
+      let phoneId = String(body.phone_id ?? "");
+      if (!phoneId) {
+        const account = await loadAccount(String(body.account_id ?? ""), projectId);
+        if (!account?.device_phone_id) return json({ error: "Не указан телефон" }, 400);
+        phoneId = account.device_phone_id;
+      }
       const on = body.on !== false;
-      await phonegridCall(cfg, on ? "/cloudphone/powerOn" : "/cloudphone/powerOff", { id: Number(account.device_phone_id) });
+      await phonegridCall(cfg, on ? "/cloudphone/powerOn" : "/cloudphone/powerOff", { id: Number(phoneId) });
       return json({ ok: true, on });
     }
 

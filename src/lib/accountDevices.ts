@@ -67,6 +67,21 @@ export interface DeviceStatus {
   history: WarmupRun[];
 }
 
+export interface DeviceOptions {
+  models: { skuId: string; label: string }[];
+  proxies: { id: string; name: string; ip: string; country: string | null }[];
+  groups: { id: string; name: string }[];
+}
+
+export interface CreatePhoneInput {
+  sku_id: string;
+  quantity: number;
+  remark?: string;
+  proxy_id?: string | null;
+  group_id?: string | null;
+  tags?: string[];
+}
+
 export class DeviceApiError extends Error {}
 
 async function call<T>(action: string, projectId: string, body: Record<string, unknown> = {}): Promise<T> {
@@ -95,6 +110,24 @@ export async function listPhones(projectId: string): Promise<DevicePhone[]> {
   return r.phones ?? [];
 }
 
+/** Что предложить в форме создания устройства: модели, прокси и группы PhoneGrid. */
+export async function deviceOptions(projectId: string): Promise<DeviceOptions> {
+  return await call<DeviceOptions>("options", projectId);
+}
+
+/**
+ * Создание облачных телефонов — **платная операция**: устройства начинают тарифицироваться
+ * сразу. Больше десяти за раз PhoneGrid не отдаёт.
+ */
+export async function createPhones(projectId: string, input: CreatePhoneInput): Promise<{ created: string[] }> {
+  return await call<{ created: string[] }>("create_phone", projectId, input as unknown as Record<string, unknown>);
+}
+
+/** Прокси строкой socks5://логин:пароль@хост:порт; refresh_url — ссылка смены IP, если есть. */
+export async function addProxy(projectId: string, url: string, name?: string, refreshUrl?: string): Promise<void> {
+  await call("proxy_add", projectId, { url, name, refresh_url: refreshUrl });
+}
+
 /** Аккаунты проекта без телефона — для привязки прямо из списка устройств. */
 export async function listFreeAccounts(projectId: string): Promise<DeviceAccountRef[]> {
   const r = await call<{ accounts: DeviceAccountRef[] }>("accounts_free", projectId);
@@ -109,9 +142,12 @@ export async function detachPhone(projectId: string, accountId: string): Promise
   await call("detach", projectId, { account_id: accountId });
 }
 
-/** Включение и выключение телефона: он тарифицируется по минутам, гасим после работы. */
-export async function setPhonePower(projectId: string, accountId: string, on: boolean): Promise<void> {
-  await call("power", projectId, { account_id: accountId, on });
+/**
+ * Включение и выключение телефона: тарифицируется по минутам, гасим после работы.
+ * Работает и на свободном телефоне — с включения начинается заведение нового аккаунта.
+ */
+export async function setPhonePower(projectId: string, phoneId: string, on: boolean): Promise<void> {
+  await call("power", projectId, { phone_id: phoneId, on });
 }
 
 export async function deviceStatus(projectId: string, accountId: string): Promise<DeviceStatus> {

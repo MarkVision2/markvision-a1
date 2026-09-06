@@ -190,6 +190,44 @@ export function warmupDayFrom(startedAt: string | null, now = new Date()): numbe
   return Math.max(1, days + 1);
 }
 
+/**
+ * Модели облачных телефонов PhoneGrid: skuId → версия Android.
+ * Значения зашиты в API и в UI не перечисляются — взяты из схемы /cloudphone/create.
+ */
+export const PHONE_MODELS: { skuId: string; label: string }[] = [
+  { skuId: "10005", label: "Android 14" },
+  { skuId: "10004", label: "Android 15" },
+  { skuId: "10014", label: "Android 15A" },
+  { skuId: "10013", label: "Android 13" },
+  { skuId: "10002", label: "Android 12" },
+];
+
+/** Коды провайдеров прокси по схеме URL (обычные прокси; интеграции провайдеров — свои коды). */
+export const PROXY_PROVIDER: Record<string, number> = { http: 0, https: 1, socks5: 2, socks5h: 2, ssh: 3 };
+
+/** socks5://логин:пароль@хост:порт → поля /proxyInfo/add. */
+export function parseProxyUrl(raw: string): {
+  proxyProvider: number; proxyIp: string; proxyPort: number; username: string; password: string;
+} {
+  let u: URL;
+  try {
+    u = new URL(raw.trim());
+  } catch {
+    throw new Error(`Не разобрать прокси «${raw}». Ожидаю socks5://логин:пароль@хост:порт`);
+  }
+  const scheme = u.protocol.replace(":", "").toLowerCase();
+  if (!(scheme in PROXY_PROVIDER)) throw new Error(`Схема ${scheme} не поддерживается: http, https, socks5, ssh`);
+  const port = u.port || ({ http: "80", https: "443" } as Record<string, string>)[scheme] || "";
+  if (!u.hostname || !port) throw new Error("В строке прокси нужны хост и порт");
+  return {
+    proxyProvider: PROXY_PROVIDER[scheme],
+    proxyIp: u.hostname,
+    proxyPort: Number(port),
+    username: decodeURIComponent(u.username),
+    password: decodeURIComponent(u.password),
+  };
+}
+
 /** Расшифровка состояний RPA-задачи — в документации PhoneGrid описаны не все. */
 export const RPA_STATE: Record<number, string> = {
   0: "ожидает запуска",

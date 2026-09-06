@@ -89,7 +89,7 @@ export const ACTION_LEVELS: Record<string, PermissionLevel> = {
   webhook_list: "read", webhook_deliveries: "read", api_key_list: "read", member_list: "read",
   routine_list: "read", tasks_list: "read", calendar: "read",
   // облачные телефоны в карточке аккаунта: смотреть можно с правом чтения
-  phones: "read", warmup_status: "read", accounts_free: "read",
+  phones: "read", warmup_status: "read", accounts_free: "read", options: "read",
   // оператор: разбор ошибок, проверка здоровья, уведомления
   notification_read: "operate", job_retry: "operate", job_cancel: "operate", health_check: "operate",
   // контент и расписание
@@ -105,6 +105,7 @@ export const ACTION_LEVELS: Record<string, PermissionLevel> = {
   webhook_upsert: "manage", webhook_delete: "manage", routine_upsert: "manage", routine_delete: "manage", routine_assign: "manage",
   // привязка телефона, питание и запуск прогрева — уровень управления аккаунтами
   attach: "manage", detach: "manage", power: "manage", warmup: "manage",
+  create_phone: "manage", proxy_add: "manage",
   // роли участников — только администратор и владелец
   member_role_set: "admin",
 };

@@ -16,6 +16,8 @@ const listFreeAccounts = vi.fn();
 const attachPhone = vi.fn();
 const setPhonePower = vi.fn();
 const runWarmup = vi.fn();
+const deviceOptions = vi.fn();
+const createPhones = vi.fn();
 vi.mock("@/lib/accountDevices", () => ({
   listPhones: (...a: unknown[]) => listPhones(...a),
   listFreeAccounts: (...a: unknown[]) => listFreeAccounts(...a),
@@ -23,6 +25,9 @@ vi.mock("@/lib/accountDevices", () => ({
   detachPhone: vi.fn(),
   setPhonePower: (...a: unknown[]) => setPhonePower(...a),
   runWarmup: (...a: unknown[]) => runWarmup(...a),
+  deviceOptions: (...a: unknown[]) => deviceOptions(...a),
+  createPhones: (...a: unknown[]) => createPhones(...a),
+  addProxy: vi.fn(),
 }));
 
 const withAccount: DevicePhone = {
@@ -42,6 +47,12 @@ beforeEach(() => {
   attachPhone.mockReset().mockResolvedValue(undefined);
   setPhonePower.mockReset().mockResolvedValue(undefined);
   runWarmup.mockReset().mockResolvedValue({ plan: { day: 6 } });
+  deviceOptions.mockReset().mockResolvedValue({
+    models: [{ skuId: "10005", label: "Android 14" }],
+    proxies: [{ id: "px1", name: "KZ-mobile", ip: "212.8.248.20", country: "KZ" }],
+    groups: [{ id: "g1", name: "MarkVision" }],
+  });
+  createPhones.mockReset().mockResolvedValue({ created: ["1003"] });
 });
 
 describe("раздел «Устройства»", () => {
@@ -67,13 +78,40 @@ describe("раздел «Устройства»", () => {
     expect(screen.getByText("запущен день 6")).toBeInTheDocument();
   });
 
-  it("без привязанного аккаунта включение и прогрев недоступны", async () => {
+  it("включить можно и свободный телефон — с этого начинается заведение аккаунта", async () => {
     render(<DevicesTab />);
     await screen.findByText("CP-2");
-    // У свободного телефона обе кнопки заблокированы: включать и греть нечего.
+    // Питание не зависит от аккаунта: сначала поднимаем телефон, потом регистрируемся на нём.
+    const powerButtons = screen.getAllByRole("button", { name: /Включить|Выключить/ });
+    expect(powerButtons[0]).toBeEnabled();
+    expect(powerButtons[1]).toBeEnabled();
+    // А прогревать нечего, пока аккаунт не привязан.
     const warmButtons = screen.getAllByRole("button", { name: "Прогреть" });
     expect(warmButtons[0]).toBeEnabled();
     expect(warmButtons[1]).toBeDisabled();
+  });
+
+  it("питание зовётся по телефону, а не по аккаунту", async () => {
+    render(<DevicesTab />);
+    await screen.findByText("CP-2");
+    fireEvent.click(screen.getAllByRole("button", { name: /Включить/ })[0]);
+    await waitFor(() => expect(setPhonePower).toHaveBeenCalledWith("p1", "1002", true));
+  });
+
+  it("устройство создаётся из интерфейса", async () => {
+    render(<DevicesTab />);
+    await screen.findByText("CP-1");
+    fireEvent.click(screen.getByRole("button", { name: /Устройство/ }));
+    expect(await screen.findByText("Новое устройство")).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: /Создать устройство/ }));
+    await waitFor(() => expect(createPhones).toHaveBeenCalledWith("p1", expect.objectContaining({ sku_id: "10005", quantity: 1 })));
+  });
+
+  it("пустой список предлагает создать первое устройство", async () => {
+    listPhones.mockResolvedValue([]);
+    render(<DevicesTab />);
+    expect(await screen.findByText(/Устройств пока нет/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Создать устройство/ })).toBeEnabled();
   });
 
   it("прогрев зовётся по аккаунту, а не по телефону", async () => {
@@ -89,12 +127,6 @@ describe("раздел «Устройства»", () => {
     fireEvent.change(screen.getByPlaceholderText(/Поиск/), { target: { value: "CP-2" } });
     await waitFor(() => expect(screen.queryByText("CP-1")).not.toBeInTheDocument());
     expect(screen.getByText("CP-2")).toBeInTheDocument();
-  });
-
-  it("пустой список объясняет, что телефоны появятся сами", async () => {
-    listPhones.mockResolvedValue([]);
-    render(<DevicesTab />);
-    expect(await screen.findByText(/Телефонов пока нет/)).toBeInTheDocument();
   });
 
   it("ошибка запроса показывается, а не молча пустой список", async () => {

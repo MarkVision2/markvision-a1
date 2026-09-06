@@ -16,13 +16,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, RefreshCw, Smartphone } from "lucide-react";
+import { Loader2, Plus, RefreshCw, Smartphone } from "lucide-react";
 import { toast } from "sonner";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import {
   attachPhone, detachPhone, listFreeAccounts, listPhones, runWarmup, setPhonePower,
   type DeviceAccountRef, type DevicePhone,
 } from "@/lib/accountDevices";
+import { CreateDeviceDialog } from "@/components/publishing/CreateDeviceDialog";
 
 const NONE = "__none";
 
@@ -48,6 +49,7 @@ export function DevicesTab() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [q, setQ] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
 
   const reload = useCallback(async () => {
     if (!projectId) return;
@@ -100,9 +102,14 @@ export function DevicesTab() {
             идёт через API площадки и телефона не требует, поэтому после работы его выключают.
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => void reload()} disabled={busy !== null}>
-          <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Обновить
-        </Button>
+        <div className="flex shrink-0 gap-2">
+          <Button variant="outline" size="sm" onClick={() => void reload()} disabled={busy !== null}>
+            <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Обновить
+          </Button>
+          <Button size="sm" onClick={() => setCreateOpen(true)} disabled={!projectId}>
+            <Plus className="mr-1.5 h-3.5 w-3.5" /> Устройство
+          </Button>
+        </div>
       </CardHeader>
 
       <CardContent className="space-y-3">
@@ -115,9 +122,14 @@ export function DevicesTab() {
             <Loader2 className="h-4 w-4 animate-spin" /> Загружаем телефоны…
           </div>
         ) : phones.length === 0 && !error ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">
-            Телефонов пока нет. Создайте их в PhoneGrid — здесь они появятся сами.
-          </p>
+          <div className="space-y-3 py-8 text-center">
+            <p className="text-sm text-muted-foreground">
+              Устройств пока нет. Создайте первое — это облачный Android, на котором вы заведёте аккаунт.
+            </p>
+            <Button size="sm" onClick={() => setCreateOpen(true)}>
+              <Plus className="mr-1.5 h-3.5 w-3.5" /> Создать устройство
+            </Button>
+          </div>
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-2">
@@ -196,14 +208,18 @@ export function DevicesTab() {
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1.5">
                             <Button
-                              size="sm" variant="outline" disabled={rowBusy || !p.account}
+                              size="sm" variant="outline" disabled={rowBusy || p.status === 3}
+                              title={p.proxyIp ? undefined : "Без прокси телефон не включится — привяжите прокси в PhoneGrid"}
                               onClick={() => void act(p.id, p.status === 4 ? "Выключен" : "Включён",
-                                () => setPhonePower(projectId!, p.account!.id, p.status !== 4))}
+                                () => setPhonePower(projectId!, p.id, p.status !== 4))}
                             >
                               {p.status === 4 ? "Выключить" : "Включить"}
                             </Button>
                             <Button
                               size="sm" disabled={rowBusy || !p.account}
+                              title={p.account
+                                ? "Запустить сценарий прогрева на сегодня"
+                                : "Сначала привяжите аккаунт — прогревают именно его, а не телефон"}
                               onClick={() => void act(p.id, "Прогрев запущен", () => runWarmup(projectId!, p.account!.id))}
                             >
                               Прогреть
@@ -225,13 +241,23 @@ export function DevicesTab() {
             </div>
 
             <p className="text-xs text-muted-foreground">
-              Одно устройство — один аккаунт: два аккаунта на одном телефоне площадка свяжет
-              между собой по отпечатку. Прогрев запускается на выключенном телефоне — он включит
-              его сам и погасит после сценария.
+              Порядок для нового аккаунта: включить телефон → открыть его в PhoneGrid и
+              зарегистрироваться в приложении руками → привязать аккаунт здесь → жать «Прогреть»
+              каждый день до пятнадцатого. Одно устройство — один аккаунт: два аккаунта на одном
+              телефоне площадка свяжет между собой по отпечатку. Прогрев запускается на выключенном
+              телефоне — он включит его сам. Телефоны тарифицируются по минутам, гасите после работы.
             </p>
           </>
         )}
       </CardContent>
+
+      {createOpen && projectId && (
+        <CreateDeviceDialog
+          open projectId={projectId}
+          onClose={() => setCreateOpen(false)}
+          onCreated={() => void reload()}
+        />
+      )}
     </Card>
   );
 }
