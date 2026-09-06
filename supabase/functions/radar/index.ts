@@ -6,7 +6,8 @@
  *     GET  /radar?project_id=…                 обзор: источники, витрина, идеи, лучшие посты
  *     GET  /radar/posts/:id                    пост целиком (транскрипт, X-фактор) + его идеи
  *     POST /radar/sources                      { project_id, kind, platform, handle, label?, crawl_interval_hours?, id? }
- *     POST /radar/sources/:id/delete
+ *     POST /radar/sources/:id/delete           источник + его посты и осиротевшие идеи
+ *     POST /radar/sources/:id/impact           сколько постов и идей уйдёт при удалении
  *     POST /radar/sources/:id/crawl            собрать сейчас (пинок n8n-сборщика)
  *     POST /radar/analyze-url                  { project_id, url } — разобрать одну ссылку (через n8n)
  *     POST /radar/posts/:id/analyze            повторный разбор поста
@@ -717,7 +718,7 @@ async function handleUser(req: Request, segments: string[], url: URL): Promise<R
       db.from("radar_metrics").select("*").eq("project_id", projectId!).maybeSingle(),
       db.from("idea_bank").select("*").eq("project_id", projectId!).order("score", { ascending: false }).limit(200),
       db.from("radar_posts")
-        .select("id, source_id, platform, external_id, url, author_handle, published_at, media_type, caption, thumbnail_url, metrics, followers, engagement_rate, velocity, score, analysis, analysis_status, analyzed_at, error, baseline_views, baseline_likes, norm_views, x_factor")
+        .select("id, source_id, platform, external_id, url, author_handle, published_at, media_type, caption, thumbnail_url, video_url, metrics, followers, engagement_rate, velocity, score, analysis, analysis_status, analyzed_at, error, baseline_views, baseline_likes, norm_views, x_factor")
         .eq("project_id", projectId!).order("score", { ascending: false, nullsFirst: false }).limit(200),
       db.from("publish_account_groups").select("id, name, persona_id, review_mode").eq("project_id", projectId!).order("name"),
       db.from("radar_runs").select("*").eq("project_id", projectId!).order("started_at", { ascending: false }).limit(20),
@@ -784,8 +785,25 @@ async function handleUser(req: Request, segments: string[], url: URL): Promise<R
     const s = src as { id: string; project_id: string; kind: string; platform: string; handle: string } | null;
     if (!s || !(await projectOk(s.project_id))) return json({ error: "Источник не найден" }, 404);
     if (segments[2] === "delete") {
-      await db.from("radar_sources").delete().eq("id", id);
-      return json({ ok: true });
+      // Посты и осиротевшие идеи уносит RPC; превью из Storage чистим здесь.
+      const { data: res, error } = await db.rpc("radar_delete_source", { p_source_id: id });
+      if (error) return json({ error: error.message }, 400);
+      const out = (res ?? {}) as { posts?: number; ideas?: number; post_ids?: string[] };
+      const postIds = Array.isArray(out.post_ids) ? out.post_ids : [];
+      if (postIds.length) {
+        // Расширение файла заранее неизвестно — снимаем все объекты в папке проекта по id поста.
+        const { data: files } = await db.storage.from(RADAR_THUMBS_BUCKET).list(s.project_id, { limit: 1000 });
+        const doomed = (files ?? [])
+          .filter((f) => postIds.some((pid) => (f as { name: string }).name.startsWith(pid)))
+          .map((f) => `${s.project_id}/${(f as { name: string }).name}`);
+        if (doomed.length) await db.storage.from(RADAR_THUMBS_BUCKET).remove(doomed);
+      }
+      return json({ ok: true, posts: out.posts ?? 0, ideas: out.ideas ?? 0 });
+    }
+    if (segments[2] === "impact") {
+      const { data } = await db.rpc("radar_source_impact", { p_source_id: id });
+      const im = (data ?? {}) as { posts?: number | null; ideas?: number | null };
+      return json({ ok: true, posts: Number(im.posts ?? 0), ideas: Number(im.ideas ?? 0) });
     }
     if (segments[2] === "crawl") {
       const { data: budgetOk } = await db.rpc("project_budget_ok", { p_project_id: s.project_id });

@@ -21,6 +21,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -118,11 +121,12 @@ export default function Publishing() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params]);
 
-  const connectOAuth = async (platform: OAuthPlatform) => {
+  // groupId — в какую группу положить аккаунт после возврата с площадки (publish-oauth хранит его в state).
+  const connectOAuth = async (platform: OAuthPlatform, groupId: string | null = null) => {
     if (!projectId) return;
     setOauthBusy(platform);
     try {
-      const url = await startPublishOAuth(projectId, platform);
+      const url = await startPublishOAuth(projectId, platform, groupId);
       window.location.assign(url);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Не удалось начать подключение");
@@ -154,9 +158,25 @@ export default function Publishing() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuItem onSelect={() => setDialog("instagram")}>Instagram</DropdownMenuItem>
-                  {(["threads", "tiktok", "youtube"] as OAuthPlatform[]).map((pl) => (
-                    <DropdownMenuItem key={pl} onSelect={() => void connectOAuth(pl)}>{OAUTH_LABELS[pl]}</DropdownMenuItem>
-                  ))}
+                  {(["threads", "tiktok", "youtube"] as OAuthPlatform[]).map((pl) => {
+                    // Есть группы — даём выбрать, куда положить новый аккаунт (без группы всё равно можно).
+                    const groups = pub.groups.filter((g) => !g.platform || g.platform === pl);
+                    if (!groups.length) {
+                      return <DropdownMenuItem key={pl} onSelect={() => void connectOAuth(pl)}>{OAUTH_LABELS[pl]}</DropdownMenuItem>;
+                    }
+                    return (
+                      <DropdownMenuSub key={pl}>
+                        <DropdownMenuSubTrigger>{OAUTH_LABELS[pl]}</DropdownMenuSubTrigger>
+                        <DropdownMenuSubContent className="w-56">
+                          <DropdownMenuItem onSelect={() => void connectOAuth(pl)}>Без группы</DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          {groups.map((g) => (
+                            <DropdownMenuItem key={g.id} onSelect={() => void connectOAuth(pl, g.id)}>В группу «{g.name}»</DropdownMenuItem>
+                          ))}
+                        </DropdownMenuSubContent>
+                      </DropdownMenuSub>
+                    );
+                  })}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onSelect={() => setDialog("threads")}>
                     <KeyRound className="mr-2 h-3.5 w-3.5" /> Threads по токену

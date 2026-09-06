@@ -54,6 +54,18 @@ export function xTone(x: number | null | undefined): XTone {
   return "normal";
 }
 
+/**
+ * Деньги радара: суммы бывают в центах и долях цента, поэтому «$0.00» врёт —
+ * ниже цента показываем три знака, ровный ноль — как «$0».
+ */
+export function formatUsd(n: number | null | undefined): string {
+  const v = Number(n);
+  if (!Number.isFinite(v) || v === 0) return "$0";
+  if (v < 0.001) return "<$0.001";
+  if (v < 1) return `$${v.toFixed(3)}`;
+  return `$${v.toFixed(2)}`;
+}
+
 /** Компактное число: 16,1M · 809K · 1 200. */
 export function formatCompact(n: number | null | undefined): string {
   const v = Number(n);

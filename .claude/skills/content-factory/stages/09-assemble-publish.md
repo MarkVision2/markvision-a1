@@ -4,9 +4,16 @@
 с этапа 8. **Выход:** `out/<id>.mp4`, `out/publish.json`, задания в MarkVision.
 
 ## Сборка
-1. Рендер Remotion: композиция аватар + анимация (см. `docs/REMOTION.md`; пока композиции
-   `ReelsAvatar` нет — `ReelsExplainer` с аватаром как `<Video>` в слоте раскладки).
-   Пропсы — `scenes/<id>.json`. Рендер только по команде с этапа 8.
+1. Рендер Remotion, композиция `ReelsAvatar` (аватар поверх анимации, 4 раскладки).
+   Пропсы — `scenes/<id>.json`, файл аватара кладётся в `remotion/public/` (имя `source.mp4`
+   занято прокси монтажной съёмки — брать своё, например `avatar/<id>.mp4`).
+   Новый ролик = своя `<Composition>` в `remotion/src/Root.tsx` (id без `_`), либо рендер
+   существующей `ReelsAvatar` с `--props=`. Рендер только по команде с этапа 8:
+   ```bash
+   cd remotion && npx remotion render src/index.ts ReelsAvatar ../out/<id>.mp4 \
+     --props=../work/factory/<project>/batches/<b>/scenes/<id>.json \
+     --image-format=png --crf=14 --x264-preset=slow
+   ```
 2. Обложка: первый кадр **заменяет** первый кадр видео, а не добавляется перед ним. Иначе
    видео на секунду длиннее звука (реальный баг).
 3. Музыка/фон/субтитры — по `format.md`. Звук аватара не обрабатывать.

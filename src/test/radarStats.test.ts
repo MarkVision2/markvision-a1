@@ -10,6 +10,7 @@ import {
   filterTrends,
   followerBracket,
   formatAge,
+  formatUsd,
   formatX,
   hotScore,
   nicheOptions,
@@ -51,6 +52,22 @@ describe("normViews / formatX / xTone", () => {
     expect(xTone(1.5)).toBe("above");
     expect(xTone(1)).toBe("normal");
     expect(xTone(null)).toBe("none");
+  });
+});
+
+describe("formatUsd", () => {
+  it("ниже цента показывает три знака — «$0.00» скрывал бы реальные траты", () => {
+    expect(formatUsd(0.0212)).toBe("$0.021");
+    expect(formatUsd(0.0446)).toBe("$0.045");
+    expect(formatUsd(0.009)).toBe("$0.009");
+    expect(formatUsd(0.066)).toBe("$0.066");
+    expect(formatUsd(0.0004)).toBe("<$0.001");
+  });
+  it("ровный ноль и обычные суммы", () => {
+    expect(formatUsd(0)).toBe("$0");
+    expect(formatUsd(null)).toBe("$0");
+    expect(formatUsd(1.5)).toBe("$1.50");
+    expect(formatUsd(12.345)).toBe("$12.35");
   });
 });
 

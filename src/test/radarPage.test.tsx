@@ -27,6 +27,8 @@ vi.mock("@/hooks/useProjectsStore", () => ({
 }));
 
 const promoteIdea = vi.fn().mockResolvedValue({ item_id: "item-77" });
+const sourceImpact = vi.fn().mockResolvedValue({ posts: 12, ideas: 3 });
+const deleteSource = vi.fn().mockResolvedValue({ ok: true, posts: 12, ideas: 3 });
 const analyzePost = vi.fn().mockResolvedValue({ ok: true, idea_id: null, error: null });
 const updateIdea = vi.fn().mockResolvedValue({ idea: {} });
 
@@ -86,7 +88,12 @@ vi.mock("@/hooks/useRadar", () => ({
       id: "src-own", project_id: "proj-1", kind: "own_account", platform: "instagram", handle: "aiva",
       label: null, enabled: true, crawl_interval_hours: 24, last_crawled_at: null, last_error: null, created_at: "2026-09-01T10:00:00.000Z",
     }],
-    metrics: { sources: 3, posts_total: 60, posts_7d: 42, posts_unanalyzed: 5, posts_viral: 4, ideas_new: 7, ideas_used: 2, spent_month_usd: 1.5, last_run_at: null },
+    metrics: {
+      sources: 3, sources_total: 4, posts_total: 60, posts_7d: 42, posts_unanalyzed: 5, posts_analyzed: 55,
+      posts_viral: 4, posts_scored: 48, ideas_total: 9, ideas_new: 7, ideas_approved: 1, ideas_used: 2,
+      posts_today: 2, best_x_factor: 526.26, best_x_author: "ai_sashka.ua", top_niche: "AI-маркетинг",
+      spent_month_crawl_usd: 0.021, spent_month_ai_usd: 0.045, spent_month_usd: 0.066, last_run_at: null, runs_active: 0,
+    },
     ideas: [idea],
     posts: [post, { ...post, id: "post-own", source_id: "src-own", author_handle: "aiva", external_id: "own-1" }],
     groups: [
@@ -101,7 +108,8 @@ vi.mock("@/hooks/useRadar", () => ({
     busy: null,
     refetch: vi.fn(),
     upsertSource: vi.fn(),
-    deleteSource: vi.fn(),
+    sourceImpact,
+    deleteSource,
     crawlSource: vi.fn(),
     analyzeUrl: vi.fn(),
     analyzePost,
@@ -129,11 +137,22 @@ describe("Radar page", () => {
     expect(screen.getByText("Источников")).toBeTruthy();
     expect(screen.getByText("42")).toBeTruthy();
     expect(screen.getByText("Залетевших")).toBeTruthy();
-    expect(screen.getByText("Не разобрано")).toBeTruthy();
+    expect(screen.getByText("Ждут разбора")).toBeTruthy();
     expect(screen.getByText("Новых идей")).toBeTruthy();
-    expect(screen.getByText("Использовано идей")).toBeTruthy();
-    expect(screen.getByText("$1.50")).toBeTruthy();
+    expect(screen.getByText("Идей в плане")).toBeTruthy();
+    // Расход — суммой и с разбивкой; «$0.00» на центах врал бы.
+    expect(screen.getByText("$0.066")).toBeTruthy();
+    expect(screen.getByText("сбор $0.021 · разбор $0.045")).toBeTruthy();
     expect(screen.getByText(/постов под наблюдением/)).toBeTruthy();
+    // Каждое число подписано, откуда оно: знаменатели и периоды.
+    expect(screen.getByText("сегодня +2 · всего 60")).toBeTruthy();
+    expect(screen.getByText("из 48 с X-фактором")).toBeTruthy();
+    expect(screen.getByText("разобрано 55")).toBeTruthy();
+    expect(screen.getByText("включено из 4")).toBeTruthy();
+    // Рекорд и топ-ниша — чтобы сводка отвечала «что вообще происходит».
+    expect(screen.getByText("×526")).toBeTruthy();
+    expect(screen.getByText("@ai_sashka.ua")).toBeTruthy();
+    expect(screen.getByText("AI-маркетинг")).toBeTruthy();
     expect(screen.getByRole("textbox", { name: "Ссылка на публикацию" })).toBeTruthy();
   });
 
@@ -188,6 +207,27 @@ describe("Radar page", () => {
     expect((await screen.findAllByText("Залетевших постов")).length).toBe(2);
     expect(screen.getByText("@clinic")).toBeTruthy();
     expect(screen.getAllByText("0 % (0 из 1)").length).toBe(2);
+  });
+
+  it("фильтр «Залетевшие» объясняет результат: плашка со счётчиком и сбросом", async () => {
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: /Залетевшие/ }));
+    // Верх ленты и так состоит из залетевших, поэтому нужен явный ответ «сколько осталось».
+    expect(await screen.findByText(/Показаны \d+ из \d+/)).toBeTruthy();
+    expect(screen.getByText(/только залетевшие/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Сбросить всё" }));
+    await waitFor(() => expect(screen.queryByText(/Показаны \d+ из \d+/)).toBeNull());
+  });
+
+  it("удаление источника: подтверждение с числами и отчёт в тосте", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderPage();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /Источники/ }), { button: 0 });
+    fireEvent.click(await screen.findByRole("button", { name: /Удалить/ }));
+    await waitFor(() => expect(sourceImpact).toHaveBeenCalledWith("src-own"));
+    await waitFor(() => expect(confirmSpy.mock.calls[0][0]).toMatch(/постов — 12, идей — 3/));
+    await waitFor(() => expect(deleteSource).toHaveBeenCalledWith("src-own"));
+    confirmSpy.mockRestore();
   });
 
   it("клик по превью открывает «рентген» поста с динамикой", async () => {
