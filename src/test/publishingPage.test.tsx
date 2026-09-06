@@ -158,10 +158,14 @@ const openMenu = (trigger: HTMLElement) => fireEvent.keyDown(trigger, { key: "En
 /** Radix Tooltip раскрывается по фокусу триггера. */
 const openTooltip = (trigger: HTMLElement) => fireEvent.focus(trigger);
 
-/** Площадки собраны под меню «Подключить аккаунт». */
+/**
+ * Площадки собраны под меню «Подключить аккаунт»; у Instagram окно начинается
+ * с выбора способа — здесь идём привычной дорогой через Meta-токен проекта.
+ */
 const openConnectInstagram = async () => {
   openMenu(screen.getByRole("button", { name: /Подключить аккаунт/ }));
-  fireEvent.click(await screen.findByRole("menuitem", { name: "Instagram" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: /Instagram/ }));
+  fireEvent.click(await screen.findByRole("button", { name: /Из Meta-токена проекта/ }));
 };
 
 describe("страница «Публикации»", () => {
@@ -281,9 +285,10 @@ describe("страница «Публикации»", () => {
     await openConnectInstagram();
     await screen.findByRole("checkbox", { name: "@vm.clinic.ast" });
     expect(screen.getByText("12,4 тыс.")).toBeTruthy();
-    // Подключённые и страницы без Instagram свёрнуты и не предлагаются к выбору.
+    // Подключённые и страницы без Instagram вынесены в свои фильтры и к выбору не предлагаются.
     expect(screen.queryByRole("checkbox", { name: "@old" })).toBeNull();
-    expect(screen.getByText(/подключено 1, без Instagram 1/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Подключены\s*1/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Без Instagram\s*1/ })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Выбрать все" }));
     expect(screen.getByRole("button", { name: /Подключить 2/ })).toBeTruthy();
     fireEvent.click(screen.getByRole("checkbox", { name: "@dagestan.topteam" }));

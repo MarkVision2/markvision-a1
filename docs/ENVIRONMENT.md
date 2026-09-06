@@ -7,6 +7,8 @@
 | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | все | системные, только на сервере |
 | `PUBLISH_TOKEN_KEY` | publish-accounts, publish-oauth, worker, monitor, metrics, publish-webhooks | ключ AES-GCM для токенов площадок и секретов вебхуков (любая длинная строка; смена = токены не читаются → reconnect, секреты вебхуков — ротация) |
 | `TELEGRAM_BOT_TOKEN` | runner, monitor | уведомления в чат проекта (`telegram_links`) |
+| `META_APP_ID`, `META_APP_SECRET` | publish-oauth | вход в Instagram через Facebook (Facebook Login; redirect URI `…/publish-oauth/callback/instagram`) |
+| `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET` | publish-oauth | вход логином самого Instagram (Meta App → Instagram → API setup with Instagram login; redirect URI `…/publish-oauth/callback/instagram-login`) — **другая пара, не META_APP_\*** |
 | `THREADS_APP_ID`, `THREADS_APP_SECRET` | publish-oauth, runner | приложение Threads |
 | `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` | publish-oauth, runner, tiktok-connect | TikTok for Developers (Login Kit + Content Posting) |
 | `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | publish-oauth, runner | YouTube Data API v3 |

@@ -1123,20 +1123,104 @@ export async function startPublishOAuth(projectId: string, platform: OAuthPlatfo
   const { data, error } = await supabase.functions.invoke("publish-oauth/start", {
     body: { project_id: projectId, platform, return_url: `${window.location.origin}${returnPath}`, group_id: groupId ?? null },
   });
+  return oauthUrl(data, error);
+}
+
+/**
+ * Два входа в Instagram (edge publish-oauth):
+ *   instagram — вход логином самого Instagram: профиль должен быть
+ *               профессиональным, страница Facebook не нужна;
+ *   facebook  — вход в Facebook и выбор страниц с привязанным Instagram.
+ */
+export type InstagramConnectMode = "instagram" | "facebook";
+
+export const INSTAGRAM_MODE_META: Record<InstagramConnectMode, { title: string; short: string; description: string }> = {
+  instagram: {
+    title: "Подключить аккаунт Instagram",
+    short: "Вход в Instagram",
+    description: "Вход логином самого Instagram. Подходит профессиональному аккаунту (Business или Creator) — страница Facebook не нужна.",
+  },
+  facebook: {
+    title: "Подключить аккаунт Instagram через Facebook",
+    short: "Вход через Facebook",
+    description: "Вход в Facebook: покажем страницы с привязанным Instagram и подключим выбранные. Так подключают аккаунты, которыми управляют через Business Manager.",
+  },
+};
+
+/** Ссылка на согласие Instagram для выбранного входа; открывать в том же окне. */
+export async function startInstagramConnect(
+  projectId: string,
+  mode: InstagramConnectMode,
+  groupId?: string | null,
+  returnPath = "/marketing/publishing",
+): Promise<string> {
+  const { data, error } = await supabase.functions.invoke("publish-oauth/start", {
+    body: {
+      project_id: projectId,
+      platform: "instagram",
+      mode,
+      return_url: `${window.location.origin}${returnPath}`,
+      group_id: groupId ?? null,
+    },
+  });
+  return oauthUrl(data, error);
+}
+
+/**
+ * Страницы, отложенные после входа через Facebook (возврат с ?publish_select=…).
+ * Токенов в ответе нет — только то, что видно в самом Instagram.
+ */
+export async function fetchPendingPages(projectId: string, pendingId: string): Promise<{ pages: AvailablePage[]; group_id: string | null }> {
+  const { data, error } = await supabase.functions.invoke("publish-oauth/pages", {
+    body: { project_id: projectId, pending_id: pendingId },
+  });
+  const r = await oauthJson<{ pages?: AvailablePage[]; group_id?: string | null }>(data, error);
+  return { pages: r.pages ?? [], group_id: r.group_id ?? null };
+}
+
+export interface PendingConnectResult {
+  connected: { id: string; account_name: string; handle: string | null }[];
+  skipped: { page_id: string; reason: string }[];
+}
+
+/** Подключение выбранных страниц из отложенного списка. */
+export async function finishPendingPages(
+  projectId: string,
+  pendingId: string,
+  pageIds: string[],
+  groupId?: string | null,
+): Promise<PendingConnectResult> {
+  const { data, error } = await supabase.functions.invoke("publish-oauth/finish", {
+    body: { project_id: projectId, pending_id: pendingId, page_ids: pageIds, group_id: groupId ?? null },
+  });
+  const r = await oauthJson<Partial<PendingConnectResult>>(data, error);
+  return { connected: r.connected ?? [], skipped: r.skipped ?? [] };
+}
+
+/** Ответ publish-oauth: человеческий текст ошибки живёт в теле, а не в error.message. */
+async function oauthJson<T>(data: unknown, error: unknown): Promise<T> {
   if (error) {
     const ctx = (error as { context?: Response }).context;
-    let message = error.message || "Ошибка запроса";
+    let message = (error as { message?: string }).message || "Ошибка запроса";
     if (ctx && typeof ctx.json === "function") {
       try {
-        const j = (await ctx.json()) as { error?: string; hint?: string };
-        if (j?.error) message = j.hint ? `${j.error}. ${j.hint}` : j.error;
+        const j = (await ctx.json()) as { error?: string; hint?: string; message?: string };
+        if (j?.message) message = j.message;
+        else if (j?.error) message = j.hint ? `${j.error}. ${j.hint}` : j.error;
       } catch { /* не JSON */ }
     }
     throw new Error(message);
   }
-  const url = (data as { url?: string } | null)?.url;
-  if (!url) throw new Error("Площадка не вернула ссылку на согласие");
-  return url;
+  const body = data as (T & { error?: string; message?: string }) | null;
+  if (!body) throw new Error("Пустой ответ");
+  if (body.error) throw new Error(body.message ?? body.error);
+  return body;
+}
+
+async function oauthUrl(data: unknown, error: unknown): Promise<string> {
+  const body = await oauthJson<{ url?: string }>(data, error);
+  if (!body.url) throw new Error("Площадка не вернула ссылку на согласие");
+  return body.url;
 }
 
 /* ─────────────────────── подключение по ссылке ─────────────────────── */
@@ -1253,6 +1337,8 @@ export interface ConnectInvitePlatform {
   /** Секреты площадки на сервере в порядке — иначе кнопка неактивна с подсказкой. */
   ready: boolean;
   hint: string | null;
+  /** Instagram: два входа — логином Instagram и через Facebook. У остальных площадок нет. */
+  modes?: { mode: InstagramConnectMode; ready: boolean; hint: string | null }[];
 }
 
 export interface ConnectInvite {
@@ -1301,8 +1387,8 @@ export function fetchConnectInvite(token: string): Promise<ConnectInvite> {
   return invite<ConnectInvite>(`?token=${encodeURIComponent(token)}`, { method: "GET" });
 }
 
-export async function startConnectInvite(token: string, platform: PublishPlatform): Promise<string> {
-  const r = await invite<{ url: string }>("/start", { method: "POST", body: JSON.stringify({ token, platform }) });
+export async function startConnectInvite(token: string, platform: PublishPlatform, mode?: InstagramConnectMode): Promise<string> {
+  const r = await invite<{ url: string }>("/start", { method: "POST", body: JSON.stringify({ token, platform, ...(mode ? { mode } : {}) }) });
   return r.url;
 }
 

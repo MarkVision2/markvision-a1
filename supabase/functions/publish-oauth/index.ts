@@ -1,15 +1,24 @@
 /**
- * OAuth-подключение аккаунтов площадок к очереди публикаций: Threads, TikTok,
- * YouTube (Instagram из интерфейса подключается через Meta OAuth в publish-accounts,
- * а по ссылке-приглашению — здесь же, входом клиента в его Facebook).
+ * OAuth-подключение аккаунтов площадок к очереди публикаций: Instagram, Threads,
+ * TikTok, YouTube.
  *
  * Две двери, одна машина: менеджер из кабинета (JWT) и клиент по ссылке
  * (публично, доверие — токен ссылки из publish_connect_links). Обе кладут
  * одинаковый state в publish_oauth_states и приходят в один callback.
  *
- *   POST /publish-oauth/start   (JWT)  { project_id, platform, return_url, group_id? } → { url }
+ * У Instagram, в свою очередь, два входа (mode):
+ *   facebook  — человек входит в Facebook, мы забираем его страницы и
+ *               привязанные к ним Instagram Business (page-токен бессрочный);
+ *   instagram — вход логином самого Instagram (Instagram API with Instagram
+ *               Login): страница Facebook не нужна, токен на 60 дней.
+ * Общий Meta-токен проекта (publish-accounts) остаётся третьей дорогой — для
+ * страниц, доступ к которым у менеджера уже есть.
+ *
+ *   POST /publish-oauth/start   (JWT)  { project_id, platform, return_url, group_id?, mode? } → { url }
+ *   POST /publish-oauth/pages   (JWT)  { project_id, pending_id } → { pages } — выбор страницы Instagram
+ *   POST /publish-oauth/finish  (JWT)  { project_id, pending_id, page_ids, group_id? } → { connected }
  *   GET  /publish-oauth/invite?token=…            → карточка ссылки для клиента (публично)
- *   POST /publish-oauth/invite/start  { token, platform, return_url } → { url } (публично)
+ *   POST /publish-oauth/invite/start  { token, platform, mode? } → { url } (публично)
  *   POST /publish-oauth/invite/pages  { token, pending_id } → { pages } — выбор страницы Instagram
  *   POST /publish-oauth/invite/finish { token, pending_id, page_ids } → { connected }
  *   GET  /publish-oauth/diag           (JWT | x-automation-key) → что настроено, без секретов
@@ -33,9 +42,13 @@ import { resolveCapabilities } from "../_lib/publishCapabilities.ts";
 import {
   authorizeUrl,
   codeExchangeRequest,
+  hasInstagramPublishScope,
   hasRequiredScope,
   identityRequest,
-  isOAuthPlatform,
+  instagramLoginAuthorizeUrl,
+  instagramLoginCodeExchangeRequest,
+  instagramLongLivedUrl,
+  instagramMeUrl,
   metaAuthorizeUrl,
   metaCodeExchangeUrl,
   metaLongLivedUrl,
@@ -43,6 +56,8 @@ import {
   type MetaPageOption,
   type OAuthPlatform,
   parseIdentity,
+  parseInstagramLoginToken,
+  parseInstagramProfile,
   parseMetaPages,
   parseTokenResponse,
   returnUrlWith,
@@ -132,6 +147,24 @@ async function diag(req: Request, admin: SupabaseClient): Promise<Response> {
     shape_problem: null,
     redirect_uri: redirectUri("instagram"),
   };
+  // Второй вход в Instagram — логином самого Instagram: другое приложение,
+  // своя пара ключей и свой адрес возврата.
+  const rawIgId = Deno.env.get("INSTAGRAM_APP_ID");
+  const rawIgSecret = Deno.env.get("INSTAGRAM_APP_SECRET");
+  const igLogin = {
+    platform: "instagram" as const,
+    mode: "instagram" as const,
+    client_id_env: "INSTAGRAM_APP_ID",
+    client_id_set: Boolean(rawIgId?.trim()),
+    client_id_length: rawIgId?.trim().length ?? 0,
+    client_id_prefix: rawIgId?.trim() ? `${rawIgId.trim().slice(0, 2)}…` : null,
+    client_id_had_whitespace: Boolean(rawIgId && rawIgId !== rawIgId.trim()),
+    secret_env: "INSTAGRAM_APP_SECRET",
+    secret_set: Boolean(rawIgSecret?.trim()),
+    secret_had_whitespace: Boolean(rawIgSecret && rawIgSecret !== rawIgSecret.trim()),
+    shape_problem: null,
+    redirect_uri: redirectUri("instagram", "instagram"),
+  };
   const platforms = (["threads", "tiktok", "youtube"] as OAuthPlatform[]).map((platform) => {
     const [idKey, secretKey] = envKeys(platform);
     const rawId = Deno.env.get(idKey);
@@ -157,11 +190,12 @@ async function diag(req: Request, admin: SupabaseClient): Promise<Response> {
     ok: true,
     token_key_configured: tokenKeyConfigured(),
     app_origin: APP_ORIGIN(),
-    platforms: [instagram, ...platforms],
+    platforms: [instagram, igLogin, ...platforms],
     notes: {
       redirect_uri: [
         "Каждый redirect_uri из списка выше должен быть зарегистрирован в консоли своего приложения — иначе площадка отбивает вход ДО того, как мы что-то узнаем.",
-        "Instagram: приложение Meta → Facebook Login → Settings → Valid OAuth Redirect URIs. Meta сверяет адрес только ПОСЛЕ входа, поэтому проверить заранее нельзя — клиент увидит «URL Blocked».",
+        "Instagram (вход через Facebook): приложение Meta → Facebook Login → Settings → Valid OAuth Redirect URIs. Meta сверяет адрес только ПОСЛЕ входа, поэтому проверить заранее нельзя — человек увидит «URL Blocked».",
+        "Instagram (вход в Instagram): приложение Meta → Instagram → API setup with Instagram login → Business login settings → OAuth redirect URI; там же берутся INSTAGRAM_APP_ID / INSTAGRAM_APP_SECRET.",
         "YouTube: Google Cloud Console → Credentials → OAuth client → Authorized redirect URIs. Google сверяет адрес ДО входа и отвечает «Ошибка 400: redirect_uri_mismatch».",
         "TikTok: Login Kit приложения (или его песочницы) → Redirect URI.",
       ],
@@ -231,8 +265,70 @@ async function probeTiktok(req: Request, admin: SupabaseClient): Promise<Respons
   });
 }
 
-function redirectUri(platform: ConnectLinkPlatform): string {
-  return `${Deno.env.get("SUPABASE_URL")}/functions/v1/publish-oauth/callback/${platform}`;
+/**
+ * Каким входом человек подключает Instagram. `facebook` — вход в Facebook и
+ * выбор страниц, `instagram` — вход в сам Instagram (Instagram Login).
+ * У остальных площадок вход один и в state не пишется.
+ */
+type InstagramMode = "facebook" | "instagram";
+
+function isInstagramMode(v: unknown): v is InstagramMode {
+  return v === "facebook" || v === "instagram";
+}
+
+/** Режим из тела запроса; по умолчанию — привычный вход через Facebook. */
+function modeOf(v: unknown): InstagramMode {
+  return isInstagramMode(v) ? v : "facebook";
+}
+
+/**
+ * Ключи приложения Instagram Login. Это ДРУГАЯ пара, не META_APP_*: в карточке
+ * приложения Meta она лежит в разделе «Instagram → API setup with Instagram
+ * login» (Instagram app ID / Instagram app secret).
+ */
+function instagramLoginCredentials(): { clientId: string; clientSecret: string } | null {
+  const clientId = Deno.env.get("INSTAGRAM_APP_ID")?.trim();
+  const clientSecret = Deno.env.get("INSTAGRAM_APP_SECRET")?.trim();
+  if (!clientId || !clientSecret) return null;
+  return { clientId, clientSecret };
+}
+
+/**
+ * Адрес возврата площадки. У двух входов в Instagram он разный: приложения
+ * разные, и каждый адрес регистрируется в своей консоли — иначе человек
+ * упирается в «URL Blocked» уже после ввода пароля.
+ */
+function redirectUri(platform: ConnectLinkPlatform, mode: InstagramMode = "facebook"): string {
+  const seg = platform === "instagram" && mode === "instagram" ? "instagram-login" : platform;
+  return `${Deno.env.get("SUPABASE_URL")}/functions/v1/publish-oauth/callback/${seg}`;
+}
+
+/** Сегмент адреса возврата → площадка и режим входа. */
+function callbackRoute(seg: string): { platform: ConnectLinkPlatform; mode: InstagramMode } | null {
+  if (seg === "instagram-login") return { platform: "instagram", mode: "instagram" };
+  if (isConnectLinkPlatform(seg)) return { platform: seg, mode: "facebook" };
+  return null;
+}
+
+/** Куда и от чьего имени сохранять подключённый аккаунт. */
+interface ConnectTarget {
+  projectId: string;
+  groupId: string | null;
+  personaId: string | null;
+  linkId: string | null;
+  userId: string | null;
+  via: "dashboard" | "invite";
+}
+
+function targetOfLink(link: ConnectLink): ConnectTarget {
+  return {
+    projectId: link.project_id,
+    groupId: link.group_id,
+    personaId: link.persona_id,
+    linkId: link.id,
+    userId: null,
+    via: "invite",
+  };
 }
 
 async function fetchJson(url: string, init: RequestInit): Promise<unknown> {
@@ -248,10 +344,42 @@ async function start(req: Request, admin: SupabaseClient): Promise<Response> {
   const platform = body?.platform;
   const projectId = String(body?.project_id ?? "");
   const returnUrl = String(body?.return_url ?? "");
-  if (!isOAuthPlatform(platform)) return json({ error: "platform: threads | tiktok | youtube" }, 400);
+  if (!isConnectLinkPlatform(platform)) return json({ error: "platform: instagram | threads | tiktok | youtube" }, 400);
   if (!projectId || !/^https?:\/\//.test(returnUrl)) return json({ error: "project_id и return_url обязательны" }, 400);
   const access = await requireProjectAccess(auth.authHeader, projectId);
   if (!access.ok) return access.response;
+  const groupId = typeof body?.group_id === "string" ? body.group_id : null;
+
+  // Instagram — свои ключи и свой адрес возврата на каждый из двух входов.
+  if (platform === "instagram") {
+    const mode = modeOf(body?.mode);
+    const igCreds = mode === "instagram" ? instagramLoginCredentials() : metaCredentials();
+    if (!igCreds) {
+      return json({
+        error: mode === "instagram" ? "Вход через Instagram не настроен" : "Вход через Facebook не настроен",
+        hint: mode === "instagram"
+          ? "Секреты INSTAGRAM_APP_ID / INSTAGRAM_APP_SECRET (Meta App → Instagram → API setup with Instagram login)"
+          : "Секрет META_APP_SECRET (Meta App → Facebook Login)",
+      }, 503);
+    }
+    if (!tokenKeyConfigured()) return json({ error: "PUBLISH_TOKEN_KEY не задан — токены сохранять некуда" }, 500);
+    const { data: igState, error: igErr } = await admin.from("publish_oauth_states").insert({
+      project_id: projectId,
+      user_id: auth.userId,
+      platform,
+      mode,
+      return_url: returnUrl,
+      group_id: groupId,
+    }).select("id").single();
+    if (igErr || !igState) return json({ error: igErr?.message ?? "state" }, 500);
+    const igStateId = (igState as { id: string }).id;
+    return json({
+      url: mode === "instagram"
+        ? instagramLoginAuthorizeUrl({ clientId: igCreds.clientId, redirectUri: redirectUri("instagram", "instagram"), state: igStateId })
+        : metaAuthorizeUrl({ clientId: igCreds.clientId, redirectUri: redirectUri("instagram"), state: igStateId }),
+    });
+  }
+
   const creds = appCredentials(platform);
   if (!creds) {
     return json({
@@ -270,7 +398,7 @@ async function start(req: Request, admin: SupabaseClient): Promise<Response> {
     user_id: auth.userId,
     platform,
     return_url: returnUrl,
-    group_id: typeof body?.group_id === "string" ? body.group_id : null,
+    group_id: groupId,
   }).select("id").single();
   if (error || !state) return json({ error: error?.message ?? "state" }, 500);
 
@@ -284,15 +412,18 @@ async function start(req: Request, admin: SupabaseClient): Promise<Response> {
   });
 }
 
-async function callback(url: URL, platform: ConnectLinkPlatform, admin: SupabaseClient): Promise<Response> {
+async function callback(url: URL, platform: ConnectLinkPlatform, mode: InstagramMode, admin: SupabaseClient): Promise<Response> {
   const stateId = url.searchParams.get("state");
   const code = url.searchParams.get("code");
   if (!stateId) return new Response("Missing state", { status: 400 });
   const { data: state } = await admin.from("publish_oauth_states")
-    .select("project_id, user_id, return_url, group_id, created_at, platform, connect_link_id").eq("id", stateId).maybeSingle();
+    .select("project_id, user_id, return_url, group_id, created_at, platform, mode, connect_link_id").eq("id", stateId).maybeSingle();
   await admin.from("publish_oauth_states").delete().eq("id", stateId);
-  const st = state as { project_id: string; user_id: string | null; return_url: string; group_id: string | null; created_at: string; platform: string; connect_link_id: string | null } | null;
+  const st = state as { project_id: string; user_id: string | null; return_url: string; group_id: string | null; created_at: string; platform: string; mode: string | null; connect_link_id: string | null } | null;
   if (!st || st.platform !== platform) return new Response("Invalid or expired state", { status: 400 });
+  // Режим из state должен совпадать с дверью, откуда пришёл code: чужому коду
+  // с другого входа тут делать нечего.
+  if (platform === "instagram" && modeOf(st.mode) !== mode) return new Response("Invalid or expired state", { status: 400 });
   if (Date.now() - Date.parse(st.created_at) > STATE_TTL_MS) return new Response("State expired", { status: 400 });
   const fail = (msg: string) => new Response(null, { status: 302, headers: { Location: returnUrlWith(st.return_url, { publish_error: msg.slice(0, 200) }) } });
   const done = (params: Record<string, string>) => new Response(null, { status: 302, headers: { Location: returnUrlWith(st.return_url, params) } });
@@ -309,9 +440,14 @@ async function callback(url: URL, platform: ConnectLinkPlatform, admin: Supabase
   const denied = url.searchParams.get("error_description") ?? url.searchParams.get("error");
   if (!code) return fail(denied ?? "Площадка не вернула code");
   if (platform === "instagram") {
-    if (!link) return fail("Instagram подключается по ссылке-приглашению");
     if (!tokenKeyConfigured()) return fail("PUBLISH_TOKEN_KEY не задан — токены сохранять некуда");
-    return await instagramCallback(admin, link, code, fail, done);
+    // Из кабинета аккаунт кладётся в проект state, по ссылке — в проект ссылки.
+    const target: ConnectTarget = link
+      ? targetOfLink(link)
+      : { projectId: st.project_id, groupId: st.group_id, personaId: null, linkId: null, userId: st.user_id, via: "dashboard" };
+    return mode === "instagram"
+      ? await instagramLoginCallback(admin, target, code, fail, done)
+      : await instagramCallback(admin, target, code, fail, done);
   }
   if (!tokenKeyConfigured()) return fail("PUBLISH_TOKEN_KEY не задан — токены сохранять некуда");
   const creds = appCredentials(platform);
@@ -384,6 +520,116 @@ async function callback(url: URL, platform: ConnectLinkPlatform, admin: Supabase
 }
 
 
+/* ──────────────────── выбор страниц из кабинета ──────────────────── */
+
+/**
+ * Страницы, отложенные после входа менеджера через Facebook. Токенов страниц
+ * наружу не отдаём — только то, что человек и так видит в Instagram.
+ */
+async function dashboardPages(req: Request, admin: SupabaseClient): Promise<Response> {
+  const auth = await requireUser(req);
+  if (!auth.ok) return auth.response;
+  const body = await req.json().catch(() => ({}));
+  const projectId = String(body?.project_id ?? "");
+  if (!projectId) return json({ error: "project_id обязателен" }, 400);
+  const access = await requireProjectAccess(auth.authHeader, projectId);
+  if (!access.ok) return access.response;
+
+  const pending = await pendingForUser(admin, String(body?.pending_id ?? ""), projectId, auth.userId);
+  if (!pending) return json({ error: "not_found", message: "Выбор устарел — начните подключение заново." }, 404);
+  const marks = await connectionMarks(admin, projectId, pending.pages);
+  return json({
+    ok: true,
+    group_id: pending.group_id,
+    pages: pending.pages.map(({ page_token: _t, ...rest }) => ({
+      ...rest,
+      already_connected: marks.connected.has(rest.ig_user_id ?? ""),
+      connected_elsewhere: marks.elsewhere.get(rest.ig_user_id ?? "") ?? null,
+    })),
+  });
+}
+
+/** Менеджер выбрал страницы — подключаем их в проект. */
+async function dashboardFinish(req: Request, admin: SupabaseClient): Promise<Response> {
+  const auth = await requireUser(req);
+  if (!auth.ok) return auth.response;
+  const body = await req.json().catch(() => ({}));
+  const projectId = String(body?.project_id ?? "");
+  if (!projectId) return json({ error: "project_id обязателен" }, 400);
+  const access = await requireProjectAccess(auth.authHeader, projectId);
+  if (!access.ok) return access.response;
+  if (!tokenKeyConfigured()) return json({ error: "PUBLISH_TOKEN_KEY не задан — токены сохранять некуда" }, 500);
+
+  const pending = await pendingForUser(admin, String(body?.pending_id ?? ""), projectId, auth.userId);
+  if (!pending) return json({ error: "not_found", message: "Выбор устарел — начните подключение заново." }, 404);
+
+  const wanted = new Set((Array.isArray(body?.page_ids) ? body.page_ids : []).map(String));
+  const pages = pending.pages.filter((p) => wanted.has(p.page_id));
+  if (!pages.length) return json({ error: "page_ids", message: "Выберите хотя бы один аккаунт." }, 400);
+
+  // Группу берём из запроса (в диалоге её могли поменять), иначе — из state входа.
+  const groupId = typeof body?.group_id === "string" && body.group_id ? body.group_id : pending.group_id;
+  const result = await connectInstagramPages(admin, {
+    projectId,
+    groupId,
+    personaId: null,
+    linkId: null,
+    userId: auth.userId,
+    via: "dashboard",
+  }, pages);
+  await admin.from("publish_connect_pending").delete().eq("id", pending.id);
+  if (!result.connected.length) {
+    return json({ error: "not_connected", message: result.skipped[0]?.reason ?? "Не удалось подключить аккаунт." }, 400);
+  }
+  return json({ ok: true, connected: result.connected, skipped: result.skipped });
+}
+
+/** Отложенный выбор, начатый этим человеком в этом проекте; иначе null. */
+async function pendingForUser(
+  admin: SupabaseClient,
+  pendingId: string,
+  projectId: string,
+  userId: string,
+): Promise<{ id: string; pages: MetaPageOption[]; group_id: string | null } | null> {
+  if (!pendingId) return null;
+  const { data } = await admin.from("publish_connect_pending")
+    .select("id, pages, group_id, project_id, user_id").eq("id", pendingId).maybeSingle();
+  const row = data as { id: string; pages: MetaPageOption[] | null; group_id: string | null; project_id: string; user_id: string | null } | null;
+  if (!row || row.project_id !== projectId || row.user_id !== userId) return null;
+  return { id: row.id, pages: row.pages ?? [], group_id: row.group_id };
+}
+
+/**
+ * Пометки для списка: этот Instagram уже в проекте / он же подключён в другом
+ * проекте (дневные лимиты сложатся — площадка видит один аккаунт). Тот же
+ * смысл, что у action=available в publish-accounts.
+ */
+async function connectionMarks(
+  admin: SupabaseClient,
+  projectId: string,
+  pages: MetaPageOption[],
+): Promise<{ connected: Set<string>; elsewhere: Map<string, string> }> {
+  const igIds = pages.map((p) => p.ig_user_id).filter((x): x is string => Boolean(x));
+  const connected = new Set<string>();
+  const elsewhere = new Map<string, string>();
+  if (!igIds.length) return { connected, elsewhere };
+
+  const { data: mine } = await admin.from("publish_accounts")
+    .select("external_account_id").eq("project_id", projectId).eq("platform", "instagram").in("external_account_id", igIds);
+  for (const r of (mine ?? []) as { external_account_id: string }[]) connected.add(r.external_account_id);
+
+  const { data: other } = await admin.from("publish_accounts")
+    .select("external_account_id, projects(name)")
+    .eq("platform", "instagram").neq("project_id", projectId).in("external_account_id", igIds);
+  // Связь через FK клиент типизирует то объектом, то массивом — принимаем оба вида.
+  type Rel = { name?: string } | { name?: string }[] | null;
+  for (const r of (other ?? []) as unknown as { external_account_id: string; projects: Rel }[]) {
+    const rel = Array.isArray(r.projects) ? r.projects[0] : r.projects;
+    elsewhere.set(r.external_account_id, rel?.name ?? "другом проекте");
+  }
+  return { connected, elsewhere };
+}
+
 /* ──────────────────── подключение по ссылке ──────────────────── */
 
 /**
@@ -405,6 +651,22 @@ function metaCredentials(): { clientId: string; clientSecret: string } | null {
   const clientSecret = Deno.env.get("META_APP_SECRET")?.trim();
   if (!clientId || !clientSecret) return null;
   return { clientId, clientSecret };
+}
+
+/** Какие входы в Instagram настроены ключами приложения. */
+function instagramModes(): { mode: InstagramMode; ready: boolean; hint: string | null }[] {
+  return [
+    {
+      mode: "instagram",
+      ready: instagramLoginCredentials() != null,
+      hint: instagramLoginCredentials() ? null : "INSTAGRAM_APP_ID / INSTAGRAM_APP_SECRET не заданы",
+    },
+    {
+      mode: "facebook",
+      ready: metaCredentials() != null,
+      hint: metaCredentials() ? null : "META_APP_SECRET не задан",
+    },
+  ];
 }
 
 interface ConnectLink {
@@ -430,10 +692,18 @@ async function linkByToken(admin: SupabaseClient, token: unknown): Promise<Conne
 }
 
 /** Какие площадки реально предложить: разрешённые ссылкой ∩ настроенные секретами. */
-function offeredPlatforms(link: ConnectLink): { platform: ConnectLinkPlatform; ready: boolean; hint: string | null }[] {
+function offeredPlatforms(link: ConnectLink): { platform: ConnectLinkPlatform; ready: boolean; hint: string | null; modes?: { mode: InstagramMode; ready: boolean; hint: string | null }[] }[] {
   return allowedPlatforms(link).map((platform) => {
     if (platform === "instagram") {
-      return { platform, ready: metaCredentials() != null, hint: metaCredentials() ? null : "META_APP_SECRET не задан" };
+      // Два входа: логином Instagram (проще клиенту) и через Facebook.
+      // Кнопку показываем ту, что реально настроена ключами.
+      const modes = instagramModes();
+      return {
+        platform,
+        ready: modes.some((m) => m.ready),
+        hint: modes.some((m) => m.ready) ? null : "META_APP_SECRET / INSTAGRAM_APP_* не заданы",
+        modes,
+      };
     }
     const creds = appCredentials(platform);
     if (!creds) return { platform, ready: false, hint: `${envKeys(platform)[0]} / ${envKeys(platform)[1]} не заданы` };
@@ -487,13 +757,17 @@ async function inviteStart(req: Request, admin: SupabaseClient): Promise<Respons
   }
   if (!tokenKeyConfigured()) return json({ error: "not_configured", message: "PUBLISH_TOKEN_KEY не задан на сервере." }, 503);
 
-  const creds = platform === "instagram" ? metaCredentials() : appCredentials(platform);
+  const mode = modeOf(body?.mode);
+  const creds = platform === "instagram"
+    ? (mode === "instagram" ? instagramLoginCredentials() : metaCredentials())
+    : appCredentials(platform);
   if (!creds) return json({ error: "not_configured", message: `Подключение ${platform} не настроено на сервере.` }, 503);
 
   const { data: st, error } = await admin.from("publish_oauth_states").insert({
     project_id: link.project_id,
     user_id: null,
     platform,
+    mode: platform === "instagram" ? mode : null,
     return_url: inviteReturnUrl(String(body.token)),
     group_id: link.group_id,
     connect_link_id: link.id,
@@ -502,7 +776,9 @@ async function inviteStart(req: Request, admin: SupabaseClient): Promise<Respons
 
   const stateId = (st as { id: string }).id;
   const url = platform === "instagram"
-    ? metaAuthorizeUrl({ clientId: creds.clientId, redirectUri: redirectUri("instagram"), state: stateId })
+    ? (mode === "instagram"
+      ? instagramLoginAuthorizeUrl({ clientId: creds.clientId, redirectUri: redirectUri("instagram", "instagram"), state: stateId })
+      : metaAuthorizeUrl({ clientId: creds.clientId, redirectUri: redirectUri("instagram"), state: stateId }))
     : authorizeUrl(platform, {
       clientId: creds.clientId,
       redirectUri: redirectUri(platform),
@@ -544,7 +820,7 @@ async function inviteFinish(req: Request, admin: SupabaseClient): Promise<Respon
   const pages = (pending.pages ?? []).filter((p) => wanted.has(p.page_id));
   if (!pages.length) return json({ error: "page_ids", message: "Выберите хотя бы один аккаунт." }, 400);
 
-  const result = await connectInstagramPages(admin, link, pages);
+  const result = await connectInstagramPages(admin, targetOfLink(link), pages);
   await admin.from("publish_connect_pending").delete().eq("id", pending.id);
   if (!result.connected.length) {
     return json({ error: "not_connected", message: result.skipped[0]?.reason ?? "Не удалось подключить аккаунт." }, 400);
@@ -559,7 +835,7 @@ async function inviteFinish(req: Request, admin: SupabaseClient): Promise<Respon
  */
 async function connectInstagramPages(
   admin: SupabaseClient,
-  link: ConnectLink,
+  target: ConnectTarget,
   pages: MetaPageOption[],
 ): Promise<{ connected: { id: string; account_name: string; handle: string | null }[]; skipped: { page_id: string; reason: string }[] }> {
   const connected: { id: string; account_name: string; handle: string | null }[] = [];
@@ -571,7 +847,7 @@ async function connectInstagramPages(
     if (!raw) { skipped.push({ page_id: page.page_id, reason: "Meta не отдала токен страницы" }); continue; }
 
     const { data, error } = await admin.from("publish_accounts").upsert({
-      project_id: link.project_id,
+      project_id: target.projectId,
       platform: "instagram",
       account_name: page.ig_name ?? page.ig_username ?? page.page_name ?? "Instagram",
       handle: page.ig_username,
@@ -586,12 +862,13 @@ async function connectInstagramPages(
       auth_status: "connected",
       capabilities: resolveCapabilities({ platform: "instagram", tokenKind: tokenKindOf(raw) }),
       health_score: 100,
-      health_reasons: ["аккаунт подключён клиентом по ссылке"],
+      health_reasons: [target.via === "invite" ? "аккаунт подключён клиентом по ссылке" : "аккаунт подключён входом в Facebook"],
       last_checked_at: new Date().toISOString(),
-      connected_via: "invite",
-      connect_link_id: link.id,
-      ...(link.group_id ? { group_id: link.group_id } : {}),
-      ...(link.persona_id ? { persona_id: link.persona_id } : {}),
+      connected_via: target.via,
+      connected_by: target.userId,
+      connect_link_id: target.linkId,
+      ...(target.groupId ? { group_id: target.groupId } : {}),
+      ...(target.personaId ? { persona_id: target.personaId } : {}),
     }, { onConflict: "project_id,platform,external_account_id" })
       .select("id, account_name, handle").maybeSingle();
 
@@ -599,14 +876,20 @@ async function connectInstagramPages(
     else if (data) connected.push(data as { id: string; account_name: string; handle: string | null });
   }
 
-  if (connected.length) await bumpLinkUsage(admin, link, connected.length);
+  if (connected.length && target.linkId) await bumpLinkUsage(admin, { id: target.linkId }, connected.length);
   return { connected, skipped };
 }
 
-/** Счётчик подключений ссылки — по нему считается «осталось» и «исчерпана». */
-async function bumpLinkUsage(admin: SupabaseClient, link: ConnectLink, by: number): Promise<void> {
+/**
+ * Счётчик подключений ссылки — по нему считается «осталось» и «исчерпана».
+ * Значение перечитываем: между выдачей ссылки и возвратом с площадки её мог
+ * использовать другой человек.
+ */
+async function bumpLinkUsage(admin: SupabaseClient, link: { id: string }, by: number): Promise<void> {
+  const { data } = await admin.from("publish_connect_links").select("used_count").eq("id", link.id).maybeSingle();
+  const used = (data as { used_count?: number } | null)?.used_count ?? 0;
   await admin.from("publish_connect_links")
-    .update({ used_count: link.used_count + by, last_used_at: new Date().toISOString() })
+    .update({ used_count: used + by, last_used_at: new Date().toISOString() })
     .eq("id", link.id);
 }
 
@@ -617,7 +900,7 @@ async function bumpLinkUsage(admin: SupabaseClient, link: ConnectLink, by: numbe
  */
 async function instagramCallback(
   admin: SupabaseClient,
-  link: ConnectLink,
+  target: ConnectTarget,
   code: string,
   fail: (msg: string) => Response,
   done: (params: Record<string, string>) => Response,
@@ -642,22 +925,96 @@ async function instagramCallback(
     return fail("к вашему Facebook не привязан Instagram Business или Creator — переведите профиль в бизнес-аккаунт и свяжите со страницей");
   }
 
-  if (usable.length === 1) {
-    const res = await connectInstagramPages(admin, link, usable);
+  // Одна страница у клиента по ссылке — подключаем молча: выбирать не из чего.
+  // В кабинете выбор показываем всегда: там же назначают группу и пресет пачки.
+  if (usable.length === 1 && target.via === "invite") {
+    const res = await connectInstagramPages(admin, target, usable);
     if (!res.connected.length) return fail(res.skipped[0]?.reason ?? "не удалось сохранить аккаунт");
     return done({ publish_connected: "instagram", account: res.connected[0].account_name });
   }
 
-  // Несколько страниц — прячем токены и отдаём клиенту выбор.
+  // Несколько страниц — прячем токены и отдаём выбор тому, кто начал вход.
   const encrypted = await Promise.all(usable.map(async (p) => ({ ...p, page_token: p.page_token ? await encryptSecret(p.page_token) : null })));
   const { data, error } = await admin.from("publish_connect_pending").insert({
-    connect_link_id: link.id,
-    project_id: link.project_id,
+    connect_link_id: target.linkId,
+    user_id: target.userId,
+    project_id: target.projectId,
+    group_id: target.groupId,
     platform: "instagram",
     pages: encrypted,
   }).select("id").single();
   if (error || !data) return fail(error?.message ?? "не удалось сохранить список страниц");
   return done({ publish_select: (data as { id: string }).id });
+}
+
+/**
+ * Instagram Login: вход логином самого Instagram. Аккаунт один — выбирать
+ * нечего, подключаем сразу. Токен долгий (60 дней) и продлевается: срок кладём
+ * в token_expires_at, дальше его ведёт publish-monitor.
+ */
+async function instagramLoginCallback(
+  admin: SupabaseClient,
+  target: ConnectTarget,
+  code: string,
+  fail: (msg: string) => Response,
+  done: (params: Record<string, string>) => Response,
+): Promise<Response> {
+  const creds = instagramLoginCredentials();
+  if (!creds) return fail("вход через Instagram не настроен на сервере");
+
+  const ex = instagramLoginCodeExchangeRequest({ ...creds, code, redirectUri: redirectUri("instagram", "instagram") });
+  const shortBody = await fetchJson(ex.url, ex.init);
+  const shortErr = tokenError(shortBody);
+  if (shortErr) return fail(`обмен кода: ${shortErr}`);
+  const short = parseInstagramLoginToken(shortBody);
+  if (!short) return fail("Instagram не вернул access_token");
+  if (!hasInstagramPublishScope(short.scope)) {
+    return fail(`не выдано право на публикацию (${short.scope ?? "права пусты"})`);
+  }
+
+  const longBody = await fetchJson(instagramLongLivedUrl({ clientSecret: creds.clientSecret, shortToken: short.accessToken }), { method: "GET" });
+  const long = parseInstagramLoginToken(longBody);
+  // Долгий токен не выдался — работаем коротким: он живёт час, монитор
+  // попросит переподключить, но аккаунт уже в сетке.
+  const token = long?.accessToken ?? short.accessToken;
+  const expiresAt = long?.expiresAt ?? short.expiresAt;
+
+  const profile = parseInstagramProfile(await fetchJson(instagramMeUrl(token), { method: "GET" }));
+  if (!profile) return fail("не удалось прочитать профиль Instagram");
+  if (profile.accountType === "PERSONAL") {
+    return fail("это личный профиль Instagram — переведите его в профессиональный (Business или Creator), тогда появится публикация через API");
+  }
+
+  const { data, error } = await admin.from("publish_accounts").upsert({
+    project_id: target.projectId,
+    platform: "instagram",
+    account_name: profile.name ?? profile.username ?? "Instagram",
+    handle: profile.username,
+    external_account_id: profile.externalId,
+    access_token_encrypted: await encryptSecret(token),
+    token_expires_at: expiresAt,
+    token_refreshed_at: new Date().toISOString(),
+    oauth_scope: short.scope,
+    followers: profile.followers,
+    status: "active",
+    publish_enabled: true,
+    consecutive_errors: 0,
+    last_error: null,
+    auth_status: "connected",
+    capabilities: resolveCapabilities({ platform: "instagram", tokenKind: tokenKindOf(token), oauthScope: short.scope }),
+    health_score: 100,
+    health_reasons: [target.via === "invite" ? "аккаунт подключён клиентом по ссылке" : "аккаунт подключён входом в Instagram"],
+    last_checked_at: new Date().toISOString(),
+    connected_via: target.via,
+    connected_by: target.userId,
+    connect_link_id: target.linkId,
+    ...(target.groupId ? { group_id: target.groupId } : {}),
+    ...(target.personaId ? { persona_id: target.personaId } : {}),
+  }, { onConflict: "project_id,platform,external_account_id" }).select("id, account_name").maybeSingle();
+  if (error) return fail(`сохранение аккаунта: ${error.message}`);
+  if (target.linkId) await bumpLinkUsage(admin, { id: target.linkId }, 1);
+
+  return done({ publish_connected: "instagram", account: (data as { account_name: string } | null)?.account_name ?? profile.username ?? "Instagram" });
 }
 
 Deno.serve(async (req) => {
@@ -671,12 +1028,17 @@ Deno.serve(async (req) => {
     if (seg[0] === "diag" && req.method === "GET") return await diag(req, admin);
     if (seg[0] === "probe-tiktok" && req.method === "GET") return await probeTiktok(req, admin);
     if (seg[0] === "start" && req.method === "POST") return await start(req, admin);
+    if (seg[0] === "pages" && req.method === "POST") return await dashboardPages(req, admin);
+    if (seg[0] === "finish" && req.method === "POST") return await dashboardFinish(req, admin);
     // Публичные двери приглашения: доверие — токен ссылки, JWT здесь нет.
     if (seg[0] === "invite" && !seg[1] && req.method === "GET") return await inviteInfo(url, admin);
     if (seg[0] === "invite" && seg[1] === "start" && req.method === "POST") return await inviteStart(req, admin);
     if (seg[0] === "invite" && seg[1] === "pages" && req.method === "POST") return await invitePages(req, admin);
     if (seg[0] === "invite" && seg[1] === "finish" && req.method === "POST") return await inviteFinish(req, admin);
-    if (seg[0] === "callback" && isConnectLinkPlatform(seg[1]) && req.method === "GET") return await callback(url, seg[1], admin);
+    if (seg[0] === "callback" && req.method === "GET") {
+      const route = callbackRoute(seg[1] ?? "");
+      if (route) return await callback(url, route.platform, route.mode, admin);
+    }
     return json({ error: "not found" }, 404);
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : String(e) }, 500);

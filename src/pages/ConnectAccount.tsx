@@ -27,9 +27,11 @@ import {
   formatFollowers,
   PLATFORM_META,
   startConnectInvite,
+  INSTAGRAM_MODE_META,
   type ConnectInvite,
   type ConnectInvitePage,
   type ConnectLinkAccount,
+  type InstagramConnectMode,
   type PublishPlatform,
 } from "@/lib/publishingClient";
 import { cn } from "@/lib/utils";
@@ -63,7 +65,8 @@ export default function ConnectAccount() {
   const [params, setParams] = useSearchParams();
   const [invite, setInvite] = useState<ConnectInvite | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<PublishPlatform | null>(null);
+  // Ключ занятой кнопки: у Instagram их две — «platform:mode».
+  const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<{ platform: string; account: string | null } | null>(null);
 
@@ -108,11 +111,11 @@ export default function ConnectAccount() {
       .catch((e) => { setError(errMsg(e)); setPendingId(null); });
   }, [pendingId, token]);
 
-  const connect = async (platform: PublishPlatform) => {
-    setBusy(platform);
+  const connect = async (platform: PublishPlatform, mode?: InstagramConnectMode) => {
+    setBusy(mode ? `${platform}:${mode}` : platform);
     setError(null);
     try {
-      window.location.assign(await startConnectInvite(token, platform));
+      window.location.assign(await startConnectInvite(token, platform, mode));
     } catch (e) {
       setError(errMsg(e));
       setBusy(null);
@@ -242,27 +245,39 @@ export default function ConnectAccount() {
         <Card>
           <h2 className="text-sm font-semibold">Выберите площадку</h2>
           <div className="mt-3 space-y-2">
-            {invite.platforms.map(({ platform, ready, hint }) => {
+            {invite.platforms.flatMap(({ platform, ready, hint, modes }) => {
               const meta = PLATFORM_META[platform];
-              return (
-                <div key={platform}>
+              // У Instagram два входа, и клиенту важна разница: логином
+              // Instagram (страница Facebook не нужна) или через Facebook.
+              const doors = platform === "instagram" && modes?.length
+                ? modes.map((m) => ({
+                  key: `${platform}:${m.mode}`,
+                  mode: m.mode as InstagramConnectMode | undefined,
+                  ready: m.ready,
+                  hint: m.hint,
+                  title: INSTAGRAM_MODE_META[m.mode].title,
+                  subtitle: INSTAGRAM_MODE_META[m.mode].description,
+                }))
+                : [{ key: platform, mode: undefined, ready, hint, title: `Подключить ${meta.label}`, subtitle: PLATFORM_PROMISE[platform] }];
+              return doors.map((door) => (
+                <div key={door.key}>
                   <Button
                     variant="outline"
                     className="h-auto w-full justify-start gap-3 py-3"
-                    disabled={inactive || !ready || busy != null}
-                    onClick={() => void connect(platform)}
+                    disabled={inactive || !door.ready || busy != null}
+                    onClick={() => void connect(platform, door.mode)}
                   >
-                    {busy === platform
+                    {busy === door.key
                       ? <Loader2 className="h-4 w-4 animate-spin" />
                       : <Badge variant="outline" className={cn("border-transparent", meta.cls)}>{meta.label}</Badge>}
                     <span className="min-w-0 text-left">
-                      <span className="block text-sm font-medium">Подключить {meta.label}</span>
-                      <span className="block text-xs font-normal text-muted-foreground">{PLATFORM_PROMISE[platform]}</span>
+                      <span className="block whitespace-normal text-sm font-medium">{door.title}</span>
+                      <span className="block whitespace-normal text-xs font-normal text-muted-foreground">{door.subtitle}</span>
                     </span>
                   </Button>
-                  {!ready && hint && <p className="mt-1 px-1 text-xs text-muted-foreground">Пока недоступно: {hint}</p>}
+                  {!door.ready && door.hint && <p className="mt-1 px-1 text-xs text-muted-foreground">Пока недоступно: {door.hint}</p>}
                 </div>
-              );
+              ));
             })}
           </div>
           <p className="mt-3 text-xs text-muted-foreground">

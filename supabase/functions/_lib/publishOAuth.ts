@@ -325,3 +325,146 @@ export function returnUrlWith(returnUrl: string, params: Record<string, string>)
   for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
   return u.toString();
 }
+
+
+/* ─────────────────── Instagram Login (вход в сам Instagram) ─────────────────── */
+
+/**
+ * Вторая дверь в Instagram: «Instagram API with Instagram Login» — человек
+ * входит логином самого Instagram, без Facebook-страницы и без Business
+ * Manager. Аккаунту достаточно быть профессиональным (Business/Creator).
+ *
+ * Отличия от входа через Facebook (meta* выше):
+ *   - один аккаунт вместо списка страниц — выбирать нечего;
+ *   - токен живёт 60 дней и продлевается (ig_refresh_token), а не бессрочный
+ *     page-токен;
+ *   - публикация идёт на graph.instagram.com (publishers/instagram.ts уже
+ *     умеет обе формы токена — различает по префиксу IGAA…/EAA…);
+ *   - ключи приложения свои: INSTAGRAM_APP_ID / INSTAGRAM_APP_SECRET
+ *     (в карточке приложения Meta это раздел Instagram → API setup with
+ *     Instagram login, а не Facebook Login).
+ */
+export const INSTAGRAM_LOGIN_SCOPES = [
+  "instagram_business_basic",
+  "instagram_business_content_publish",
+  "instagram_business_manage_comments",
+].join(",");
+
+/** Право, без которого публиковать нечем. */
+export const INSTAGRAM_LOGIN_REQUIRED_SCOPE = "instagram_business_content_publish";
+
+export const GRAPH_IG = "https://graph.instagram.com/v21.0";
+
+export function instagramLoginAuthorizeUrl(p: { clientId: string; redirectUri: string; state: string; scope?: string }): string {
+  const u = new URL("https://www.instagram.com/oauth/authorize");
+  u.searchParams.set("client_id", p.clientId);
+  u.searchParams.set("redirect_uri", p.redirectUri);
+  u.searchParams.set("scope", p.scope?.trim() || INSTAGRAM_LOGIN_SCOPES);
+  u.searchParams.set("response_type", "code");
+  u.searchParams.set("state", p.state);
+  return u.toString();
+}
+
+/**
+ * Instagram возвращает code с хвостом `#_` — фрагментом, который до сервера
+ * обычно не доходит, но в части браузеров приезжает внутри значения. Обмен с
+ * таким хвостом отвечает «Invalid authorization code», поэтому режем.
+ */
+export function cleanInstagramCode(code: string): string {
+  return code.replace(/#_+$/, "");
+}
+
+export function instagramLoginCodeExchangeRequest(p: AppCredentials & { code: string; redirectUri: string }): TokenRequest {
+  return {
+    url: "https://api.instagram.com/oauth/access_token",
+    init: form({
+      client_id: p.clientId,
+      client_secret: p.clientSecret,
+      grant_type: "authorization_code",
+      redirect_uri: p.redirectUri,
+      code: cleanInstagramCode(p.code),
+    }),
+  };
+}
+
+/** Короткий токен (1 ч) → долгий (60 дней). Дальше продлевается ig_refresh_token. */
+export function instagramLongLivedUrl(p: { clientSecret: string; shortToken: string }): string {
+  const u = new URL("https://graph.instagram.com/access_token");
+  u.searchParams.set("grant_type", "ig_exchange_token");
+  u.searchParams.set("client_secret", p.clientSecret);
+  u.searchParams.set("access_token", p.shortToken);
+  return u.toString();
+}
+
+/** Продление долгого токена (можно с 24-го часа жизни, обязательно до 60 дней). */
+export function instagramRefreshUrl(accessToken: string): string {
+  const u = new URL("https://graph.instagram.com/refresh_access_token");
+  u.searchParams.set("grant_type", "ig_refresh_token");
+  u.searchParams.set("access_token", accessToken);
+  return u.toString();
+}
+
+export function instagramMeUrl(accessToken: string): string {
+  const u = new URL(`${GRAPH_IG}/me`);
+  u.searchParams.set("fields", "user_id,username,name,profile_picture_url,followers_count,account_type");
+  u.searchParams.set("access_token", accessToken);
+  return u.toString();
+}
+
+export interface InstagramLoginToken {
+  accessToken: string;
+  userId: string | null;
+  scope: string | null;
+  expiresAt: string;
+}
+
+/**
+ * Ответ обмена кода Instagram Login → единый вид. Права площадка отдаёт в
+ * `permissions` (массивом или строкой), а не в `scope`, — приводим к строке,
+ * чтобы дальше жить общей проверкой прав.
+ */
+export function parseInstagramLoginToken(body: unknown, now = Date.now()): InstagramLoginToken | null {
+  const b = ((body ?? {}) as Record<string, unknown>);
+  const data = (Array.isArray(b.data) ? (b.data[0] ?? {}) : b) as Record<string, unknown>;
+  const accessToken = typeof data.access_token === "string" ? data.access_token : null;
+  if (!accessToken) return null;
+  const perms = data.permissions ?? data.scope;
+  const scope = Array.isArray(perms) ? perms.join(",") : typeof perms === "string" ? perms : null;
+  const expiresIn = Number(data.expires_in ?? 3600);
+  return {
+    accessToken,
+    userId: data.user_id != null ? String(data.user_id) : null,
+    scope: scope && scope.trim() ? scope : null,
+    expiresAt: new Date(now + (Number.isFinite(expiresIn) ? expiresIn : 3600) * 1000).toISOString(),
+  };
+}
+
+export interface InstagramProfile {
+  externalId: string;
+  username: string | null;
+  name: string | null;
+  avatarUrl: string | null;
+  followers: number | null;
+  /** BUSINESS / MEDIA_CREATOR / PERSONAL — личный профиль публиковать не может. */
+  accountType: string | null;
+}
+
+export function parseInstagramProfile(body: unknown): InstagramProfile | null {
+  const b = (body ?? {}) as Record<string, unknown>;
+  const id = b.user_id ?? b.id;
+  if (!id) return null;
+  return {
+    externalId: String(id),
+    username: typeof b.username === "string" ? b.username : null,
+    name: typeof b.name === "string" ? b.name : null,
+    avatarUrl: typeof b.profile_picture_url === "string" ? b.profile_picture_url : null,
+    followers: typeof b.followers_count === "number" ? b.followers_count : null,
+    accountType: typeof b.account_type === "string" ? b.account_type : null,
+  };
+}
+
+/** Права Instagram Login: пусто — площадка не сказала, проверим при первой публикации. */
+export function hasInstagramPublishScope(scope: string | null): boolean {
+  if (!scope) return true;
+  return scope.includes(INSTAGRAM_LOGIN_REQUIRED_SCOPE) || scope.includes("instagram_content_publish");
+}

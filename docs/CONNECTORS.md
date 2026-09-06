@@ -30,6 +30,10 @@ type PublicationLookup =
 | Площадка | publish | getPublication | Особенности |
 |---|---|---|---|
 | Instagram | контейнер REELS → `media_publish` | `GET /{media}?fields=id,permalink` (граф по форме токена `IG…` / `EAA…`) | коды 100/803 = нет поста |
+
+Instagram подключается тремя способами — вход логином Instagram (`IGAA…`, 60 дней),
+вход через Facebook и страницы Meta-токена проекта (page-токен `EAA…`, бессрочный);
+подробности — `docs/PUBLISHING-SYSTEM.md`, раздел «Онбординг Instagram».
 | Threads | контейнер → `threads_publish` | `GET /{id}?fields=id,permalink` | текст ≤ 500 |
 | TikTok | Direct Post `FILE_UPLOAD` кусками | `POST /v2/video/query/` (нужен scope `video.list`); `v_pub_…` = внутренний id → проверка недоступна | без публичного id — `skipped` |
 | YouTube | resumable `videos.insert` | `GET /videos?part=status,snippet` (`uploadStatus` rejected/failed = нет) | privacy из `YOUTUBE_PRIVACY_STATUS` |

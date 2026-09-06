@@ -295,15 +295,26 @@ account_name, day, scheduled_at }] }`. Снаружи — `POST /publications/di
 
 ## Онбординг Instagram
 
-Один раз на аккаунт, дальше руками ничего:
+Общее для всех дорог: аккаунт должен быть **Business** или **Creator** — личный
+профиль публиковать через API нельзя. Дальше «Сетка аккаунтов» → «Подключить
+аккаунт» → «Instagram…» и один из трёх способов:
 
-1. Instagram переведён в **Business** или **Creator**.
-2. Аккаунт привязан к **Facebook-странице**, страница добавлена в Meta Business.
-3. Пользователь проходит Meta OAuth (уже есть: `facebook-oauth-start/callback/finish`).
-4. `publish-accounts` с `action: "available"` → список страниц; `connectable: false`
-   означает «к странице не привязан Instagram Business/Creator».
-5. `action: "connect"` с `page_ids: [...]` — пачкой. Система сама возьмёт page-токен,
-   вытащит `ig_user_id`, зашифрует токен и заведёт аккаунты.
+| Способ | Кому | Что происходит |
+|---|---|---|
+| **Подключить аккаунт Instagram** | аккаунт без страницы Facebook (блогер, новый профиль) | вход логином самого Instagram (Instagram API with Instagram Login), `publish-oauth/start` с `mode: "instagram"` → `…/callback/instagram-login`; аккаунт один, подключается сразу; токен `IGAA…` на 60 дней, продлевается монитором |
+| **Подключить аккаунт Instagram через Facebook** | аккаунты, которыми управляют через страницы и Business Manager | вход в Facebook (`mode: "facebook"`) → страницы откладываются в `publish_connect_pending`, возврат с `?publish_select=<id>`, окно показывает список и подключает отмеченные (`/publish-oauth/pages`, `/publish-oauth/finish`); page-токен `EAA…` не истекает |
+| **Из Meta-токена проекта** | свои аккаунты, доступ к которым уже есть | без нового входа: `publish-accounts` `action: "available"` → список страниц (`connectable: false` = к странице не привязан Instagram Business/Creator), `action: "connect"` с `page_ids: [...]` пачкой |
+
+Экран выбора у второго и третьего способа общий: поиск, фильтры «Доступные /
+Подключены / Без Instagram», порядок по аудитории, предупреждение «уже подключён
+в проекте …» (там дневные лимиты сложатся) и пресет на всю пачку — группа,
+персона, рутина, пояс, окно, лимит, разгон.
+
+Ключи приложений — разные пары: `META_APP_ID` / `META_APP_SECRET` для входа через
+Facebook и `INSTAGRAM_APP_ID` / `INSTAGRAM_APP_SECRET` для входа в Instagram
+(Meta App → Instagram → API setup with Instagram login). Адрес возврата каждой
+регистрируется в своей консоли, иначе человек увидит «URL Blocked» уже после
+ввода пароля; что задано и какой адрес вписывать — `GET /publish-oauth/diag`.
 
 Существующие `instagram_accounts` перенесены миграцией автоматически (токен
 открытым текстом, как лежал; после первого reconnect перезапишется шифротекстом).
@@ -318,7 +329,8 @@ Facebook. Просить пароль нельзя, сажать человек�
 ```
 Менеджер: «Сетка аккаунтов» → «Подключить аккаунт» → «Ссылка для клиента…»
           создаёт ссылку (кому, площадки, срок, лимит) → копирует → шлёт в мессенджер
-Клиент:   /connect/<token> → «Подключить Instagram» → вход на площадке
+Клиент:   /connect/<token> → «Подключить аккаунт Instagram» (логином Instagram)
+          или «… через Facebook» → вход на площадке
           → (если Instagram-аккаунтов несколько — выбирает) → «Успешно подключено»
 Система:  аккаунт в publish_accounts с connected_via = 'invite', здоровьем 100,
           правами из выданного scope; дальше метрики, лимиты и очередь — как у всех
@@ -329,7 +341,7 @@ Facebook. Просить пароль нельзя, сажать человек�
 | Таблица | Зачем |
 |---|---|
 | `publish_connect_links` | сама ссылка: `token`, `label` (кому выдана), `platforms`, `group_id`, `persona_id`, `max_uses`, `used_count`, `expires_at`, `revoked_at` |
-| `publish_connect_pending` | отложенный выбор страницы Instagram, когда у клиента их несколько; page-токены лежат шифротекстом, живёт час |
+| `publish_connect_pending` | отложенный выбор страницы Instagram после входа через Facebook (у клиента их несколько, у менеджера — всегда); page-токены лежат шифротекстом, живёт час. `connect_link_id` — выбор по ссылке, `user_id` — выбор из кабинета (`20260910140000_publish_instagram_login.sql`) |
 | `publish_accounts.connected_via` | `dashboard` (менеджер) / `invite` (клиент по ссылке) / `api` / `device` |
 | `publish_accounts.connect_link_id` | по какой ссылке приехал аккаунт — видно в списке ссылок |
 

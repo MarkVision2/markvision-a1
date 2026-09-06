@@ -1,10 +1,9 @@
 import { cloneElement, isValidElement, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { AlertCircle, ChevronDown, ExternalLink, Instagram, KeyRound, Link2, Loader2, PauseCircle, Plus, RefreshCw, Search, Send, Trash2, Upload } from "lucide-react";
+import { AlertCircle, ChevronDown, ExternalLink, Instagram, KeyRound, Link2, Loader2, PauseCircle, Plus, RefreshCw, Send, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -28,7 +27,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -41,6 +39,7 @@ import { NotificationsPanel } from "@/components/publishing/NotificationsPanel";
 import { CampaignsTab } from "@/components/publishing/CampaignsTab";
 import { DevicesTab } from "@/components/publishing/DevicesTab";
 import { CalendarTab } from "@/components/publishing/CalendarTab";
+import { ConnectInstagramDialog } from "@/components/publishing/ConnectInstagramDialog";
 import { ConnectLinksDialog } from "@/components/publishing/ConnectLinksDialog";
 import { WebhooksSection } from "@/components/publishing/WebhooksSection";
 import { RoutinesSection } from "@/components/publishing/RoutinesSection";
@@ -50,18 +49,14 @@ import { VideosTab } from "@/components/publishing/VideosTab";
 import { usePublishing, type UsePublishing } from "@/hooks/usePublishing";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import {
-  DEFAULT_TIMEZONE,
   ENGINE_META,
   NOTIFY_MODE_META,
   PLATFORM_META,
   REVIEW_MODE_META,
   STRATEGY_META,
-  formatFollowers,
   publishingApi,
   readOAuthResult,
   startPublishOAuth,
-  type AccountUpdateInput,
-  type AvailablePage,
   type OAuthPlatform,
   type NotifyMode,
   type Persona,
@@ -133,14 +128,24 @@ export default function Publishing() {
   // Повтор ролика из библиотеки — тот же композер без заливки файла.
   const [repostVideo, setRepostVideo] = useState<PublishVideo | null>(null);
   const [oauthBusy, setOauthBusy] = useState<OAuthPlatform | null>(null);
+  // Возврат со входа через Facebook: страницы отложены, нужен выбор (?publish_select=…).
+  const [pendingSelect, setPendingSelect] = useState<string | null>(null);
   const [params, setParams] = useSearchParams();
 
   // Возврат с OAuth площадки: ?publish_connected=… / ?publish_error=… → тост и обновление.
   useEffect(() => {
+    // Вход через Facebook закончился списком страниц — открываем выбор.
+    const select = params.get("publish_select");
+    if (select) {
+      setPendingSelect(select);
+      setDialog("instagram");
+      setParams((p) => { p.delete("publish_select"); return p; }, { replace: true });
+      return;
+    }
     const result = readOAuthResult(params.toString() ? `?${params.toString()}` : "");
     if (!result) return;
     if (result.connected) {
-      toast.success(`Подключён ${OAUTH_LABELS[result.connected.platform as OAuthPlatform] ?? result.connected.platform}${result.connected.account ? `: ${result.connected.account}` : ""}`);
+      toast.success(`Подключён ${PLATFORM_META[result.connected.platform as PublishPlatform]?.label ?? result.connected.platform}${result.connected.account ? `: ${result.connected.account}` : ""}`);
       void pub.refetch();
     } else if (result.error) {
       toast.error(`Подключение не удалось: ${result.error}`);
@@ -186,7 +191,9 @@ export default function Publishing() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuItem onSelect={() => setDialog("instagram")}>Instagram</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => { setPendingSelect(null); setDialog("instagram"); }}>
+                    <Instagram className="mr-2 h-3.5 w-3.5" /> Instagram…
+                  </DropdownMenuItem>
                   {(["threads", "tiktok", "youtube"] as OAuthPlatform[]).map((pl) => {
                     // Есть группы — даём выбрать, куда положить новый аккаунт (без группы всё равно можно).
                     const groups = pub.groups.filter((g) => !g.platform || g.platform === pl);
@@ -339,7 +346,12 @@ export default function Publishing() {
         </Tabs>}
       </div>
 
-      <ConnectInstagramDialog open={dialog === "instagram"} onClose={() => setDialog(null)} pub={pub} />
+      <ConnectInstagramDialog
+        open={dialog === "instagram"}
+        onClose={() => { setDialog(null); setPendingSelect(null); }}
+        pub={pub}
+        pendingId={pendingSelect}
+      />
       <ConnectLinksDialog open={dialog === "links"} onClose={() => setDialog(null)} pub={pub} />
       <ConnectThreadsDialog open={dialog === "threads"} onClose={() => setDialog(null)} pub={pub} />
       <UploadPublishDialog
@@ -1172,382 +1184,6 @@ function SettingsTab({ pub }: { pub: UsePublishing }) {
 
 /* ───────────────────────────── диалоги ───────────────────────────── */
 
-function initials(name: string): string {
-  const parts = name.replace(/^@/, "").split(/[\s._-]+/).filter(Boolean);
-  return (parts.slice(0, 2).map((w) => w[0]).join("") || name.slice(0, 2)).toUpperCase();
-}
-
-function PageAvatar({ page }: { page: AvailablePage }) {
-  // Страница без имени у Meta бывает — не падаем на initials(null).
-  const label = page.ig_username ?? page.ig_name ?? page.page_name ?? "?";
-  return (
-    <Avatar className="h-9 w-9 shrink-0 ring-1 ring-border">
-      {page.ig_avatar_url && <AvatarImage src={page.ig_avatar_url} alt="" />}
-      <AvatarFallback className="bg-gradient-to-br from-pink-500/20 to-amber-500/20 text-xs font-semibold">{initials(label)}</AvatarFallback>
-    </Avatar>
-  );
-}
-
-/**
- * Подключение Instagram-аккаунтов пачкой: страницы Facebook проекта с привязанным
- * Instagram. Строка — целиком кликабельна; уже подключённые и страницы без
- * Instagram показаны отдельно, чтобы список из 100+ страниц читался.
- */
-function ConnectInstagramDialog({ open, onClose, pub }: { open: boolean; onClose: () => void; pub: UsePublishing }) {
-  const [pages, setPages] = useState<AvailablePage[] | null>(null);
-  const [picked, setPicked] = useState<string[]>([]);
-  const [err, setErr] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
-  const [showRest, setShowRest] = useState(false);
-  const [groupId, setGroupId] = useState<string>(NONE);
-  // Пресет онбординга — одна правка на всю подключаемую пачку (персона, рутина,
-  // пояс, окно, лимит, разгон): сотню аккаунтов после подключения не настраивают по одному.
-  const [presetOpen, setPresetOpen] = useState(false);
-  const [personaId, setPersonaId] = useState<string>(NONE);
-  const [routineId, setRoutineId] = useState<string>(NONE);
-  const [routines, setRoutines] = useState<{ id: string; name: string }[]>([]);
-  const [dailyLimit, setDailyLimit] = useState("");
-  const [timezone, setTimezone] = useState("");
-  const [windowStart, setWindowStart] = useState("");
-  const [windowEnd, setWindowEnd] = useState("");
-  const [ramp, setRamp] = useState(false);
-  // Запасной путь: сохранённые токены проекта площадка отклонила — пользователь
-  // вставляет свежий User Access Token, он идёт и в список страниц, и в подключение.
-  const [manualToken, setManualToken] = useState("");
-  const [usedToken, setUsedToken] = useState<string | null>(null);
-  const disabled = pub.busy != null;
-
-  const load = (token?: string | null) => {
-    setPages(null);
-    setPicked([]);
-    setErr(null);
-    pub.loadAvailable(token)
-      .then((r) => { setPages(r.pages ?? []); setUsedToken(token ?? null); })
-      .catch((e) => { setPages([]); setErr(errMsg(e, "Не удалось получить страницы Meta")); });
-  };
-
-  useEffect(() => {
-    if (!open) return;
-    setManualToken("");
-    setUsedToken(null);
-    setQuery("");
-    setShowRest(false);
-    setGroupId(NONE);
-    setPresetOpen(false);
-    setPersonaId(NONE);
-    setRoutineId(NONE);
-    setDailyLimit("");
-    setTimezone("");
-    setWindowStart("");
-    setWindowEnd("");
-    setRamp(false);
-    load();
-    if (pub.projectId) {
-      publishingApi.routineList(pub.projectId)
-        .then((r) => setRoutines((r.routines ?? []).map((x) => ({ id: x.id, name: x.name }))))
-        .catch(() => setRoutines([]));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
-
-  /** Пресет из формы; пустые поля не отправляем — сервер трактует их как «не менять». */
-  const buildPreset = (): { ok: true; preset: AccountUpdateInput } | { ok: false; error: string } => {
-    const preset: AccountUpdateInput = {};
-    if (personaId !== NONE) preset.persona_id = personaId;
-    if (routineId !== NONE) preset.routine_id = routineId;
-    if (dailyLimit.trim()) {
-      const v = Number(dailyLimit);
-      if (!Number.isInteger(v) || v < 1 || v > 200) return { ok: false, error: "Лимит — целое число от 1 до 200" };
-      preset.daily_limit = v;
-    }
-    if (timezone.trim()) preset.timezone = timezone.trim();
-    if ((windowStart && !windowEnd) || (!windowStart && windowEnd)) return { ok: false, error: "Окно публикаций — оба времени: с и до" };
-    if (windowStart && windowEnd) { preset.window_start = windowStart; preset.window_end = windowEnd; }
-    if (ramp) preset.ramp_enabled = true;
-    return { ok: true, preset };
-  };
-
-  const all = pages ?? [];
-  const q = query.trim().toLowerCase();
-  const matches = (p: AvailablePage) =>
-    !q || [p.ig_username, p.ig_name, p.page_name].some((v) => v?.toLowerCase().includes(q));
-  const connectable = all.filter((p) => p.connectable && !p.already_connected);
-  const connected = all.filter((p) => p.already_connected);
-  const noInstagram = all.filter((p) => !p.connectable);
-  const visible = connectable.filter(matches);
-  const allVisiblePicked = visible.length > 0 && visible.every((p) => picked.includes(p.page_id));
-
-  const toggle = (id: string) => setPicked((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
-  const toggleAll = () => {
-    if (allVisiblePicked) setPicked((s) => s.filter((id) => !visible.some((p) => p.page_id === id)));
-    else setPicked((s) => Array.from(new Set([...s, ...visible.map((p) => p.page_id)])));
-  };
-
-  const submit = async () => {
-    if (!picked.length) return;
-    const built = buildPreset();
-    if (built.ok === false) { setErr(built.error); return; }
-    try {
-      const r = await pub.connect(picked, usedToken, groupId === NONE ? null : groupId, Object.keys(built.preset).length ? built.preset : null);
-      const connected = r.connected?.length ?? 0;
-      if (r.preset_error) toast.warning(`Подключено, но пресет не применился: ${r.preset_error}`);
-      if (r.skipped?.length) {
-        // Причину пропуска называем — «пропущено: 2» ничего не объясняет.
-        const names = new Map(pages.map((p) => [p.page_id, p.ig_username ? `@${p.ig_username}` : p.page_name ?? p.page_id]));
-        const detail = r.skipped.slice(0, 3).map((x) => `${names.get(x.page_id) ?? x.page_id}: ${x.reason}`).join("; ");
-        toast.warning(`Подключено ${connected}, пропущено ${r.skipped.length} — ${detail}${r.skipped.length > 3 ? " …" : ""}`);
-      } else {
-        toast.success(`Подключено: ${connected}`);
-      }
-      if (connected) onClose();
-    } catch (e) {
-      setErr(errMsg(e));
-    }
-  };
-
-  const Row = ({ p, state }: { p: AvailablePage; state: "pick" | "connected" | "none" }) => {
-    const on = picked.includes(p.page_id);
-    const inner = (
-      <>
-        <PageAvatar page={p} />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <span className="truncate text-sm font-medium">{p.ig_username ? `@${p.ig_username}` : p.ig_name ?? p.page_name ?? "Страница без имени"}</span>
-            {p.ig_followers != null && p.ig_followers > 0 && (
-              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{formatFollowers(p.ig_followers)}</span>
-            )}
-          </div>
-          <div className="truncate text-xs text-muted-foreground">{p.page_name}{p.ig_name && p.ig_username ? ` · ${p.ig_name}` : ""}</div>
-          {p.connected_elsewhere && (
-            // Один Instagram в двух проектах — двойной дневной лимит на один аккаунт площадки.
-            <div className="truncate text-xs text-amber-600 dark:text-amber-400">
-              уже подключён в проекте «{p.connected_elsewhere}» — лимиты сложатся
-            </div>
-          )}
-        </div>
-        {state === "pick" && <Checkbox checked={on} tabIndex={-1} aria-hidden className="pointer-events-none" />}
-        {state === "connected" && <Badge variant="secondary" className="shrink-0 bg-emerald-500/10 text-emerald-700">Подключён</Badge>}
-        {state === "none" && <Badge variant="outline" className="shrink-0 text-muted-foreground">Нет Instagram</Badge>}
-      </>
-    );
-    if (state !== "pick") {
-      return <div className="flex items-center gap-3 rounded-xl px-3 py-2 opacity-70">{inner}</div>;
-    }
-    return (
-      <button
-        type="button"
-        role="checkbox"
-        aria-checked={on}
-        aria-label={p.ig_username ? `@${p.ig_username}` : p.page_name ?? p.page_id}
-        onClick={() => toggle(p.page_id)}
-        className={cn(
-          "flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition-colors",
-          on ? "border-primary/50 bg-primary/5" : "border-transparent hover:bg-muted/60",
-        )}
-      >
-        {inner}
-      </button>
-    );
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-pink-500 via-rose-500 to-amber-400 text-white shadow-sm">
-              <Instagram className="h-5 w-5" />
-            </div>
-            <div className="min-w-0">
-              <DialogTitle>Подключить Instagram</DialogTitle>
-              <DialogDescription>
-                {pages == null && !err
-                  ? "Ищем страницы Facebook с привязанным Instagram…"
-                  : connectable.length
-                  ? `Доступно ${connectable.length}, уже подключено ${connected.length}. Отметьте аккаунты и нажмите «Подключить».`
-                  : "Страницы Facebook с привязанным Instagram-аккаунтом из подключённого Meta-токена проекта."}
-              </DialogDescription>
-            </div>
-          </div>
-        </DialogHeader>
-
-        {err && <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{err}</div>}
-        {err && (
-          <div className="space-y-2 rounded-xl border p-3 text-sm">
-            <div className="font-medium">Что делать</div>
-            <p className="text-xs text-muted-foreground">
-              Площадка не приняла сохранённый Meta-токен проекта. Подключите Facebook заново в{" "}
-              <Link to="/settings" className="underline" onClick={onClose}>Настройках → Meta</Link>{" "}
-              или вставьте User Access Token (Graph API Explorer) — он будет использован только для этого подключения.
-            </p>
-            <div className="flex gap-2">
-              <Input
-                aria-label="User Access Token"
-                placeholder="EAAB…"
-                value={manualToken}
-                onChange={(e) => setManualToken(e.target.value)}
-              />
-              <Button variant="outline" disabled={disabled || !manualToken.trim()} onClick={() => load(manualToken.trim())}>
-                Проверить
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {!err && pages == null && (
-          <div className="space-y-2">
-            {[0, 1, 2, 3].map((i) => (
-              <div key={i} className="flex items-center gap-3 px-3 py-2">
-                <div className="h-9 w-9 animate-pulse rounded-full bg-muted" />
-                <div className="flex-1 space-y-1.5">
-                  <div className="h-3 w-1/2 animate-pulse rounded bg-muted" />
-                  <div className="h-2.5 w-1/3 animate-pulse rounded bg-muted" />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {pages != null && !err && (
-          <div className="space-y-3">
-            {connectable.length > 6 && (
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  aria-label="Поиск страниц"
-                  className="pl-9"
-                  placeholder="Поиск по @имени или названию страницы"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                />
-              </div>
-            )}
-
-            {connectable.length > 0 ? (
-              <>
-                <div className="flex items-center justify-between px-1 text-xs text-muted-foreground">
-                  <span>Выбрано <b className="text-foreground">{picked.length}</b> из {connectable.length}</span>
-                  <button type="button" className="underline-offset-2 hover:underline" onClick={toggleAll} disabled={!visible.length}>
-                    {allVisiblePicked ? "Снять выбор" : q ? `Выбрать найденные (${visible.length})` : "Выбрать все"}
-                  </button>
-                </div>
-                <ScrollArea className="max-h-[46vh] rounded-xl border">
-                  <div className="space-y-0.5 p-1.5">
-                    {visible.map((p) => <Row key={p.page_id} p={p} state="pick" />)}
-                    {visible.length === 0 && (
-                      <p className="px-3 py-6 text-center text-sm text-muted-foreground">Ничего не найдено по «{query}»</p>
-                    )}
-                  </div>
-                </ScrollArea>
-              </>
-            ) : (
-              <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-                {connected.length
-                  ? "Все доступные Instagram-аккаунты уже подключены."
-                  : "У страниц этого Meta-токена нет привязанного Instagram Business или Creator."}
-              </div>
-            )}
-
-            {(connected.length > 0 || noInstagram.length > 0) && (
-              <div>
-                <button
-                  type="button"
-                  className="text-xs text-muted-foreground underline-offset-2 hover:underline"
-                  onClick={() => setShowRest((v) => !v)}
-                >
-                  {showRest ? "Скрыть" : "Показать"} остальные ({connected.length + noInstagram.length}): подключено {connected.length}, без Instagram {noInstagram.length}
-                </button>
-                {showRest && (
-                  <div className="mt-2 space-y-0.5 rounded-xl border p-1.5">
-                    {connected.map((p) => <Row key={p.page_id} p={p} state="connected" />)}
-                    {noInstagram.map((p) => <Row key={p.page_id} p={p} state="none" />)}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {connectable.length > 0 && (
-              <div className="space-y-2 rounded-xl border bg-muted/30 px-3 py-2">
-                {pub.groups.length > 0 && (
-                  <div className="flex items-center gap-3">
-                    <Label className="shrink-0 text-xs text-muted-foreground">Сразу в группу</Label>
-                    <Select value={groupId} onValueChange={setGroupId} disabled={disabled}>
-                      <SelectTrigger className="h-8" aria-label="Группа для новых аккаунтов"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={NONE}>Без группы</SelectItem>
-                        {pub.groups.map((g) => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-                <button
-                  type="button"
-                  className="text-xs text-muted-foreground underline-offset-2 hover:underline"
-                  aria-expanded={presetOpen}
-                  onClick={() => setPresetOpen((v) => !v)}
-                >
-                  {presetOpen ? "Скрыть" : "Настроить"} пачку сразу: персона, рутина, пояс, окно, лимит, разгон
-                </button>
-                {presetOpen && (
-                  <div className="grid gap-2 sm:grid-cols-2" aria-label="Пресет онбординга">
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">Персона</Label>
-                      <Select value={personaId} onValueChange={setPersonaId} disabled={disabled}>
-                        <SelectTrigger className="h-8" aria-label="Персона для новых аккаунтов"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={NONE}>Без персоны</SelectItem>
-                          {pub.personas.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">Рутина</Label>
-                      <Select value={routineId} onValueChange={setRoutineId} disabled={disabled}>
-                        <SelectTrigger className="h-8" aria-label="Рутина для новых аккаунтов"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={NONE}>По умолчанию</SelectItem>
-                          {routines.map((r) => <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">Лимит в день</Label>
-                      <Input className="h-8" type="number" min={1} max={200} placeholder="как у аккаунта" aria-label="Лимит в день для новых аккаунтов" value={dailyLimit} onChange={(e) => setDailyLimit(e.target.value)} disabled={disabled} />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">Часовой пояс</Label>
-                      <Input className="h-8" placeholder={DEFAULT_TIMEZONE} aria-label="Часовой пояс для новых аккаунтов" value={timezone} onChange={(e) => setTimezone(e.target.value)} disabled={disabled} />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">Окно публикаций</Label>
-                      <div className="flex items-center gap-1">
-                        <Input className="h-8" type="time" aria-label="Окно с" value={windowStart} onChange={(e) => setWindowStart(e.target.value)} disabled={disabled} />
-                        <span className="text-xs text-muted-foreground">—</span>
-                        <Input className="h-8" type="time" aria-label="Окно до" value={windowEnd} onChange={(e) => setWindowEnd(e.target.value)} disabled={disabled} />
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 pt-5">
-                      <Switch checked={ramp} onCheckedChange={setRamp} disabled={disabled} aria-label="Разгон новых аккаунтов" />
-                      <Label className="text-xs text-muted-foreground">Разгон (плавный рост лимита)</Label>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        <DialogFooter className="gap-2 sm:gap-0">
-          <Button variant="ghost" onClick={onClose} disabled={disabled}>Отмена</Button>
-          <Button onClick={() => void submit()} disabled={disabled || !picked.length}>
-            {pub.busy === "connect" ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Plus className="mr-1.5 h-4 w-4" />}
-            {picked.length ? `Подключить ${picked.length}` : "Подключить"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 function ConnectThreadsDialog({ open, onClose, pub }: { open: boolean; onClose: () => void; pub: UsePublishing }) {
   const [userId, setUserId] = useState("");

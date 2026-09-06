@@ -188,11 +188,26 @@ fatal, а не повторы. YouTube (`youtube.ts`) — Data API v3 `videos.in
 `uploadLimitExceeded` → `limit`; приватность — `YOUTUBE_PRIVACY_STATUS` (по умолчанию
 public). Классификация отказов всех площадок покрыта тестами.
 
-**Подключение аккаунтов**: Instagram — Meta OAuth (`publish-accounts available/connect`);
-Threads, TikTok, YouTube — edge-функция `publish-oauth` (`POST /start` → ссылка на согласие,
-`GET /callback/:platform` → обмен кода, long-lived токен Threads, идентичность аккаунта,
-шифрование токенов, `oauth_scope`, редирект обратно с `?publish_connected=`). Одноразовый
-state — `publish_oauth_states` (миграция `20260905120000_publish_oauth.sql`, TTL 15 мин).
+**Подключение аккаунтов**: всё идёт через edge-функцию `publish-oauth` (`POST /start` →
+ссылка на согласие, `GET /callback/:platform` → обмен кода, long-lived токен, идентичность
+аккаунта, шифрование токенов, `oauth_scope`, редирект обратно с `?publish_connected=`).
+Одноразовый state — `publish_oauth_states` (миграции `20260905120000_publish_oauth.sql` и
+`20260910140000_publish_instagram_login.sql`, TTL 15 мин).
+
+У Instagram три дороги, и окно «Подключение Instagram» предлагает их одним списком:
+
+| Способ | `mode` | Что нужно от человека | Токен |
+|---|---|---|---|
+| Вход в Instagram (Instagram API with Instagram Login) | `instagram` | профессиональный аккаунт (Business/Creator); страница Facebook не нужна | `IGAA…`, 60 дней, продлевается |
+| Вход через Facebook | `facebook` | Facebook со страницами, к которым привязан Instagram Business | page-токен `EAA…`, бессрочный |
+| Из Meta-токена проекта | — | ничего: страницы уже сохранённого токена (`publish-accounts available/connect`) | page-токен `EAA…` |
+
+Вход через Facebook даёт список страниц: он откладывается в `publish_connect_pending`
+(токены шифруются), человек возвращается с `?publish_select=<id>`, окно показывает список
+и подключает отмеченные (`POST /publish-oauth/pages` и `/finish` для кабинета,
+`/invite/pages` и `/invite/finish` для клиента по ссылке). Адреса возврата у двух входов
+разные — `…/callback/instagram` и `…/callback/instagram-login`: приложения разные, и каждый
+адрес регистрируется в своей консоли.
 **TikTok: «Что-то пошло не так — client_key» после входа.** Это не про значение ключа.
 Пока приложение не Live (не прошло App review), авторизоваться через него могут только
 **target users** песочницы; любой другой аккаунт TikTok после входа получает эту страницу.
@@ -204,8 +219,9 @@ Sandbox не публикует публичные видео — для бое�
 Проверка без входа: `GET /publish-oauth/diag` (JWT или `x-automation-key`) — что задано,
 были ли пробелы в секретах, redirect_uri для регистрации.
 
-Кнопки «Подключить Threads / TikTok / YouTube» — на странице «Публикации»; ручной ввод
-токена Threads оставлен как запасной путь.
+Кнопки «Подключить Instagram / Threads / TikTok / YouTube» — на странице «Публикации»
+(меню «Подключить аккаунт»); ручной ввод токена Threads и вставка User Access Token для
+страниц Meta оставлены как запасные пути.
 
 **Токены**: короткоживущие токены (TikTok — сутки, YouTube — час) `publishRunner.ensureFreshToken`
 обновляет `refresh_token`'ом прямо перед публикацией; Threads и Instagram Login (`IG…`) —
@@ -550,7 +566,8 @@ YouTube / Threads, нули видны), очередь и ближайший с
 | `POST /publish-monitor { mode: "digest" }` | ключ | часовой дайджест |
 | `POST /publish-metrics` | ключ | сбор метрик публикаций (IG / Threads / TikTok / YouTube) + лента своих постов в радар |
 | `POST /content-pipeline/items/:id/settings` | JWT | цель (группа), персона, движок темы до генерации |
-| `POST /publish-oauth/start`, `GET /publish-oauth/callback/:platform` | JWT / state | OAuth Threads / TikTok / YouTube |
+| `POST /publish-oauth/start`, `GET /publish-oauth/callback/:platform` | JWT / state | OAuth Instagram (`mode: instagram\|facebook`) / Threads / TikTok / YouTube |
+| `POST /publish-oauth/pages`, `POST /publish-oauth/finish` | JWT | страницы, отложенные после входа через Facebook, и подключение отмеченных |
 
 Контракты вебхуков `publishing-video-ready` / `publishing-create-jobs` для воркфлоу «🚀 Система
 автопостинга» не изменились; `target.group_id` теперь дополнительно даёт стратегию и темп группы.
@@ -563,6 +580,8 @@ YouTube / Threads, нули видны), очередь и ближайший с
 | Edge secrets | `RADAR_CALLBACK_SECRET` | HMAC ingest радара от n8n (иначе используется `CONTENT_PIPELINE_CALLBACK_SECRET`) — нужен только для запасного сборщика |
 | Edge secrets | `N8N_RADAR_WEBHOOK_URL`, `N8N_RADAR_WEBHOOK_KEY` | запасной n8n-сборщик, используется только без `APIFY_TOKEN` |
 | Edge secrets | `OPENAI_API_KEY` (или `LOVABLE_API_KEY`) | Whisper и LLM-разбор радара через `_lib/aiProvider.ts` |
+| Edge secrets | `META_APP_ID`, `META_APP_SECRET` | вход в Instagram через Facebook (redirect URI: `…/functions/v1/publish-oauth/callback/instagram`) |
+| Edge secrets | `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET` | вход логином Instagram — Meta App → Instagram → API setup with Instagram login (redirect URI: `…/functions/v1/publish-oauth/callback/instagram-login`) |
 | Edge secrets | `THREADS_APP_ID`, `THREADS_APP_SECRET` | приложение Meta с Threads API (redirect URI: `…/functions/v1/publish-oauth/callback/threads`) |
 | Edge secrets | `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` | приложение TikTok for Developers (Login Kit + Content Posting API; redirect URI `…/callback/tiktok`; верифицировать домен видео) |
 | Edge secrets | `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | тот же клиент, что у Google Ads; включить YouTube Data API v3, добавить redirect URI `…/callback/youtube` |

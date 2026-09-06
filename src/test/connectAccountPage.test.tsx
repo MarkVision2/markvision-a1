@@ -76,7 +76,8 @@ describe("страница подключения по ссылке", () => {
   it("уводит на площадку по нажатию", async () => {
     renderAt();
     fireEvent.click(await screen.findByRole("button", { name: /Подключить Instagram/ }));
-    await waitFor(() => expect(startConnectInvite).toHaveBeenCalledWith("tok-1", "instagram"));
+    // Третий аргумент — вход в Instagram; у ссылки без modes он не задан.
+    await waitFor(() => expect(startConnectInvite).toHaveBeenCalledWith("tok-1", "instagram", undefined));
     await waitFor(() => expect(window.location.assign).toHaveBeenCalledWith("https://площадка/oauth"));
   });
 
@@ -103,6 +104,45 @@ describe("страница подключения по ссылке", () => {
   it("возврат с ошибкой площадки показывает её текст", async () => {
     renderAt("/connect/tok-1?publish_error=%D0%BD%D0%B5%20%D0%B2%D1%8B%D0%B4%D0%B0%D0%BD%D0%BE%20%D0%BF%D1%80%D0%B0%D0%B2%D0%BE");
     expect(await screen.findByText("не выдано право")).toBeInTheDocument();
+  });
+
+  it("два входа в Instagram: логином Instagram и через Facebook", async () => {
+    fetchConnectInvite.mockResolvedValue(invite({
+      platforms: [{
+        platform: "instagram",
+        ready: true,
+        hint: null,
+        modes: [
+          { mode: "instagram", ready: true, hint: null },
+          { mode: "facebook", ready: true, hint: null },
+        ],
+      }],
+    }));
+    renderAt();
+    const direct = await screen.findByRole("button", { name: /Вход логином самого Instagram/ });
+    expect(screen.getByRole("button", { name: /Подключить аккаунт Instagram через Facebook/ })).toBeEnabled();
+
+    fireEvent.click(direct);
+    await waitFor(() => expect(startConnectInvite).toHaveBeenCalledWith("tok-1", "instagram", "instagram"));
+  });
+
+  it("вход, не настроенный ключами, недоступен и объясняет почему", async () => {
+    fetchConnectInvite.mockResolvedValue(invite({
+      platforms: [{
+        platform: "instagram",
+        ready: true,
+        hint: null,
+        modes: [
+          { mode: "instagram", ready: false, hint: "INSTAGRAM_APP_ID / INSTAGRAM_APP_SECRET не заданы" },
+          { mode: "facebook", ready: true, hint: null },
+        ],
+      }],
+    }));
+    renderAt();
+    const direct = await screen.findByRole("button", { name: /Вход логином самого Instagram/ });
+    expect(direct).toBeDisabled();
+    expect(screen.getByText(/INSTAGRAM_APP_ID/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /через Facebook/ })).toBeEnabled();
   });
 
   it("несколько Instagram — клиент выбирает, что подключить", async () => {
