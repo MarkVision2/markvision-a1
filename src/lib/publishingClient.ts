@@ -1299,6 +1299,8 @@ export async function deleteConnectLink(projectId: string, linkId: string): Prom
 
 export interface OAuthPlatformDiag {
   platform: PublishPlatform;
+  /** У Instagram две двери — своя строка на каждую, с разными ключами и адресом. */
+  mode?: InstagramConnectMode;
   client_id_env: string;
   client_id_set: boolean;
   secret_env: string;

@@ -239,11 +239,20 @@ function PlatformSetup() {
           </p>
           {diag.platforms.map((p) => {
             const meta = PLATFORM_META[p.platform];
+            // У Instagram два входа: platform у них общий, различает mode.
+            const door = p.platform === "instagram" && p.mode
+              ? p.mode === "instagram" ? " · вход в Instagram" : " · вход через Facebook"
+              : "";
+            const where = p.platform === "instagram" && p.mode === "instagram"
+              ? "приложение Meta → Instagram → API setup with Instagram login → Business login settings → OAuth redirect URI"
+              : REGISTER_WHERE[p.platform];
             const bad = !p.client_id_set || !p.secret_set || p.shape_problem;
             return (
-              <div key={p.platform} className="space-y-1">
+              <div key={`${p.platform}:${p.mode ?? ""}`} className="space-y-1">
                 <div className="flex items-center gap-1.5 text-xs">
-                  <Badge variant="outline" className={cn("border-transparent text-[10px]", meta?.cls)}>{meta?.label ?? p.platform}</Badge>
+                  <Badge variant="outline" className={cn("border-transparent text-[10px]", meta?.cls)}>
+                    {meta?.label ?? p.platform}{door}
+                  </Badge>
                   {bad ? (
                     <span className="text-amber-600 dark:text-amber-400">
                       {p.shape_problem ?? `не заданы ${[!p.client_id_set && p.client_id_env, !p.secret_set && p.secret_env].filter(Boolean).join(" / ")}`}
@@ -253,7 +262,7 @@ function PlatformSetup() {
                   )}
                 </div>
                 <CopyLine value={p.redirect_uri} />
-                <div className="px-0.5 text-[11px] text-muted-foreground">{REGISTER_WHERE[p.platform]}</div>
+                <div className="px-0.5 text-[11px] text-muted-foreground">{where}</div>
               </div>
             );
           })}

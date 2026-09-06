@@ -389,9 +389,18 @@ Facebook. Просить пароль нельзя, сажать человек�
 
 | Площадка | Куда вписать | Когда сверяет |
 |---|---|---|
-| Instagram | приложение Meta → Facebook Login → Settings → Valid OAuth Redirect URIs | только ПОСЛЕ входа («URL Blocked») — заранее не проверить |
+| Instagram, вход в Instagram | Meta → Instagram → API setup with Instagram login → Business login settings → OAuth redirect URI | ДО входа |
+| Instagram, вход через Facebook | Meta → Facebook Login → Settings → Valid OAuth Redirect URIs | только ПОСЛЕ входа («URL Blocked») — заранее не проверить |
 | YouTube | Google Cloud Console → Credentials → OAuth client → Authorized redirect URIs | ДО входа («Ошибка 400: redirect_uri_mismatch») |
 | TikTok | приложение TikTok → Login Kit → Redirect URI | ДО входа |
+
+У двух дверей Instagram **разные адреса и разные ключи**, и в карточке
+приложения это соседние разделы — перепутать легко:
+
+| | Вход в Instagram | Вход через Facebook |
+|---|---|---|
+| Адрес возврата | `…/publish-oauth/callback/instagram-login` | `…/publish-oauth/callback/instagram` |
+| Ключи | `INSTAGRAM_APP_ID` / `INSTAGRAM_APP_SECRET` | `META_APP_ID` / `META_APP_SECRET` |
 
 Проверено на проде 6 сентября 2026: TikTok уводит на свой вход штатно (ключ
 песочницы `sbaw…` — авторизоваться могут только target users приложения);
