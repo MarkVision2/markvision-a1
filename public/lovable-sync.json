@@ -1,7 +1,7 @@
 {
-  "git_sha": "bd2baff",
-  "git_sha_full": "bd2baff00b0ae72aa59c339bc855f5b9fca44908",
-  "updated_at": "2026-09-06T18:20:33+04:00",
-  "label": "fix(devices): вход больше не выглядит ошибкой там, где он прошёл [vercel-deploy]",
+  "git_sha": "35aa3da",
+  "git_sha_full": "35aa3daadcf7da898d56e3ce37d07ce0b529015f",
+  "updated_at": "2026-09-06T19:03:21+04:00",
+  "label": "fix(publishing): монтаж и Reels доходят до очереди публикации [vercel-deploy]",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
