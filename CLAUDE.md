@@ -60,6 +60,10 @@
   раскладка — `publish-intake action=distribute` / `POST /publications/distribute` / MCP `markvision_distribute`.
   ТЗ — `docs/TZ-content-factory-network.md`, аудит пробелов — `docs/GAP-content-factory-audit.md`.
   Команда «сделай пачку роликов» = этот скилл.
+- **Video Creative System** (внешняя система VoiceOver-креативов, проприетарная — код вне этого
+  репозитория, стоит в `~/video-creative-system`, скиллы `video-*` на уровне пользователя):
+  производит файл, MarkVision его публикует через MCP/публичный API. Лицензия, установка,
+  ограничения провайдеров и мост — `docs/VIDEO-CREATIVE-SYSTEM.md`.
 - **Подключение TikTok** (Настройки → Подключения → TikTok, `/settings?tab=tiktok`; компонент
   `src/components/settings/TikTokConnect.tsx`, старый `/marketing/tiktok` редиректит; витрина для App review TikTok for Developers):
   Login Kit → Display API (профиль, видео) → Content Posting API (Direct Post / inbox) → отключение
