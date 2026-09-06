@@ -1,7 +1,7 @@
 {
-  "git_sha": "d7d0ead",
-  "git_sha_full": "d7d0ead2125c4982258d11ef414e087bc423217d",
-  "updated_at": "2026-09-06T19:50:35+04:00",
-  "label": "[vercel-deploy] Merge: chore(vercel) — собирать только main с меткой, превью веток жгли квоту Hobby (#288)",
+  "git_sha": "cc539aa",
+  "git_sha_full": "cc539aa5e97ac4c3f44233d456689c9c6cdc04bb",
+  "updated_at": "2026-09-06T20:39:49+04:00",
+  "label": "feat(publishing): конвейер подключения сети Instagram-аккаунтов по ТЗ (#289)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
