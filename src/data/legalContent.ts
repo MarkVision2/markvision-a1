@@ -122,8 +122,20 @@ const PRIVACY_RU: LegalDocument = {
       ],
     },
     {
+      id: "instagram",
+      title: "6. Интеграция с Instagram",
+      body: [
+        "Раздел «Публикации» подключает профессиональные аккаунты Instagram (Business или Creator) через официальный Instagram API with Instagram Login приложения Meta «MarkVision AI». Подключение делает владелец аккаунта сам: входит в Instagram на странице Instagram и подтверждает права на экране согласия.",
+        "- Мы запрашиваем два права: instagram_business_basic — чтобы показать подключённый аккаунт в проекте (идентификатор, @username, имя, аватар, число подписчиков, тип аккаунта); instagram_business_content_publish — чтобы публиковать Reels и посты от имени аккаунта.",
+        "- Публикация выполняется только по команде пользователя проекта: ролик выбирается, подписывается и ставится в расписание в MarkVision. Мы не публикуем ничего без участия пользователя, не читаем личные сообщения и не изменяем настройки аккаунта Instagram.",
+        "- По опубликованным нами постам мы получаем их идентификаторы и статистику (охват, просмотры, лайки, комментарии, сохранения, репосты) — она показывается в аналитике проекта и хранится вместе с проектом.",
+        "- Токены доступа Instagram хранятся в зашифрованном виде на сервере, продлеваются автоматически и не передаются третьим лицам. Пароль от аккаунта Instagram мы не получаем и не храним.",
+        "- Удаление данных. Отключите аккаунт кнопкой «Отключить» в сетке аккаунтов проекта — токен и данные профиля удаляются из платформы сразу, статистика постов удаляется вместе с проектом или по запросу. Отозвать доступ можно и в самом Instagram: Настройки → Безопасность → Приложения и сайты → MarkVision AI → Удалить. После отзыва токен перестаёт действовать, платформа помечает аккаунт как отключённый и удаляет его данные по запросу на " + LEGAL_ORG.email + " в течение 30 дней.",
+      ],
+    },
+    {
       id: "processors",
-      title: "6. Кому мы передаём данные",
+      title: "7. Кому мы передаём данные",
       body: [
         "Данные передаются только поставщикам, без которых сервис не работает, и только в объёме, необходимом для конкретной функции:",
         "- Инфраструктура: Supabase (база данных, аутентификация, файловое хранилище, серверные функции), Vercel (хостинг сайта), Cloudflare R2 (хранение больших видеофайлов), n8n (оркестрация автоматизаций на собственном сервере).",
@@ -136,7 +148,7 @@ const PRIVACY_RU: LegalDocument = {
     },
     {
       id: "cookies",
-      title: "7. Cookies и аналитика",
+      title: "8. Cookies и аналитика",
       body: [
         "- В личном кабинете платформы используются только технические cookies и локальное хранилище браузера: сессия входа, выбранный проект, настройки интерфейса. Рекламные трекеры в кабинете не установлены.",
         "- На публичной маркетинговой странице /lab работают Google Tag Manager и Meta Pixel; события просмотра и заявки дублируются на сервер Meta (Conversions API) вместе с IP-адресом и User-Agent посетителя. Управлять такими cookies можно в настройках браузера.",
@@ -145,7 +157,7 @@ const PRIVACY_RU: LegalDocument = {
     },
     {
       id: "retention",
-      title: "8. Сроки хранения",
+      title: "9. Сроки хранения",
       body: [
         "- Учётные записи и данные проектов — пока действует ваш доступ к платформе или пока вы не удалите проект.",
         "- Токены подключённых платформ — до отключения интеграции или истечения срока токена.",
@@ -156,7 +168,7 @@ const PRIVACY_RU: LegalDocument = {
     },
     {
       id: "security",
-      title: "9. Как мы защищаем данные",
+      title: "10. Как мы защищаем данные",
       body: [
         "- Доступ к данным разграничен по проектам и ролям на уровне базы данных (row-level security); токены платформ доступны только серверным функциям.",
         "- Токены аккаунтов социальных сетей шифруются ключом, который хранится отдельно от базы.",
@@ -166,7 +178,7 @@ const PRIVACY_RU: LegalDocument = {
     },
     {
       id: "rights",
-      title: "10. Ваши права",
+      title: "11. Ваши права",
       body: [
         "Вы вправе запросить доступ к своим данным, их исправление, удаление, ограничение обработки и копию в машиночитаемом виде, а также отозвать согласие на интеграцию (отключив её в настройках).",
         `Запросы принимаются на ${LEGAL_ORG.email}; мы отвечаем в течение 30 дней. Администратор компании-клиента может удалять лиды, проекты и учётные записи сотрудников прямо в интерфейсе платформы.`,
@@ -175,7 +187,7 @@ const PRIVACY_RU: LegalDocument = {
     },
     {
       id: "clients",
-      title: "11. Обязанности клиента как оператора данных",
+      title: "12. Обязанности клиента как оператора данных",
       body: [
         "Подключая интеграции и загружая данные, клиент подтверждает, что получил необходимые согласия от своих клиентов и сотрудников: на запись и анализ телефонных разговоров, на обработку переписок, на рассылки (с возможностью отписаться), на использование фотографий и видео людей для создания контента.",
         "Клиент обязан соблюдать правила подключённых платформ (Meta, Google, TikTok, Threads, WhatsApp) и не использовать платформу для спама, обмана или нарушения прав третьих лиц.",
@@ -183,17 +195,17 @@ const PRIVACY_RU: LegalDocument = {
     },
     {
       id: "children",
-      title: "12. Дети",
+      title: "13. Дети",
       body: ["Платформа предназначена для бизнеса и не рассчитана на лиц младше 18 лет. Мы сознательно не собираем данные детей."],
     },
     {
       id: "changes",
-      title: "13. Изменения политики",
+      title: "14. Изменения политики",
       body: ["Мы можем обновлять политику при изменении функций и интеграций. Актуальная версия всегда доступна по адресу " + `${LEGAL_ORG.site}/privacy` + "; о существенных изменениях мы уведомляем в интерфейсе или по email."],
     },
     {
       id: "contacts",
-      title: "14. Контакты",
+      title: "15. Контакты",
       body: [legalRequisites("ru"), `Юрисдикция: ${LEGAL_ORG.jurisdiction.ru}. Запросы по персональным данным принимаются на ${LEGAL_ORG.email}.`],
     },
   ],
@@ -263,8 +275,20 @@ const PRIVACY_EN: LegalDocument = {
       ],
     },
     {
+      id: "instagram",
+      title: "6. Instagram integration",
+      body: [
+        "The “Publishing” section connects professional Instagram accounts (Business or Creator) through the official Instagram API with Instagram Login of the Meta app “MarkVision AI”. The account owner connects it personally: signs in on Instagram’s own page and confirms the permissions on the consent screen.",
+        "- We request two permissions: instagram_business_basic — to show the connected account in the project (id, @username, name, avatar, follower count, account type); instagram_business_content_publish — to publish Reels and posts on behalf of the account.",
+        "- Posting happens only on the command of a project user: the video is selected, captioned and scheduled in MarkVision. We never publish anything without the user’s involvement, never read direct messages and never change Instagram account settings.",
+        "- For the posts we publish we receive their ids and statistics (reach, views, likes, comments, saves, shares); they are shown in the project analytics and stored together with the project.",
+        "- Instagram access tokens are stored encrypted on the server, refreshed automatically and never shared with third parties. We never receive or store the Instagram account password.",
+        "- Data deletion. Disconnect the account with the “Disconnect” button in the project’s account grid — the token and profile data are removed from the platform immediately; post statistics are deleted together with the project or on request. You can also revoke access inside Instagram: Settings → Security → Apps and websites → MarkVision AI → Remove. After revocation the token stops working, the platform marks the account as disconnected and deletes its data on request to " + LEGAL_ORG.email + " within 30 days.",
+      ],
+    },
+    {
       id: "processors",
-      title: "6. Who we share data with",
+      title: "7. Who we share data with",
       body: [
         "Data is shared only with providers the service cannot work without, and only to the extent required for a specific feature:",
         "- Infrastructure: Supabase (database, authentication, file storage, server functions), Vercel (website hosting), Cloudflare R2 (large video storage), n8n (automation orchestration on our own server).",
@@ -277,7 +301,7 @@ const PRIVACY_EN: LegalDocument = {
     },
     {
       id: "cookies",
-      title: "7. Cookies and analytics",
+      title: "8. Cookies and analytics",
       body: [
         "- The platform workspace uses only functional cookies and browser local storage: the sign-in session, the selected project, interface settings. No advertising trackers are installed in the workspace.",
         "- The public marketing page /lab runs Google Tag Manager and Meta Pixel; page view and lead events are mirrored to Meta servers (Conversions API) together with the visitor's IP address and User-Agent. You can manage such cookies in your browser settings.",
@@ -286,7 +310,7 @@ const PRIVACY_EN: LegalDocument = {
     },
     {
       id: "retention",
-      title: "8. Retention",
+      title: "9. Retention",
       body: [
         "- Accounts and project data — while your access to the platform is active or until you delete the project.",
         "- Tokens of connected platforms — until the integration is disconnected or the token expires.",
@@ -297,7 +321,7 @@ const PRIVACY_EN: LegalDocument = {
     },
     {
       id: "security",
-      title: "9. How we protect data",
+      title: "10. How we protect data",
       body: [
         "- Access is separated by project and role at the database level (row-level security); platform tokens are readable only by server functions.",
         "- Social network account tokens are encrypted with a key stored separately from the database.",
@@ -307,7 +331,7 @@ const PRIVACY_EN: LegalDocument = {
     },
     {
       id: "rights",
-      title: "10. Your rights",
+      title: "11. Your rights",
       body: [
         "You may request access to your data, its correction, deletion, restriction of processing and a machine-readable copy, and withdraw consent to an integration by disconnecting it in the settings.",
         `Requests are accepted at ${LEGAL_ORG.email}; we respond within 30 days. A customer's administrator can delete leads, projects and employee accounts directly in the platform.`,
@@ -316,7 +340,7 @@ const PRIVACY_EN: LegalDocument = {
     },
     {
       id: "clients",
-      title: "11. Customer obligations as a data controller",
+      title: "12. Customer obligations as a data controller",
       body: [
         "By connecting integrations and uploading data the customer confirms that it has obtained the necessary consents from its customers and employees: for recording and analysing phone calls, for processing conversations, for marketing messages (with an opt-out), and for using photos and videos of people to create content.",
         "The customer must comply with the policies of the connected platforms (Meta, Google, TikTok, Threads, WhatsApp) and must not use the platform for spam, deception or violation of third-party rights.",
@@ -324,17 +348,17 @@ const PRIVACY_EN: LegalDocument = {
     },
     {
       id: "children",
-      title: "12. Children",
+      title: "13. Children",
       body: ["The platform is intended for businesses and is not designed for persons under 18. We do not knowingly collect children's data."],
     },
     {
       id: "changes",
-      title: "13. Changes to this policy",
+      title: "14. Changes to this policy",
       body: [`We may update this policy when features and integrations change. The current version is always available at ${LEGAL_ORG.site}/privacy; we notify about material changes in the interface or by email.`],
     },
     {
       id: "contacts",
-      title: "14. Contacts",
+      title: "15. Contacts",
       body: [legalRequisites("en"), `Jurisdiction: ${LEGAL_ORG.jurisdiction.en}. Personal data requests are accepted at ${LEGAL_ORG.email}.`],
     },
   ],

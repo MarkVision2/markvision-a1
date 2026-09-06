@@ -127,12 +127,18 @@ Instagram Business готовы к подключению одним нажат�
 приложении**. Сотню так не подключить в принципе.
 
 1. Подать приложение на ревью на права `instagram_business_basic` и
-   `instagram_business_content_publish`.
+   `instagram_business_content_publish`. Тексты формы, обоснования прав, сценарий
+   демо-видео, инструкции проверяющему и чеклист — `docs/INSTAGRAM-APP-REVIEW.md`.
 2. Подготовить демо-видео сценария подключения и публикации (по образцу
    `docs/TIKTOK-DEVELOPER-APP.md`, там это уже проходили для TikTok).
-3. Публичные `/terms` и `/privacy` уже есть — `src/pages/Legal.tsx`.
+3. Публичные `/terms` и `/privacy` уже есть — `src/pages/Legal.tsx`; раздел
+   `/privacy#instagram` — инструкция по удалению данных для поля Data deletion.
 
-**Приёмка:** приложение в статусе Live, права выданы.
+Состояние 06.09.2026: приложение `943753324681398` в режиме Live, но у обоих прав статус
+«Готово к тестированию» — расширенного доступа нет, заявка не одобрена. Пока идёт ревью,
+тестовая пятёрка подключается через роль «Instagram-тестировщик» в приложении.
+
+**Приёмка:** приложение в статусе Live, у обоих прав «Расширенный доступ».
 
 ### Этап 1. Подготовка аккаунтов
 
@@ -294,6 +300,7 @@ PhoneGrid MCP, уже подключён в проекте (`~/.claude.json`, с
 | Облачные телефоны | `account-devices/`, `_lib/phonegrid.ts`, `_lib/phonescreen.ts`, `docs/PHONEGRID.md` |
 | Браузерные профили | MCP-сервер `phonegrid`: `manage_browser`, `browser_operate` |
 | Продление токенов | `publish-monitor/` режим `tokens`, правило — `_lib/publishTokenRefresh.ts` |
+| App Review Meta | `docs/INSTAGRAM-APP-REVIEW.md`, права — `INSTAGRAM_LOGIN_SCOPES` в `_lib/publishOAuth.ts` |
 | Конвейер исполнителя | скилл `.claude/skills/instagram-connect/`, скрипт `scripts/instagram-connect.mjs` |
 | Общая карта | `docs/PUBLISHING-SYSTEM.md`, `docs/AUTOPOSTING-PLATFORM.md` |
 

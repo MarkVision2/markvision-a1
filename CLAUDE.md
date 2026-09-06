@@ -69,7 +69,8 @@
   (`manage_browser`, `browser_operate`), а `scripts/instagram-connect.mjs` (`links` → `ip` → `status` →
   `preset` → `tokens` → `trace`, `totp`) выдаёт ссылки пачкой и принимает этапы через backend
   с `AUTOMATION_KEY`. Команда «подключи пачку аккаунтов» = этот скилл. Продление токенов —
-  `publish-monitor mode=tokens` (правило в `_lib/publishTokenRefresh.ts`).
+  `publish-monitor mode=tokens` (правило в `_lib/publishTokenRefresh.ts`). App Review Meta на права
+  Instagram Login — `docs/INSTAGRAM-APP-REVIEW.md`.
 - **Подключение TikTok** (Настройки → Подключения → TikTok, `/settings?tab=tiktok`; компонент
   `src/components/settings/TikTokConnect.tsx`, старый `/marketing/tiktok` редиректит; витрина для App review TikTok for Developers):
   Login Kit → Display API (профиль, видео) → Content Posting API (Direct Post / inbox) → отключение
