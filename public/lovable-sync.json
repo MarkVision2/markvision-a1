@@ -1,7 +1,7 @@
 {
-  "git_sha": "cc539aa",
-  "git_sha_full": "cc539aa5e97ac4c3f44233d456689c9c6cdc04bb",
-  "updated_at": "2026-09-06T20:39:49+04:00",
-  "label": "feat(publishing): конвейер подключения сети Instagram-аккаунтов по ТЗ (#289)",
+  "git_sha": "d03bd12",
+  "git_sha_full": "d03bd12bcfd526df8779415a5168eeadfa430f4f",
+  "updated_at": "2026-09-06T22:18:31+04:00",
+  "label": "Merge: пакет App Review Meta для Instagram Login и раздел Instagram в политике (#290)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
