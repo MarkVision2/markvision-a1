@@ -91,6 +91,13 @@ export function DevicesTab() {
 
   const running = (phones ?? []).filter((p) => p.status === 4).length;
   const busyCount = (phones ?? []).filter((p) => p.account).length;
+  // Сколько телефонов сидит на каждом прокси: общий IP связывает аккаунты между собой.
+  const perProxy = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const p of phones ?? []) if (p.proxyIp) m.set(p.proxyIp, (m.get(p.proxyIp) ?? 0) + 1);
+    return m;
+  }, [phones]);
+  const sharedProxies = [...perProxy.entries()].filter(([, n]) => n > 1);
 
   return (
     <Card>
@@ -144,6 +151,14 @@ export function DevicesTab() {
               <Badge variant="outline">с аккаунтом {busyCount}</Badge>
             </div>
 
+            {sharedProxies.length > 0 && (
+              <p className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-sm text-amber-700 dark:text-amber-500">
+                {sharedProxies.map(([ip, n]) => `${n} устройства на одном IP ${ip}`).join("; ")}.
+                Площадка увидит их как один источник и свяжет аккаунты между собой. Для сети нужен
+                свой прокси на каждый телефон — или мобильный со сменой IP по ссылке между сессиями.
+              </p>
+            )}
+
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -170,7 +185,12 @@ export function DevicesTab() {
                         </TableCell>
                         <TableCell className="text-sm">
                           {p.proxyIp
-                            ? <span>{p.proxyIp}{p.country ? ` · ${p.country}` : ""}</span>
+                            ? (
+                              <span className={perProxy.get(p.proxyIp)! > 1 ? "text-amber-700 dark:text-amber-500" : ""}>
+                                {p.proxyIp}{p.country ? ` · ${p.country}` : ""}
+                                {perProxy.get(p.proxyIp)! > 1 && " · общий"}
+                              </span>
+                            )
                             : <span className="text-muted-foreground">без прокси — не включится</span>}
                         </TableCell>
                         <TableCell>

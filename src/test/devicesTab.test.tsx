@@ -171,3 +171,26 @@ describe("окно телефона", () => {
     expect(phoneScreen).not.toHaveBeenCalled();
   });
 });
+
+describe("общий IP у нескольких устройств", () => {
+  it("предупреждает, что площадка свяжет аккаунты между собой", async () => {
+    // Оба телефона на одном прокси — типичная ситуация, когда прокси куплен один.
+    listPhones.mockResolvedValue([
+      withAccount,
+      { ...freePhone, proxyId: "p1", proxyIp: "212.8.248.20", country: "KZ" },
+    ]);
+    render(<DevicesTab />);
+    expect(await screen.findByText(/2 устройства на одном IP 212\.8\.248\.20/)).toBeInTheDocument();
+    expect(screen.getAllByText(/· общий/).length).toBe(2);
+  });
+
+  it("у каждого свой IP — предупреждения нет", async () => {
+    listPhones.mockResolvedValue([
+      withAccount,
+      { ...freePhone, proxyId: "p2", proxyIp: "95.163.145.242", country: "KZ" },
+    ]);
+    render(<DevicesTab />);
+    await screen.findByText("CP-1");
+    expect(screen.queryByText(/на одном IP/)).not.toBeInTheDocument();
+  });
+});
