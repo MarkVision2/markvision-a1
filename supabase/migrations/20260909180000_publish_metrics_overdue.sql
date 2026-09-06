@@ -1,7 +1,11 @@
 -- Витрина publish_metrics: просроченные задания и честный счётчик токенов.
 --
 -- Пересоздаётся поверх версии из 20260909150000_content_factory_core.sql
--- (там verifying добавили в jobs_processing — здесь это сохранено).
+-- (там verifying добавили в jobs_processing — здесь это сохранено). Порядок и
+-- имена прежних колонок трогать нельзя: CREATE OR REPLACE VIEW разрешает только
+-- дописывать новые в конец. Первая попытка ставила jobs_overdue седьмой колонкой
+-- и падала на проде: «cannot change name of view column "jobs_processing" to
+-- "jobs_overdue" (42P16)».
 --
 -- 1. jobs_overdue — задания, чей слот прошёл больше 15 минут назад, а они всё
 --    ещё ждут. Крон publish-worker ходит раз в минуту, поэтому живая очередь
@@ -33,12 +37,6 @@ SELECT
   (SELECT count(*) FROM public.publish_accounts a WHERE a.project_id = p.id AND a.status IN ('limited', 'error')) AS accounts_limited_or_error,
   (SELECT round(avg(a.health_score), 1) FROM public.publish_accounts a WHERE a.project_id = p.id) AS health_avg,
   (SELECT count(*) FROM public.publish_jobs j WHERE j.project_id = p.id AND j.status IN ('pending', 'retry')) AS jobs_queued,
-  -- Слот прошёл, а задание не тронуто: воркер до него не доходит.
-  (SELECT count(*) FROM public.publish_jobs j
-    WHERE j.project_id = p.id
-      AND j.status IN ('pending', 'retry')
-      AND j.scheduled_at < now() - interval '15 minutes'
-      AND j.next_attempt_at < now() - interval '15 minutes') AS jobs_overdue,
   -- verifying — тоже «в работе» (миграция 20260909150000): пост ушёл, идёт проверка.
   (SELECT count(*) FROM public.publish_jobs j WHERE j.project_id = p.id AND j.status IN ('processing', 'verifying')) AS jobs_processing,
   (SELECT count(*) FROM public.publish_jobs j WHERE j.project_id = p.id AND j.status = 'published' AND j.published_at >= now() - interval '24 hours') AS published_24h,
@@ -53,7 +51,16 @@ SELECT
       AND a.platform NOT IN ('tiktok', 'youtube')) AS tokens_expiring_7d,
   (SELECT coalesce(sum(m.reach), 0) FROM public.post_metrics m WHERE m.project_id = p.id AND m.checkpoint = 'd3' AND m.captured_at >= now() - interval '7 days') AS reach_d3_7d,
   (SELECT spent_month_usd FROM public.project_spend(p.id)) AS spent_month_usd,
-  coalesce((SELECT s.paused FROM public.publish_project_settings s WHERE s.project_id = p.id), false) AS paused
+  coalesce((SELECT s.paused FROM public.publish_project_settings s WHERE s.project_id = p.id), false) AS paused,
+  -- Слот прошёл, а задание не тронуто: воркер до него не доходит.
+  -- Только в самом конце: CREATE OR REPLACE VIEW умеет дописывать колонки,
+  -- но не вставлять их в середину — вставка перед jobs_processing читается
+  -- как переименование седьмой колонки и падает с 42P16.
+  (SELECT count(*) FROM public.publish_jobs j
+    WHERE j.project_id = p.id
+      AND j.status IN ('pending', 'retry')
+      AND j.scheduled_at < now() - interval '15 minutes'
+      AND j.next_attempt_at < now() - interval '15 minutes') AS jobs_overdue
 FROM public.projects p;
 
 GRANT SELECT ON public.publish_metrics TO authenticated, service_role;
