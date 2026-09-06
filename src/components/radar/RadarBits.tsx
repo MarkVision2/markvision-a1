@@ -8,7 +8,7 @@ import { ScanSearch } from "lucide-react";
 import { looksLikeVideoUrl } from "@/components/autopost/MediaThumb";
 import { Badge } from "@/components/ui/badge";
 import { PLATFORM_META, SCORE_TONE_CLS, scoreTone, type RadarPlatform, type RadarPost } from "@/lib/radarClient";
-import { formatX, xTone, type XTone } from "@/lib/radarStats";
+import { formatUsd, formatX, xTone, type XTone } from "@/lib/radarStats";
 import { cn } from "@/lib/utils";
 
 export function fmtDate(iso: string | null | undefined): string {
@@ -20,7 +20,8 @@ export function fmtDate(iso: string | null | undefined): string {
   });
 }
 
-export const fmtUsd = (n: number | null | undefined) => `$${(Number(n) || 0).toFixed(2)}`;
+/** Деньги радара (реэкспорт чистой функции — формат общий с тестами). */
+export const fmtUsd = formatUsd;
 
 export const errMsg = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
 
@@ -159,18 +160,45 @@ export function Empty({ children, action }: { children: ReactNode; action?: Reac
   );
 }
 
+/**
+ * Плитка метрики: название, число и обязательная расшифровка под ним — из
+ * чего это число собрано (период, знаменатель, разбивка). Без расшифровки
+ * цифра на странице выглядит взятой с потолка.
+ */
 export function MetricTile({
-  label, value, hint, accent = false,
+  label, value, sub, hint, accent = false, valueSize = "lg",
 }: {
   label: string;
   value: string | number;
+  /** Короткая расшифровка: «из 28 с X-фактором», «сбор $0.021 · разбор $0.045». */
+  sub?: ReactNode;
   hint?: string;
   accent?: boolean;
+  /** Текстовое значение (ниша, название) не помещается крупным кеглем. */
+  valueSize?: "lg" | "sm";
 }) {
   return (
-    <div className={cn("rounded-2xl border bg-card px-4 py-3", accent ? "border-success/40 bg-success/5" : "border-border/60")} title={hint}>
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className={cn("mt-1 text-2xl font-semibold tabular-nums", accent && "text-success")}>{value}</div>
+    <div
+      className={cn(
+        "flex min-w-0 flex-col rounded-2xl border bg-card px-4 py-3",
+        accent ? "border-success/40 bg-success/5" : "border-border/60",
+      )}
+      title={hint}
+    >
+      <div className="truncate text-xs text-muted-foreground" title={label}>{label}</div>
+      <div
+        className={cn(
+          "mt-1 font-semibold leading-tight",
+          valueSize === "lg" ? "text-2xl leading-none tabular-nums" : "line-clamp-2 text-base",
+          accent && "text-success",
+        )}
+        title={valueSize === "sm" && typeof value === "string" ? value : undefined}
+      >
+        {value}
+      </div>
+      <div className="mt-1.5 min-h-[1rem] truncate text-[11px] leading-4 text-muted-foreground" title={typeof sub === "string" ? sub : undefined}>
+        {sub}
+      </div>
     </div>
   );
 }

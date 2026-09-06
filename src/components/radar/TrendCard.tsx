@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { ANALYSIS_STATUS_META, formatEngagement, type RadarPost } from "@/lib/radarClient";
 import { formatAge, formatCompact, nicheOf, primaryMetric, usualMetric, VIRAL_X_FACTOR } from "@/lib/radarStats";
 import { cn } from "@/lib/utils";
+import { PostVideo, playableVideoUrl } from "./PostVideo";
 import { Chip, PlatformChip, PostThumb, ScoreBadge, XBadge } from "./RadarBits";
 
 interface TrendCardProps {
@@ -33,6 +34,7 @@ export function TrendCard({ post, rank, own = false, busy, onOpen, onAnalyze }: 
   const viral = Number(post.x_factor) >= VIRAL_X_FACTOR;
   const fresh = post.published_at ? Date.now() - Date.parse(post.published_at) < 48 * 3_600_000 : false;
   const handle = post.author_handle ? `@${post.author_handle.replace(/^@+/, "")}` : null;
+  const hasVideo = Boolean(playableVideoUrl(post));
 
   return (
     <article
@@ -42,8 +44,13 @@ export function TrendCard({ post, rank, own = false, busy, onOpen, onAnalyze }: 
       )}
       data-testid="trend-card"
     >
-      <button type="button" onClick={onOpen} className="relative aspect-[4/5] w-full overflow-hidden bg-muted text-left" aria-label="Открыть разбор поста">
-        <PostThumb post={post} imgClassName="transition-transform duration-300 group-hover:scale-[1.03]" />
+      <div className="relative aspect-[4/5] w-full overflow-hidden bg-muted">
+        <button type="button" onClick={onOpen} className="absolute inset-0 text-left" aria-label="Открыть разбор поста">
+          <PostThumb post={post} imgClassName="transition-transform duration-300 group-hover:scale-[1.03]" />
+        </button>
+        {hasVideo && (
+          <PostVideo post={post} size="sm" className="absolute inset-0" />
+        )}
         <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-2">
           <div className="flex min-w-0 items-center gap-1.5">
             <PlatformChip platform={post.platform} short className="bg-background/80 backdrop-blur" />
@@ -65,7 +72,7 @@ export function TrendCard({ post, rank, own = false, busy, onOpen, onAnalyze }: 
             <XBadge x={post.x_factor} className="shrink-0" />
           </div>
         </div>
-      </button>
+      </div>
 
       <div className="flex flex-1 flex-col gap-2.5 p-3">
         <div className="flex min-w-0 items-center gap-2">
