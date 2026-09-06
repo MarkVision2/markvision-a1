@@ -1,7 +1,7 @@
 {
-  "git_sha": "66c7041",
-  "git_sha_full": "66c7041a2e789c2b9f963b90c3da46fbfd6d1d7b",
-  "updated_at": "2026-09-06T11:37:52+04:00",
-  "label": "chore: выкатить карточку устройства аккаунта на домен [vercel-deploy]",
+  "git_sha": "6ec312a",
+  "git_sha_full": "6ec312a716b1e4b65702c2c4a9f0e744c1ac4c13",
+  "updated_at": "2026-09-06T11:44:30+04:00",
+  "label": "feat(publishing): раздел «Устройства» — все облачные телефоны сети в одном списке [vercel-deploy]",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
