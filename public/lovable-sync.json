@@ -1,7 +1,7 @@
 {
-  "git_sha": "50f5000",
-  "git_sha_full": "50f5000afbf14427498dd397cfe3c163273c68ad",
-  "updated_at": "2026-09-06T11:52:58+04:00",
-  "label": "docs(publishing): redirect URI Instagram нужно добавить в приложении Meta вручную",
+  "git_sha": "ed2eb23",
+  "git_sha_full": "ed2eb2348d0664f3678651185be844d774349288",
+  "updated_at": "2026-09-06T12:09:28+04:00",
+  "label": "feat(devices): создание устройств и прокси из интерфейса, питание без привязки аккаунта [vercel-deploy]",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
