@@ -28,6 +28,17 @@ import { PhoneScreenDialog } from "@/components/publishing/PhoneScreenDialog";
 
 const NONE = "__none";
 
+/**
+ * Прогрев запускают раз в день: смысл сценария в том, что активность нарастает по дням,
+ * и два прогона подряд ломают именно это. Заодно PhoneGrid отобьёт второй кодом 33309 —
+ * телефон занят первой задачей.
+ */
+function warmedToday(p: DevicePhone): boolean {
+  const last = p.warmup?.lastRunAt;
+  if (!last) return false;
+  return new Date(last).toDateString() === new Date().toDateString();
+}
+
 /** Полоса прогрева: 15 дней до готовности. */
 function WarmupBar({ day, ready }: { day: number; ready: boolean }) {
   const pct = Math.min(100, Math.round((Math.min(day, 15) / 15) * 100));
@@ -212,9 +223,12 @@ export function DevicesTab() {
                             onValueChange={(v) => void act(
                               p.id,
                               v === NONE ? "Телефон отвязан" : "Телефон привязан",
-                              () => (v === NONE
-                                ? detachPhone(projectId!, p.account!.id)
-                                : attachPhone(projectId!, v, p.id)),
+                              async () => {
+                                // Один телефон — один аккаунт: прежнего сначала снимаем,
+                                // иначе уникальный индекс отобьёт замену ошибкой.
+                                if (p.account && p.account.id !== v) await detachPhone(projectId!, p.account.id);
+                                if (v !== NONE) await attachPhone(projectId!, v, p.id);
+                              },
                             )}
                           >
                             <SelectTrigger className="h-8 w-[13rem]"><SelectValue placeholder="Свободен" /></SelectTrigger>
@@ -243,7 +257,9 @@ export function DevicesTab() {
                           <div className="flex justify-end gap-1.5">
                             <Button
                               size="sm" variant="outline" disabled={rowBusy}
-                              title={p.status === 4 ? "Открыть экран телефона" : "Сначала включите телефон"}
+                              title={p.status === 4
+                                ? "Открыть экран телефона"
+                                : "Открыть окно телефона — включить можно прямо в нём"}
                               onClick={() => setScreenPhone(p)}
                             >
                               <MonitorSmartphone className="h-3.5 w-3.5" />
@@ -257,13 +273,15 @@ export function DevicesTab() {
                               {p.status === 4 ? "Выключить" : "Включить"}
                             </Button>
                             <Button
-                              size="sm" disabled={rowBusy || !p.account}
-                              title={p.account
-                                ? "Запустить сценарий прогрева на сегодня"
-                                : "Сначала привяжите аккаунт — прогревают именно его, а не телефон"}
+                              size="sm" disabled={rowBusy || !p.account || warmedToday(p)}
+                              title={!p.account
+                                ? "Сначала привяжите аккаунт — прогревают именно его, а не телефон"
+                                : warmedToday(p)
+                                  ? "Сегодня прогрев уже запускали: два прогона за день — двойная активность, ради которой прогрев и растягивают"
+                                  : "Запустить сценарий прогрева на сегодня"}
                               onClick={() => void act(p.id, "Прогрев запущен", () => runWarmup(projectId!, p.account!.id))}
                             >
-                              Прогреть
+                              {warmedToday(p) ? "Прогрет сегодня" : "Прогреть"}
                             </Button>
                           </div>
                         </TableCell>

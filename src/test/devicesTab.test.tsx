@@ -9,32 +9,52 @@ import { DevicesTab } from "@/components/publishing/DevicesTab";
 import type { DevicePhone } from "@/lib/accountDevices";
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+// Radix Select при открытии зовёт scrollIntoView, которого в jsdom нет.
+Element.prototype.scrollIntoView = vi.fn();
 vi.mock("@/hooks/useProjectsStore", () => ({ useProjectsStore: () => ({ activeId: "p1" }) }));
 
 const listPhones = vi.fn();
 const listFreeAccounts = vi.fn();
 const attachPhone = vi.fn();
+const detachPhone = vi.fn();
 const setPhonePower = vi.fn();
 const runWarmup = vi.fn();
 const deviceOptions = vi.fn();
 const createPhones = vi.fn();
 const phoneScreen = vi.fn();
 const phoneInput = vi.fn();
+const phoneNet = vi.fn();
+const phoneAppStart = vi.fn();
+const phoneLogin = vi.fn();
+const phoneProfile = vi.fn();
 vi.mock("@/lib/accountDevices", () => ({
   listPhones: (...a: unknown[]) => listPhones(...a),
   listFreeAccounts: (...a: unknown[]) => listFreeAccounts(...a),
   attachPhone: (...a: unknown[]) => attachPhone(...a),
-  detachPhone: vi.fn(),
+  detachPhone: (...a: unknown[]) => detachPhone(...a),
   setPhonePower: (...a: unknown[]) => setPhonePower(...a),
   runWarmup: (...a: unknown[]) => runWarmup(...a),
   deviceOptions: (...a: unknown[]) => deviceOptions(...a),
   createPhones: (...a: unknown[]) => createPhones(...a),
   addProxy: vi.fn(),
   phoneScreen: (...a: unknown[]) => phoneScreen(...a),
-  phoneApps: vi.fn().mockResolvedValue({ installed: [], catalog: [] }),
+  phoneApps: vi.fn().mockResolvedValue({
+    installed: [{ appName: "Instagram", packageName: "com.instagram.android", version: "412.0.0.35.87" }],
+    catalog: [],
+  }),
   installApp: vi.fn(),
   phoneInput: (...a: unknown[]) => phoneInput(...a),
   phoneOpenUrl: vi.fn(),
+  phoneNet: (...a: unknown[]) => phoneNet(...a),
+  phoneAppStart: (...a: unknown[]) => phoneAppStart(...a),
+  phoneAppStop: vi.fn(),
+  phoneLogin: (...a: unknown[]) => phoneLogin(...a),
+  phoneProfile: (...a: unknown[]) => phoneProfile(...a),
+  uninstallApp: vi.fn(),
+  PHONE_APPS: {
+    instagram: { packageName: "com.instagram.android", label: "Instagram" },
+    tiktok: { packageName: "com.zhiliaoapp.musically", label: "TikTok" },
+  },
 }));
 
 const withAccount: DevicePhone = {
@@ -52,6 +72,7 @@ beforeEach(() => {
   listPhones.mockReset().mockResolvedValue([withAccount, freePhone]);
   listFreeAccounts.mockReset().mockResolvedValue([{ id: "acc2", account_name: "Второй", handle: "vtoroy", platform: "instagram" }]);
   attachPhone.mockReset().mockResolvedValue(undefined);
+  detachPhone.mockReset().mockResolvedValue(undefined);
   setPhonePower.mockReset().mockResolvedValue(undefined);
   runWarmup.mockReset().mockResolvedValue({ plan: { day: 6 } });
   deviceOptions.mockReset().mockResolvedValue({
@@ -60,8 +81,16 @@ beforeEach(() => {
     groups: [{ id: "g1", name: "MarkVision" }],
   });
   createPhones.mockReset().mockResolvedValue({ created: ["1003"] });
-  phoneScreen.mockReset().mockResolvedValue("https://get.phonegrid.com/shot.png");
+  phoneScreen.mockReset().mockResolvedValue({
+    url: "https://get.phonegrid.com/shot.png", width: 1080, height: 2340,
+  });
   phoneInput.mockReset().mockResolvedValue(undefined);
+  phoneNet.mockReset().mockResolvedValue({
+    ip: "93.157.181.157", country: "Kazakhstan", city: "Oral", isp: "Tele2", mobile: true,
+  });
+  phoneAppStart.mockReset().mockResolvedValue(undefined);
+  phoneLogin.mockReset().mockResolvedValue({ state: "success", message: "Вход выполнен" });
+  phoneProfile.mockReset().mockResolvedValue({ handle: "aiva", followers: "1 240", posts: "37" });
 });
 
 describe("раздел «Устройства»", () => {
@@ -130,6 +159,30 @@ describe("раздел «Устройства»", () => {
     await waitFor(() => expect(runWarmup).toHaveBeenCalledWith("p1", "acc1"));
   });
 
+  it("второй прогрев за день не предлагается", async () => {
+    listPhones.mockResolvedValue([{
+      ...withAccount,
+      warmup: { ...withAccount.warmup!, lastRunAt: new Date().toISOString() },
+    }]);
+    render(<DevicesTab />);
+    await screen.findByText("CP-1");
+    const button = screen.getByRole("button", { name: "Прогрет сегодня" });
+    expect(button).toBeDisabled();
+  });
+
+  it("замена аккаунта на телефоне сначала снимает прежний", async () => {
+    render(<DevicesTab />);
+    await screen.findByText("CP-1");
+    // Radix Select в jsdom не раскрывается — открываем список пробелом и выбираем пункт.
+    const trigger = screen.getAllByRole("combobox")[0];
+    fireEvent.keyDown(trigger, { key: " " });
+    const option = await screen.findByText("Второй (instagram)");
+    fireEvent.click(option);
+    // Один телефон — один аккаунт: без снятия прежнего замена упёрлась бы в уникальный индекс.
+    await waitFor(() => expect(detachPhone).toHaveBeenCalledWith("p1", "acc1"));
+    expect(attachPhone).toHaveBeenCalledWith("p1", "acc2", "1001");
+  });
+
   it("поиск сужает список", async () => {
     render(<DevicesTab />);
     await screen.findByText("CP-1");
@@ -165,10 +218,44 @@ describe("окно телефона", () => {
     await waitFor(() => expect(phoneInput).toHaveBeenCalledWith("p1", "1001", expect.objectContaining({ kind: "tap" })));
   });
 
+  it("показывает реальный адрес выхода, а не адрес прокси-шлюза", async () => {
+    render(<DevicesTab />);
+    await screen.findByText("CP-1");
+    fireEvent.click(screen.getByTitle("Открыть экран телефона"));
+    // Площадка видит вход именно с этого адреса; в карточке телефона стоит другой.
+    // Адрес виден и в шапке окна, и в разборе: важно, что оба — реальный, а не прокси.
+    expect(await screen.findAllByText(/93\.157\.181\.157/)).not.toHaveLength(0);
+    expect(await screen.findByText(/это адрес его шлюза/)).toBeInTheDocument();
+  });
+
+  it("кнопка площадки открывает приложение на телефоне", async () => {
+    render(<DevicesTab />);
+    await screen.findByText("CP-1");
+    fireEvent.click(screen.getByTitle("Открыть экран телефона"));
+    const button = await screen.findByRole("button", { name: "Instagram" });
+    fireEvent.click(button);
+    await waitFor(() =>
+      expect(phoneAppStart).toHaveBeenCalledWith("p1", "1001", "com.instagram.android"));
+  });
+
+  it("вход проходит по шагам и заканчивается карточкой аккаунта", async () => {
+    render(<DevicesTab />);
+    await screen.findByText("CP-1");
+    fireEvent.click(screen.getByTitle("Открыть экран телефона"));
+    fireEvent.change(await screen.findByPlaceholderText("Логин или почта"), { target: { value: "aiva" } });
+    fireEvent.change(screen.getByPlaceholderText("Пароль"), { target: { value: "P@ssw0rd" } });
+    fireEvent.click(screen.getByRole("button", { name: "Войти" }));
+    // Приложение уже с открытым аккаунтом — сценарий не вводит пароль повторно.
+    await waitFor(() => expect(phoneLogin).toHaveBeenCalledWith("p1", "1001", "instagram", "open"));
+    expect(await screen.findByText("Аккаунт подключён")).toBeInTheDocument();
+    expect(await screen.findByText("1 240 подписчиков")).toBeInTheDocument();
+    expect(screen.getByText("37 постов")).toBeInTheDocument();
+  });
+
   it("выключенный телефон предлагает включить прямо в окне", async () => {
     render(<DevicesTab />);
     await screen.findByText("CP-2");
-    fireEvent.click(screen.getAllByTitle("Сначала включите телефон")[0]);
+    fireEvent.click(screen.getAllByTitle(/включить можно прямо в нём/)[0]);
     expect(await screen.findByText(/Телефон выключен/)).toBeInTheDocument();
     expect(phoneScreen).not.toHaveBeenCalled();
     // Кнопка включения здесь же — не нужно закрывать окно и искать её в списке.
@@ -180,7 +267,7 @@ describe("окно телефона", () => {
     listPhones.mockResolvedValue([{ ...freePhone, status: 3, statusText: "загружается" }]);
     render(<DevicesTab />);
     await screen.findByText("CP-2");
-    fireEvent.click(screen.getByTitle("Сначала включите телефон"));
+    fireEvent.click(screen.getAllByTitle(/включить можно прямо в нём/)[0]);
     expect(await screen.findByText(/загружается — обычно около минуты/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Включить телефон/ })).not.toBeInTheDocument();
   });

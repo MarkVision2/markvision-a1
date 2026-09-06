@@ -1,13 +1,15 @@
 /**
- * Окно телефона: экран устройства прямо в платформе — посмотреть, ткнуть, ввести текст,
- * открыть ссылку в его браузере.
+ * Окно телефона: экран устройства прямо в платформе — открыть приложение, войти в аккаунт,
+ * ткнуть, ввести текст, проверить, с какого адреса телефон выходит в сеть.
  *
- * Кадр снимается по запросу и живёт секунды: это не видеопоток, а снимок экрана, которого
- * хватает, чтобы зарегистрировать аккаунт и проверить, что происходит. Полноценное видео
- * PhoneGrid наружу не отдаёт — оно есть только в его собственном клиенте.
+ * Почему снимок, а не видео: в Open API PhoneGrid нет ни потока, ни даже endpoint'а снимка —
+ * кадр собирается вручную (screencap на телефоне → файл в хранилище → ссылка) и занимает
+ * 3–9 секунд. Живое видео есть только в собственном клиенте PhoneGrid: оно идёт по WebRTC
+ * через их приватный шлюз, наружу этот канал не выведен. Поэтому ставка здесь не на
+ * плавную картинку, а на то, чтобы по картинке почти не приходилось кликать: приложение
+ * открывается кнопкой, вход делает сценарий, читающий разметку экрана Android.
  *
- * Пароли площадок платформа не хранит и не подставляет: логин и код вводит человек здесь же,
- * на экране телефона, и они остаются внутри устройства.
+ * Пароли площадок платформа не хранит: значение уходит на телефон и нигде не остаётся.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -16,16 +18,18 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Circle, Globe, Loader2, RefreshCw, Square } from "lucide-react";
+import { ArrowLeft, Circle, Globe, Loader2, RefreshCw, Square, Wifi } from "lucide-react";
 import { toast } from "sonner";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
+import { PhoneLoginPanel } from "@/components/publishing/PhoneLoginPanel";
 import {
-  installApp, listPhones, phoneApps, phoneInput, phoneOpenUrl, phoneScreen, setPhonePower,
-  type DevicePhone, type PhoneApps, type PhoneKey,
+  installApp, listPhones, phoneAppStart, phoneAppStop, phoneApps, phoneInput, phoneNet,
+  phoneOpenUrl, phoneScreen, setPhonePower, uninstallApp, PHONE_APPS,
+  type DevicePhone, type LoginPlatform, type PhoneApps, type PhoneKey, type PhoneNet, type PhoneShot,
 } from "@/lib/accountDevices";
 
-/** Экран устройства в пикселях — по нему пересчитываем клик в координаты тапа. */
-const SCREEN = { width: 1080, height: 2400 };
+/** Пока кадра нет, считаем экран обычным 1080×2400; после первого снимка берём настоящий. */
+const DEFAULT_SCREEN = { width: 1080, height: 2400 };
 
 export function PhoneScreenDialog({
   open, phone, onClose,
@@ -35,12 +39,17 @@ export function PhoneScreenDialog({
   onClose: () => void;
 }) {
   const { activeId: projectId } = useProjectsStore();
-  const [url, setUrl] = useState<string | null>(null);
+  const [shot, setShot] = useState<PhoneShot | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
   const [apps, setApps] = useState<PhoneApps | null>(null);
+  const [net, setNet] = useState<PhoneNet | null>(null);
+  const [netLoading, setNetLoading] = useState(false);
+  const [platform, setPlatform] = useState<LoginPlatform>(
+    phone.account?.platform === "tiktok" ? "tiktok" : "instagram",
+  );
   // Автообновление: страница в браузере телефона грузится не мгновенно, и без него
   // непонятно, идёт что-то или зависло.
   const [auto, setAuto] = useState(false);
@@ -55,7 +64,7 @@ export function PhoneScreenDialog({
     setLoading(true);
     setError(null);
     try {
-      setUrl(await phoneScreen(projectId, phone.id));
+      setShot(await phoneScreen(projectId, phone.id));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -87,11 +96,24 @@ export function PhoneScreenDialog({
     }
   }, [projectId, phone.id]);
 
+  const checkNet = useCallback(async () => {
+    if (!projectId) return;
+    setNetLoading(true);
+    try {
+      setNet(await phoneNet(projectId, phone.id));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setNetLoading(false);
+    }
+  }, [projectId, phone.id]);
+
   useEffect(() => {
     if (!open) return;
     if (status === 4) {
       void refresh();
       void loadApps();
+      void checkNet();
       return;
     }
     // Пока телефон загружается — опрашиваем статус, чтобы экран появился сам.
@@ -99,7 +121,7 @@ export function PhoneScreenDialog({
       const t = setInterval(() => void syncStatus(), 10_000);
       return () => clearInterval(t);
     }
-  }, [open, status, refresh, loadApps, syncStatus]);
+  }, [open, status, refresh, loadApps, checkNet, syncStatus]);
 
   /** Действие на телефоне и сразу свежий кадр — иначе не видно, что получилось. */
   const send = async (fn: () => Promise<unknown>) => {
@@ -107,7 +129,7 @@ export function PhoneScreenDialog({
     setLoading(true);
     try {
       await fn();
-      setUrl(await phoneScreen(projectId, phone.id));
+      setShot(await phoneScreen(projectId, phone.id));
       setError(null);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
@@ -116,13 +138,18 @@ export function PhoneScreenDialog({
     }
   };
 
-  /** Клик по картинке → тап в тех же координатах на устройстве. */
+  /**
+   * Клик по картинке → тап в тех же координатах на устройстве. Считаем по реальному
+   * разрешению кадра: у моделей оно разное (1080×2340 и 1080×2400), и на фиксированном
+   * числе палец уезжал бы вниз на десятки пикселей.
+   */
   const onScreenClick = (e: React.MouseEvent<HTMLImageElement>) => {
     const img = imgRef.current;
     if (!img) return;
+    const size = shot ?? DEFAULT_SCREEN;
     const rect = img.getBoundingClientRect();
-    const x = Math.round(((e.clientX - rect.left) / rect.width) * SCREEN.width);
-    const y = Math.round(((e.clientY - rect.top) / rect.height) * SCREEN.height);
+    const x = Math.round(((e.clientX - rect.left) / rect.width) * size.width);
+    const y = Math.round(((e.clientY - rect.top) / rect.height) * size.height);
     void send(() => phoneInput(projectId!, phone.id, { kind: "tap", x, y }));
   };
 
@@ -130,12 +157,21 @@ export function PhoneScreenDialog({
 
   useEffect(() => {
     if (!open || !auto || status !== 4) return;
-    const t = setInterval(() => { if (!loading) void refresh(); }, 6000);
+    // Кадр готовится до девяти секунд — чаще опрашивать бессмысленно, запросы встанут в очередь.
+    const t = setInterval(() => { if (!loading) void refresh(); }, 10_000);
     return () => clearInterval(t);
   }, [open, auto, status, loading, refresh]);
 
   const off = status !== 4;
   const booting = status === 3;
+  const installed = (pkg: string) => (apps?.installed ?? []).some((a) => a.packageName === pkg);
+  /**
+   * Стоит не та версия: шаблон прогрева требует ровно свою и падает на сервере PhoneGrid,
+   * не доходя до телефона. Поверх такой версии нужная не встанет — только снести и поставить.
+   */
+  const wrongVersion = (c: PhoneApps["catalog"][number]) =>
+    Boolean(c.warmupVersion)
+    && (apps?.installed ?? []).some((a) => a.packageName === c.packageName && a.version !== c.warmupVersion);
 
   /** Включение прямо из окна: искать кнопку в списке — лишний шаг. */
   const powerOn = async () => {
@@ -154,16 +190,19 @@ export function PhoneScreenDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent className="max-w-5xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {phone.name}
             <Badge variant={off ? "secondary" : "default"}>{statusText}</Badge>
-            {phone.proxyIp && <Badge variant="outline">{phone.proxyIp}</Badge>}
+            {net
+              ? <Badge variant="outline" className="gap-1"><Wifi className="h-3 w-3" />{net.ip}</Badge>
+              : phone.proxyIp && <Badge variant="outline">прокси {phone.proxyIp}</Badge>}
           </DialogTitle>
           <DialogDescription>
-            Экран устройства. Кликните по нему — телефон получит тап в этом месте. Кадр снимается
-            по запросу, поэтому обновляется за несколько секунд, а не как видео.
+            Экран устройства. Приложение открывается кнопкой, вход — сценарием: платформа
+            читает разметку экрана и жмёт сама. Кликать по картинке тоже можно, но кадр
+            снимается по запросу и обновляется за несколько секунд, а не как видео.
           </DialogDescription>
         </DialogHeader>
 
@@ -189,29 +228,26 @@ export function PhoneScreenDialog({
             )}
           </div>
         ) : (
-          <div className="flex gap-4">
-            <div className="relative w-[280px] shrink-0 overflow-hidden rounded-xl border bg-muted">
-              {url ? (
-                <img
-                  ref={imgRef} src={url} alt={`Экран ${phone.name}`}
-                  className="w-full cursor-crosshair select-none" draggable={false}
-                  onClick={onScreenClick}
-                />
-              ) : (
-                <div className="flex h-[560px] items-center justify-center text-sm text-muted-foreground">
-                  {loading ? "Снимаем экран…" : "Нет кадра"}
-                </div>
-              )}
-              {loading && url && (
-                <div className="absolute inset-0 flex items-center justify-center bg-background/50">
-                  <Loader2 className="h-6 w-6 animate-spin" />
-                </div>
-              )}
-            </div>
-
-            <div className="flex-1 space-y-3">
-              {error && <p className="text-sm text-destructive">{error}</p>}
-
+          <div className="flex gap-5">
+            <div className="w-[340px] shrink-0 space-y-2">
+              <div className="relative overflow-hidden rounded-xl border bg-muted">
+                {shot ? (
+                  <img
+                    ref={imgRef} src={shot.url} alt={`Экран ${phone.name}`}
+                    className="w-full cursor-crosshair select-none" draggable={false}
+                    onClick={onScreenClick}
+                  />
+                ) : (
+                  <div className="flex h-[680px] items-center justify-center text-sm text-muted-foreground">
+                    {loading ? "Снимаем экран…" : "Нет кадра"}
+                  </div>
+                )}
+                {loading && shot && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-background/50">
+                    <Loader2 className="h-6 w-6 animate-spin" />
+                  </div>
+                )}
+              </div>
               <div className="flex flex-wrap gap-1.5">
                 <Button size="sm" variant="outline" disabled={loading} onClick={() => void refresh()}>
                   <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Обновить
@@ -219,7 +255,7 @@ export function PhoneScreenDialog({
                 <Button
                   size="sm" variant={auto ? "default" : "outline"}
                   onClick={() => setAuto((v) => !v)}
-                  title="Обновлять экран каждые 6 секунд — удобно, пока грузится страница"
+                  title="Обновлять экран каждые 10 секунд — примерно столько и готовится кадр"
                 >
                   {auto ? "Авто: вкл" : "Авто"}
                 </Button>
@@ -233,14 +269,93 @@ export function PhoneScreenDialog({
                   <Square className="h-3.5 w-3.5" />
                 </Button>
               </div>
+            </div>
+
+            <div className="flex-1 space-y-3 overflow-y-auto pr-1" style={{ maxHeight: "70vh" }}>
+              {error && <p className="text-sm text-destructive">{error}</p>}
 
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Ввести текст</label>
+                <label className="text-sm font-medium">Приложение площадки</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {(Object.entries(PHONE_APPS) as [LoginPlatform, { packageName: string; label: string }][])
+                    .map(([key_, app]) => (
+                      <Button
+                        key={key_}
+                        size="sm"
+                        variant={platform === key_ ? "default" : "outline"}
+                        disabled={loading || !installed(app.packageName)}
+                        title={installed(app.packageName)
+                          ? `Открыть ${app.label} на телефоне`
+                          : `${app.label} не установлен — поставьте его ниже`}
+                        onClick={() => {
+                          setPlatform(key_);
+                          void send(() => phoneAppStart(projectId!, phone.id, app.packageName));
+                        }}
+                      >
+                        {app.label}
+                      </Button>
+                    ))}
+                  <Button
+                    size="sm" variant="outline" disabled={loading}
+                    title="Закрыть приложение — вход начнётся с чистого экрана"
+                    onClick={() => void send(() => phoneAppStop(projectId!, phone.id, PHONE_APPS[platform].packageName))}
+                  >
+                    Закрыть
+                  </Button>
+                </div>
+              </div>
+
+              {projectId && (
+                <div className="border-t pt-3">
+                  <PhoneLoginPanel
+                    projectId={projectId} phoneId={phone.id} platform={platform}
+                    onScreenChanged={() => void refresh()}
+                  />
+                </div>
+              )}
+
+              <div className="space-y-1.5 border-t pt-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">Выход в сеть</label>
+                  <Button size="sm" variant="ghost" disabled={netLoading} onClick={() => void checkNet()}>
+                    {netLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Проверить"}
+                  </Button>
+                </div>
+                {net ? (
+                  <div className="space-y-1 text-xs">
+                    <p>
+                      Площадка видит вход с <span className="font-medium">{net.ip}</span>
+                      {net.isp ? ` · ${net.isp}` : ""}
+                      {net.city || net.country ? ` · ${[net.city, net.country].filter(Boolean).join(", ")}` : ""}
+                      {net.mobile ? " · мобильный" : ""}
+                    </p>
+                    {phone.proxyIp && phone.proxyIp !== net.ip && (
+                      <p className="text-muted-foreground">
+                        В карточке телефона стоит прокси {phone.proxyIp} — это адрес его шлюза.
+                        Наружу телефон выходит с {net.ip}: у ротационного мобильного прокси
+                        адрес меняется, и площадка видит именно этот.
+                      </p>
+                    )}
+                    {!phone.proxyIp && (
+                      <p className="text-destructive">
+                        Прокси не привязан — телефон выходит напрямую. Для заведения аккаунта так делать не стоит.
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Проверьте перед входом: важно, чтобы авторизация шла через прокси телефона, а не мимо.
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-1.5 border-t pt-3">
+                <label className="text-sm font-medium">Текст на телефон</label>
                 <div className="flex gap-1.5">
                   <Input
                     value={text} disabled={loading} className="h-8"
                     onChange={(e) => setText(e.target.value)}
-                    placeholder="Сначала ткните в поле на экране"
+                    placeholder="Код подтверждения или любой текст"
                   />
                   <Button
                     size="sm" disabled={loading || !text}
@@ -253,13 +368,14 @@ export function PhoneScreenDialog({
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Пароли и коды вводите здесь же — они остаются внутри телефона, платформа их не хранит.
+                  Идёт в поле, которое сейчас в фокусе на телефоне. Android принимает только
+                  латиницу, цифры и знаки — кириллицу так не набрать.
                 </p>
               </div>
 
               {apps && (
                 <div className="space-y-1.5 border-t pt-3">
-                  <label className="text-sm font-medium">Приложения</label>
+                  <label className="text-sm font-medium">Установлено</label>
                   {apps.installed.length > 0 ? (
                     <div className="flex flex-wrap gap-1.5">
                       {apps.installed.map((a) => (
@@ -270,7 +386,7 @@ export function PhoneScreenDialog({
                     <p className="text-xs text-muted-foreground">Пока ничего не установлено.</p>
                   )}
                   <div className="flex flex-wrap gap-1.5">
-                    {apps.catalog.filter((c) => !apps.installed.some((i) => i.packageName === c.packageName)).map((c) => (
+                    {apps.catalog.filter((c) => !installed(c.packageName)).map((c) => (
                       <Button
                         key={c.packageName} size="sm" variant="outline"
                         disabled={loading || !c.installVersionId}
@@ -286,11 +402,22 @@ export function PhoneScreenDialog({
                         Поставить {c.appName}
                       </Button>
                     ))}
+                    {apps.catalog.filter(wrongVersion).map((c) => (
+                      <Button
+                        key={`fix-${c.packageName}`} size="sm" variant="outline"
+                        disabled={loading || !c.installVersionId}
+                        title={`Стоит другая версия — прогрев её не примет. Снесём и поставим ${c.warmupVersion}. Вход в аккаунт при этом слетит.`}
+                        onClick={() => void send(async () => {
+                          await uninstallApp(projectId!, phone.id, c.packageName);
+                          await installApp(projectId!, phone.id, c.installVersionId!);
+                          toast.success(`${c.appName} переставляется на ${c.warmupVersion} — до минуты`);
+                          setTimeout(() => void loadApps(), 30_000);
+                        })}
+                      >
+                        Переустановить {c.appName} под прогрев
+                      </Button>
+                    ))}
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Ставим сразу версию под прогрев — иначе позже придётся переустанавливать
-                    приложение, и вход в аккаунт слетит.
-                  </p>
                 </div>
               )}
 
@@ -313,9 +440,8 @@ export function PhoneScreenDialog({
                   </Button>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Подключать аккаунт к платформе лучше отсюда: вход на площадку пойдёт с IP этого
-                  телефона, а не с сервера. Страница открывается в браузере телефона и грузится
-                  через его прокси — включите «Авто», чтобы видеть, как она подтягивается.
+                  Подключение аккаунта к платформе (OAuth) лучше проходить отсюда: вход на
+                  площадку пойдёт с IP этого телефона, а не с сервера.
                 </p>
               </div>
             </div>

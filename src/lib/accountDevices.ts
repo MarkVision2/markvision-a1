@@ -178,10 +178,96 @@ export async function installApp(projectId: string, phoneId: string, appVersionI
   await call("install_app", projectId, { phone_id: phoneId, app_version_id: appVersionId });
 }
 
-/** Снимок экрана телефона: ссылка на картинку в хранилище PhoneGrid (кадр готовится ~5 секунд). */
-export async function phoneScreen(projectId: string, phoneId: string): Promise<string> {
-  const r = await call<{ url: string }>("screen", projectId, { phone_id: phoneId });
-  return r.url;
+export interface PhoneShot {
+  url: string;
+  /** Реальное разрешение экрана — по нему пересчитывается клик в тап. */
+  width: number;
+  height: number;
+}
+
+/**
+ * Снимок экрана телефона: ссылка на картинку в хранилище PhoneGrid.
+ *
+ * Кадр готовится 3–9 секунд: PhoneGrid снимает png на телефоне, кладёт в своё хранилище
+ * и только потом отдаёт ссылку. Видеопотока в Open API нет вовсе — он есть лишь в
+ * собственном клиенте PhoneGrid (WebRTC через их приватный шлюз), поэтому здесь снимок,
+ * а вход в приложение делает не палец по картинке, а сценарий `phoneLogin`.
+ */
+export async function phoneScreen(projectId: string, phoneId: string): Promise<PhoneShot> {
+  return await call<PhoneShot>("screen", projectId, { phone_id: phoneId });
+}
+
+/** Куда телефон реально выходит в сеть: этот адрес и видит площадка при входе. */
+export interface PhoneNet {
+  ip: string;
+  country: string | null;
+  city: string | null;
+  isp: string | null;
+  mobile: boolean | null;
+}
+
+export async function phoneNet(projectId: string, phoneId: string): Promise<PhoneNet> {
+  return await call<PhoneNet>("net", projectId, { phone_id: phoneId });
+}
+
+export const PHONE_APPS = {
+  instagram: { packageName: "com.instagram.android", label: "Instagram" },
+  tiktok: { packageName: "com.zhiliaoapp.musically", label: "TikTok" },
+} as const;
+
+export type LoginPlatform = keyof typeof PHONE_APPS;
+
+export async function phoneAppStart(projectId: string, phoneId: string, packageName: string): Promise<void> {
+  await call("app_start", projectId, { phone_id: phoneId, package_name: packageName });
+}
+
+export async function phoneAppStop(projectId: string, phoneId: string, packageName: string): Promise<void> {
+  await call("app_stop", projectId, { phone_id: phoneId, package_name: packageName });
+}
+
+export type LoginState = "success" | "wrong_password" | "two_factor" | "challenge" | "form" | "unknown";
+
+export interface LoginResult {
+  state: LoginState;
+  message: string;
+}
+
+/**
+ * Вход в приложение площадки по шагам. Шаги раздельные, потому что каждый обмен с телефоном
+ * занимает секунды, и окно должно показывать, на чём оно сейчас, а не молчать полминуты.
+ *
+ * Пароль уходит одним запросом в `input text` на телефон и нигде не сохраняется: ни в базе,
+ * ни в браузере, ни в логах.
+ */
+export async function phoneLogin(
+  projectId: string,
+  phoneId: string,
+  platform: LoginPlatform,
+  stage: "open" | "fill" | "submit" | "check",
+  credentials?: { username: string; password: string },
+): Promise<LoginResult> {
+  return await call<LoginResult>("login", projectId, {
+    phone_id: phoneId,
+    platform,
+    stage,
+    ...(credentials ?? {}),
+  });
+}
+
+/** Имя и счётчики аккаунта, прочитанные с экрана профиля приложения. */
+export interface PhoneProfile {
+  handle: string | null;
+  followers: string | null;
+  posts: string | null;
+}
+
+export async function phoneProfile(projectId: string, phoneId: string): Promise<PhoneProfile> {
+  return await call<PhoneProfile>("profile", projectId, { phone_id: phoneId });
+}
+
+/** Снести приложение — нужно, когда стоит версия, несовместимая с шаблоном прогрева. */
+export async function uninstallApp(projectId: string, phoneId: string, packageName: string): Promise<void> {
+  await call("uninstall_app", projectId, { phone_id: phoneId, package_name: packageName });
 }
 
 export type PhoneKey = "home" | "back" | "enter" | "tab" | "delete" | "recent";

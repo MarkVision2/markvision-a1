@@ -17,11 +17,18 @@
  *   options       — что предложить в форме создания: модели, прокси, группы PhoneGrid
  *   create_phone  — создать устройство (ПЛАТНО, до 10 за раз)
  *   proxy_add     — добавить прокси строкой socks5://логин:пароль@хост:порт
- *   screen        — снимок экрана телефона (ссылка на картинку)
+ *   screen        — снимок экрана телефона (ссылка на картинку + реальное разрешение)
  *   input         — тап, свайп, текст, клавиша — как палец по экрану
  *   open_url      — открыть ссылку в браузере телефона (например, подключение аккаунта)
+ *   ui            — разметка текущего экрана: поля и кнопки с координатами
+ *   net           — реальный внешний IP телефона: с него площадка и видит вход
+ *   app_start     — открыть приложение площадки на телефоне
+ *   app_stop      — закрыть его
+ *   login         — вход в приложение по шагам (open → fill → submit → check)
+ *   profile       — имя и счётчики аккаунта с экрана профиля
  *   apps          — что стоит на телефоне и что можно поставить
  *   install_app   — поставить приложение нужной версии
+ *   uninstall_app — снести (нужно, когда стоит версия, несовместимая с прогревом)
  *   attach        — привязать телефон к аккаунту (одно устройство = один аккаунт)
  *   detach        — отвязать
  *   power         — включить / выключить телефон (по phone_id или по аккаунту)
@@ -48,6 +55,19 @@ import {
   warmupPlan,
   WARMUP_TEMPLATES,
 } from "../_lib/phonegrid.ts";
+import {
+  centerOf,
+  classifyScreen,
+  editFields,
+  findByLabel,
+  hasNonAscii,
+  inputTextCommand,
+  LOGIN_FLOWS,
+  parseUiNodes,
+  readProfileStats,
+  UI_DUMP,
+  type UiNode,
+} from "../_lib/phonescreen.ts";
 
 const admin = createClient(
   Deno.env.get("SUPABASE_URL") ?? "",
@@ -83,6 +103,53 @@ async function loadAccount(accountId: string, projectId: string): Promise<Accoun
 /** Телефон должен быть выключён — RPA включает его сам, иначе PhoneGrid отвечает 33309. */
 async function phoneInfo(cfg: NonNullable<ReturnType<typeof phonegridConfig>>, phoneId: string) {
   return await phonegridCall<Record<string, unknown>>(cfg, "/cloudphone/info", { id: Number(phoneId) });
+}
+
+type Cfg = NonNullable<ReturnType<typeof phonegridConfig>>;
+
+/** Шелл телефона: `exeCommand` возвращает stdout, но не длиннее 5000 символов. */
+async function shell(cfg: Cfg, phoneId: number, command: string): Promise<string> {
+  const out = await phonegridCall<unknown>(cfg, "/cloudphone/exeCommand", { id: phoneId, command });
+  return typeof out === "string" ? out : "";
+}
+
+/** Разметка текущего экрана — по ней ищем поля и кнопки, а не тычем в картинку вслепую. */
+async function readUi(cfg: Cfg, phoneId: number): Promise<UiNode[]> {
+  return parseUiNodes(await shell(cfg, phoneId, UI_DUMP));
+}
+
+async function tapNode(cfg: Cfg, phoneId: number, node: UiNode): Promise<void> {
+  const { x, y } = centerOf(node);
+  await shell(cfg, phoneId, `input tap ${x} ${y}`);
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Снимок экрана: png на телефоне → ссылка в хранилище PhoneGrid. Заодно снимаем реальное
+ * разрешение — оно у моделей разное (1080×2340 и 1080×2400), а тап считается по нему,
+ * и при ошибке в размере палец уезжает на десятки пикселей.
+ */
+async function grabScreen(cfg: Cfg, phoneId: number): Promise<{ url: string; width: number; height: number } | null> {
+  const path = "/sdcard/mv_screen.png";
+  const size = await shell(cfg, phoneId, `screencap -p ${path} && wm size`);
+  const m = /(\d+)x(\d+)/.exec(size);
+  const started = await phonegridCall<{ downId: string }>(cfg, "/cloudphone/download", { id: phoneId, filePath: path });
+  const downId = Number(started?.downId ?? 0);
+  if (!downId) return null;
+  // Опрос частый: файл бывает готов за полсекунды, а бывает — за три.
+  for (let i = 0; i < 40; i++) {
+    await sleep(300);
+    const res = await phonegridCall<{ status: number; downUrl?: string }>(
+      cfg,
+      "/cloudphone/download/result",
+      { id: phoneId, downId },
+    );
+    if (res?.downUrl) {
+      return { url: res.downUrl, width: Number(m?.[1] ?? 1080), height: Number(m?.[2] ?? 2400) };
+    }
+  }
+  return null;
 }
 
 Deno.serve(async (req) => {
@@ -203,7 +270,8 @@ Deno.serve(async (req) => {
       return json({ ok: true, created: created ?? [], quantity });
     }
 
-    if (action === "screen" || action === "input" || action === "open_url") {
+    const SCREEN_ACTIONS = ["screen", "input", "open_url", "ui", "net", "app_start", "app_stop", "login", "profile"];
+    if (SCREEN_ACTIONS.includes(action)) {
       // Экран и ввод идут по телефону: аккаунт для этого не нужен — на свежем устройстве
       // аккаунта ещё нет, а именно с него всё и начинается.
       let phoneId = String(body.phone_id ?? "");
@@ -232,9 +300,13 @@ Deno.serve(async (req) => {
         if (kind === "tap") command = `input tap ${n(body.x)} ${n(body.y)}`;
         else if (kind === "swipe") command = `input swipe ${n(body.x)} ${n(body.y)} ${n(body.x2)} ${n(body.y2)} ${Math.min(n(body.ms) || 300, 3000)}`;
         else if (kind === "text") {
-          // input text не умеет пробелы и кавычки — экранируем, ввод идёт как с клавиатуры.
+          // Одинарные кавычки, а не JSON: в двойных шелл раскрыл бы `$` и обратные кавычки,
+          // и пароль вида `p$w` уехал бы на телефон покалеченным.
           const raw = String(body.text ?? "").slice(0, 500);
-          command = `input text ${JSON.stringify(raw.replace(/ /g, "%s"))}`;
+          if (hasNonAscii(raw)) {
+            return json({ error: "Android умеет вводить только латиницу, цифры и знаки — кириллицу через это поле не набрать" }, 400);
+          }
+          command = inputTextCommand(raw);
         } else if (kind === "key") {
           const allowed: Record<string, number> = { home: 3, back: 4, enter: 66, tab: 61, delete: 67, recent: 187, power: 26 };
           const code = allowed[String(body.key ?? "")];
@@ -245,25 +317,121 @@ Deno.serve(async (req) => {
         return json({ ok: true });
       }
 
+      if (action === "ui") {
+        // Разметка экрана: по ней интерфейс жмёт точно в поле, а не наугад по картинке.
+        const nodes = await readUi(cfg, id);
+        return json({ ok: true, nodes });
+      }
+
+      if (action === "net") {
+        // Реальный адрес выхода: в карточке телефона PhoneGrid показывает адрес прокси-шлюза,
+        // а площадка видит вот этот. У ротационного мобильного прокси они не совпадают.
+        const ip = (await shell(cfg, id, "curl -s --max-time 15 https://api.ipify.org")).trim();
+        if (!ip) return json({ error: "Телефон не дотянулся до сети — проверьте прокси" }, 502);
+        let geo: Record<string, unknown> | null = null;
+        try {
+          // Геоданные берём со своего сервера: телефону лишний запрос ни к чему.
+          geo = await fetch(`http://ip-api.com/json/${ip}?fields=country,city,isp,mobile,proxy,query`)
+            .then((r) => r.json());
+        } catch {
+          /* без геоданных обойдёмся — главное сам адрес */
+        }
+        return json({
+          ok: true,
+          ip,
+          country: geo?.country ?? null,
+          city: geo?.city ?? null,
+          isp: geo?.isp ?? null,
+          mobile: geo?.mobile ?? null,
+        });
+      }
+
+      if (action === "app_start" || action === "app_stop") {
+        const packageName = String(body.package_name ?? "");
+        if (!Object.values(LOGIN_FLOWS).some((f) => f.packageName === packageName)) {
+          return json({ error: "Неизвестное приложение" }, 400);
+        }
+        await phonegridCall(cfg, action === "app_start" ? "/cloudphone/app/start" : "/cloudphone/app/stop", {
+          id,
+          packageName,
+        });
+        return json({ ok: true });
+      }
+
+      if (action === "profile") {
+        const nodes = await readUi(cfg, id);
+        return json({ ok: true, ...readProfileStats(nodes) });
+      }
+
+      if (action === "login") {
+        const platform = String(body.platform ?? "instagram");
+        const flow = LOGIN_FLOWS[platform];
+        if (!flow) return json({ error: `Вход для ${platform} пока не поддержан` }, 400);
+        const stage = String(body.stage ?? "open");
+
+        if (stage === "open") {
+          // Приложение поднимаем сами и ждём, пока нарисуется экран: сразу после старта
+          // разметка ещё пустая, и поля бы не нашлись.
+          await phonegridCall(cfg, "/cloudphone/app/start", { id, packageName: flow.packageName });
+          await sleep(6000);
+          let nodes = await readUi(cfg, id);
+          // Приложение могло открыться на промежуточном экране выбора способа входа.
+          const gate = findByLabel(nodes, flow.gateLabels);
+          if (gate && editFields(nodes).length === 0) {
+            await tapNode(cfg, id, gate);
+            await sleep(3000);
+            nodes = await readUi(cfg, id);
+          }
+          return json({ ok: true, ...classifyScreen(nodes, flow), fields: editFields(nodes).length });
+        }
+
+        if (stage === "fill") {
+          const username = String(body.username ?? "");
+          const password = String(body.password ?? "");
+          if (!username || !password) return json({ error: "Нужны логин и пароль" }, 400);
+          if (hasNonAscii(username) || hasNonAscii(password)) {
+            return json({ error: "Android вводит только латиницу, цифры и знаки — кириллица в логине или пароле не пройдёт" }, 400);
+          }
+          const nodes = await readUi(cfg, id);
+          const fields = editFields(nodes);
+          // Поле пароля Android помечает сам; логин — то, что выше него.
+          const passField = fields.find((f) => f.password) ?? fields[1];
+          const userField = findByLabel(fields, flow.userLabels) ?? fields.find((f) => f !== passField) ?? fields[0];
+          if (!userField || !passField) {
+            return json({ error: "На экране нет формы входа — нажмите «Открыть приложение» ещё раз" }, 400);
+          }
+          await tapNode(cfg, id, userField);
+          await shell(cfg, id, inputTextCommand(username));
+          await tapNode(cfg, id, passField);
+          await shell(cfg, id, inputTextCommand(password));
+          // Пароль дальше этой строки не идёт: ни в базу, ни в ответ, ни в лог.
+          return json({ ok: true, filled: true });
+        }
+
+        if (stage === "submit") {
+          const nodes = await readUi(cfg, id);
+          const button = findByLabel(nodes, flow.submitLabels);
+          if (!button) return json({ error: "Кнопка входа не нашлась — нажмите её на экране телефона" }, 400);
+          await tapNode(cfg, id, button);
+          return json({ ok: true });
+        }
+
+        if (stage === "check") {
+          const nodes = await readUi(cfg, id);
+          return json({ ok: true, ...classifyScreen(nodes, flow) });
+        }
+
+        return json({ error: `Неизвестный шаг входа «${stage}»` }, 400);
+      }
+
       // Снимок экрана: делаем png на телефоне, забираем ссылку из хранилища PhoneGrid.
       // Через сервер картинку не гоняем — она под мегабайт, браузер заберёт её сам.
-      const shot = `/sdcard/mv_screen.png`;
-      await phonegridCall(cfg, "/cloudphone/exeCommand", { id, command: `screencap -p ${shot}` });
-      const started = await phonegridCall<{ downId: string }>(cfg, "/cloudphone/download", { id, filePath: shot });
-      const downId = Number(started?.downId ?? 0);
-      if (!downId) return json({ error: "Телефон не отдал снимок экрана" }, 502);
-      // Готовность файла — короткий опрос: обычно укладывается в несколько секунд.
-      for (let i = 0; i < 8; i++) {
-        await new Promise((r) => setTimeout(r, 1200));
-        const res = await phonegridCall<{ status: number; downUrl?: string }>(
-          cfg, "/cloudphone/download/result", { id, downId },
-        );
-        if (res?.downUrl) return json({ ok: true, url: res.downUrl });
-      }
-      return json({ error: "Снимок готовится дольше обычного — повторите" }, 504);
+      const shot = await grabScreen(cfg, id);
+      if (!shot) return json({ error: "Снимок готовится дольше обычного — повторите" }, 504);
+      return json({ ok: true, ...shot });
     }
 
-    if (action === "apps" || action === "install_app") {
+    if (action === "apps" || action === "install_app" || action === "uninstall_app") {
       let phoneId = String(body.phone_id ?? "");
       if (!phoneId) {
         const account = await loadAccount(String(body.account_id ?? ""), projectId);
@@ -276,6 +444,15 @@ Deno.serve(async (req) => {
         const appVersionId = String(body.app_version_id ?? "");
         if (!appVersionId) return json({ error: "Не указана версия приложения" }, 400);
         await phonegridCall(cfg, "/cloudphone/app/install", { id, appVersionId });
+        return json({ ok: true });
+      }
+
+      if (action === "uninstall_app") {
+        // Нужно, когда на телефоне стоит версия, несовместимая с шаблоном прогрева:
+        // поверх неё нужная не встанет, а без сноса телефон остаётся неработоспособным.
+        const packageName = String(body.package_name ?? "");
+        if (!packageName) return json({ error: "Не указано приложение" }, 400);
+        await phonegridCall(cfg, "/cloudphone/app/uninstall", { id, packageName });
         return json({ ok: true });
       }
 
@@ -410,6 +587,12 @@ Deno.serve(async (req) => {
       }
 
       if (!account.device_phone_id) return json({ error: "К аккаунту не привязан телефон" }, 400);
+      // Раз в день: смысл прогрева в том, что активность нарастает по дням, и два прогона
+      // подряд ломают именно это. Повторить осознанно можно с force.
+      const lastRun = account.warmup_last_run_at ? new Date(account.warmup_last_run_at) : null;
+      if (lastRun && lastRun.toDateString() === new Date().toDateString() && body.force !== true) {
+        return json({ error: "Прогрев на сегодня уже запускали — второй прогон за день сводит его на нет" }, 409);
+      }
       if (!tpl?.requiredVersion || !tpl.appVersionId) {
         return json({
           error: `Для ${account.platform} не задана версия приложения под шаблон прогрева. ` +

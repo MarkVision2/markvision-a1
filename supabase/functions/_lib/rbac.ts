@@ -110,7 +110,11 @@ export const ACTION_LEVELS: Record<string, PermissionLevel> = {
   create_phone: "manage", proxy_add: "manage",
   // экран и ввод — работа с устройством, тот же уровень, что и питание
   screen: "manage", input: "manage", open_url: "manage",
-  apps: "read", install_app: "manage",
+  // разметка экрана и внешний IP — то же чтение экрана, но без вмешательства
+  ui: "read", net: "read", profile: "read",
+  // запуск приложения и вход в аккаунт площадки — управление устройством
+  app_start: "manage", app_stop: "manage", login: "manage",
+  apps: "read", install_app: "manage", uninstall_app: "manage",
   // роли участников — только администратор и владелец
   member_role_set: "admin",
 };
