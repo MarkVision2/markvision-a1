@@ -147,7 +147,7 @@ async function grabScreen(
   cfg: Cfg,
   phoneId: number,
   format: "png" | "mp4",
-): Promise<{ url: string; width: number; height: number; format: string } | null> {
+): Promise<{ url: string; width: number; height: number; format: string; uptime: number } | null> {
   // Уникальное имя: параллельные запросы иначе пишут в один файл и портят кадры друг другу.
   const tag = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
   const path = `/sdcard/mv_${tag}.${format}`;
@@ -156,8 +156,11 @@ async function grabScreen(
     // 1,2 МБ у png. Меньше лимит — Android успевает записать один кадр, и движения не выходит.
     ? `screenrecord --size 540x1200 --bit-rate 1000000 --time-limit 3 ${path}`
     : `screencap -p ${path}`;
-  const size = await shell(cfg, phoneId, `${capture}; wm size`);
-  const m = /(\d+)x(\d+)/.exec(size);
+  // Аптайм берём тем же вызовом: отдельный стоил бы ещё три секунды, а так он бесплатный.
+  // Телефон тарифицируется поминутно, и в окне должно быть видно, сколько он уже работает.
+  const out = await shell(cfg, phoneId, `${capture}; wm size; cat /proc/uptime`);
+  const m = /(\d+)x(\d+)/.exec(out);
+  const up = /^([\d.]+)\s/m.exec(out.split("\n").filter(Boolean).pop() ?? "");
   const started = await phonegridCall<{ downId: string }>(cfg, "/cloudphone/download", { id: phoneId, filePath: path });
   const downId = Number(started?.downId ?? 0);
   if (!downId) return null;
@@ -171,7 +174,13 @@ async function grabScreen(
         { id: phoneId, downId },
       );
       if (res?.downUrl) {
-        return { url: res.downUrl, width: Number(m?.[1] ?? 1080), height: Number(m?.[2] ?? 2400), format };
+        return {
+          url: res.downUrl,
+          width: Number(m?.[1] ?? 1080),
+          height: Number(m?.[2] ?? 2400),
+          format,
+          uptime: Math.round(Number(up?.[1] ?? 0)),
+        };
       }
     }
     return null;
@@ -405,15 +414,19 @@ Deno.serve(async (req) => {
         });
       }
 
-      if (action === "app_start" || action === "app_stop") {
+      if (action === "app_start" || action === "app_stop" || action === "app_restart" || action === "app_clear") {
         const packageName = String(body.package_name ?? "");
         if (!Object.values(LOGIN_FLOWS).some((f) => f.packageName === packageName)) {
           return json({ error: "Неизвестное приложение" }, 400);
         }
-        await phonegridCall(cfg, action === "app_start" ? "/cloudphone/app/start" : "/cloudphone/app/stop", {
-          id,
-          packageName,
-        });
+        if (action === "app_clear") {
+          // Стирает данные приложения — вход в аккаунт слетает. Нужно, чтобы завести на том
+          // же телефоне другой аккаунт с чистого листа, не переустанавливая версию под прогрев.
+          await shell(cfg, id, `pm clear ${packageName}`);
+          return json({ ok: true, cleared: true });
+        }
+        const path = { app_start: "/cloudphone/app/start", app_stop: "/cloudphone/app/stop", app_restart: "/cloudphone/app/restart" }[action]!;
+        await phonegridCall(cfg, path, { id, packageName });
         return json({ ok: true });
       }
 
@@ -427,6 +440,23 @@ Deno.serve(async (req) => {
         const flow = LOGIN_FLOWS[platform];
         if (!flow) return json({ error: `Вход для ${platform} пока не поддержан` }, 400);
         const stage = String(body.stage ?? "open");
+
+        if (stage === "probe") {
+          // Дешёвая проверка: смотрим, что на экране прямо сейчас, ничего не запуская.
+          // Нужна, чтобы окно сразу сказало «в приложении уже открыт аккаунт», а не гадать.
+          const focus = await shell(cfg, id, "dumpsys window | grep -m1 mCurrentFocus");
+          const running = focus.includes(flow.packageName);
+          if (!running) {
+            return json({
+              ok: true,
+              state: "unknown",
+              message: "Приложение не открыто — нажмите кнопку площадки",
+              foreground: false,
+            });
+          }
+          const nodes = await readUi(cfg, id);
+          return json({ ok: true, ...classifyScreen(nodes, flow), foreground: true });
+        }
 
         if (stage === "open") {
           // Приложение поднимаем сами и ждём, пока нарисуется экран: сразу после старта

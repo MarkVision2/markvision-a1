@@ -52,6 +52,8 @@ vi.mock("@/lib/accountDevices", () => ({
   phoneNet: (...a: unknown[]) => phoneNet(...a),
   phoneAppStart: (...a: unknown[]) => phoneAppStart(...a),
   phoneAppStop: vi.fn(),
+  phoneAppRestart: vi.fn(),
+  phoneAppClear: vi.fn(),
   phoneLogin: (...a: unknown[]) => phoneLogin(...a),
   phoneProfile: (...a: unknown[]) => phoneProfile(...a),
   uninstallApp: vi.fn(),
@@ -210,7 +212,7 @@ describe("окно телефона", () => {
     await screen.findByText("CP-1");
     // Первая кнопка в строке — «Экран»: у неё нет подписи, ищем по подсказке.
     fireEvent.click(screen.getByTitle("Открыть экран телефона"));
-    expect(await screen.findByText(/Экран устройства/)).toBeInTheDocument();
+    expect(await screen.findByText(/вход делает сценарий/)).toBeInTheDocument();
     await waitFor(() => expect(phoneScreen).toHaveBeenCalledWith("p1", "1001", "png"));
   });
 
@@ -231,6 +233,9 @@ describe("окно телефона", () => {
     // Площадка видит вход именно с этого адреса; в карточке телефона стоит другой.
     // Адрес виден и в шапке окна, и в разборе: важно, что оба — реальный, а не прокси.
     expect(await screen.findAllByText(/93\.157\.181\.157/)).not.toHaveLength(0);
+    // Разбор «шлюз против реального адреса» живёт на вкладке «Сеть».
+    // Radix переключает вкладку по mousedown, а не по click.
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Сеть" }));
     expect(await screen.findByText(/это адрес его шлюза/)).toBeInTheDocument();
   });
 
@@ -253,7 +258,8 @@ describe("окно телефона", () => {
     fireEvent.click(screen.getByRole("button", { name: "Войти" }));
     // Приложение уже с открытым аккаунтом — сценарий не вводит пароль повторно.
     await waitFor(() => expect(phoneLogin).toHaveBeenCalledWith("p1", "1001", "instagram", "open"));
-    expect(await screen.findByText("Аккаунт подключён")).toBeInTheDocument();
+    // Строка есть и в блоке готовности, и в карточке итога — обе про один и тот же факт.
+    expect(await screen.findAllByText("Аккаунт открыт в приложении")).not.toHaveLength(0);
     expect(await screen.findByText("1 240 подписчиков")).toBeInTheDocument();
     expect(screen.getByText("37 постов")).toBeInTheDocument();
   });

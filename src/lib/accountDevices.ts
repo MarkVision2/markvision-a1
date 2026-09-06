@@ -213,6 +213,8 @@ export interface PhoneShot {
   height: number;
   /** png — застывший кадр, mp4 — секунда живого движения и в 25 раз меньше веса. */
   format: ShotFormat;
+  /** Сколько секунд телефон работает: тарификация поминутная, это надо видеть. */
+  uptime: number;
 }
 
 /**
@@ -270,11 +272,26 @@ export async function phoneAppStop(projectId: string, phoneId: string, packageNa
   await call("app_stop", projectId, { phone_id: phoneId, package_name: packageName });
 }
 
+export async function phoneAppRestart(projectId: string, phoneId: string, packageName: string): Promise<void> {
+  await call("app_restart", projectId, { phone_id: phoneId, package_name: packageName });
+}
+
+/**
+ * Стереть данные приложения: вход в аккаунт слетает, приложение становится как только что
+ * установленное. Нужно, чтобы завести на том же телефоне другой аккаунт, не трогая версию
+ * под прогрев (переустановка её бы сбила).
+ */
+export async function phoneAppClear(projectId: string, phoneId: string, packageName: string): Promise<void> {
+  await call("app_clear", projectId, { phone_id: phoneId, package_name: packageName });
+}
+
 export type LoginState = "success" | "wrong_password" | "two_factor" | "challenge" | "form" | "unknown";
 
 export interface LoginResult {
   state: LoginState;
   message: string;
+  /** Только для шага probe: открыто ли сейчас приложение этой площадки. */
+  foreground?: boolean;
 }
 
 /**
@@ -288,7 +305,7 @@ export async function phoneLogin(
   projectId: string,
   phoneId: string,
   platform: LoginPlatform,
-  stage: "open" | "fill" | "submit" | "check",
+  stage: "probe" | "open" | "fill" | "submit" | "check",
   credentials?: { username: string; password: string },
 ): Promise<LoginResult> {
   return await call<LoginResult>("login", projectId, {
