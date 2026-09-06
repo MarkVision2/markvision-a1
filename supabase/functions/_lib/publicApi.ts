@@ -59,7 +59,12 @@ export type ApiRoute =
   | { name: "routine_delete"; id: string }
   | { name: "routine_assign"; id: string }
   | { name: "tasks_list" }
-  | { name: "calendar" };
+  | { name: "calendar" }
+  | { name: "jobs_approve" }
+  | { name: "jobs_reject" }
+  | { name: "analytics_insights" }
+  | { name: "content_list" }
+  | { name: "content_variants"; id: string };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -123,6 +128,8 @@ export function matchRoute(method: string, pathname: string): ApiRoute | null {
     return null;
   }
 
+  if (a === "jobs" && m === "POST" && seg.length === 2 && b === "approve") return { name: "jobs_approve" };
+  if (a === "jobs" && m === "POST" && seg.length === 2 && b === "reject") return { name: "jobs_reject" };
   if (a === "jobs" && UUID.test(b ?? "")) {
     if (m === "GET" && seg.length === 2) return { name: "job_get", id: b };
     if (m === "POST" && seg.length === 3 && c === "cancel") return { name: "job_cancel", id: b };
@@ -132,6 +139,7 @@ export function matchRoute(method: string, pathname: string): ApiRoute | null {
 
   if (a === "analytics" && m === "GET") {
     if (seg.length === 2 && b === "content") return { name: "analytics_content" };
+    if (seg.length === 2 && b === "insights") return { name: "analytics_insights" };
     if (seg.length === 3 && b === "content" && UUID.test(c ?? "")) return { name: "analytics_content_item", id: c };
     if (seg.length === 3 && b === "accounts" && UUID.test(c ?? "")) return { name: "analytics_account", id: c };
     return null;
@@ -202,6 +210,11 @@ export function matchRoute(method: string, pathname: string): ApiRoute | null {
 
   if (a === "tasks" && m === "GET" && seg.length === 1) return { name: "tasks_list" };
   if (a === "calendar" && m === "GET" && seg.length === 1) return { name: "calendar" };
+  if (a === "content") {
+    if (m === "GET" && seg.length === 1) return { name: "content_list" };
+    if (m === "POST" && seg.length === 3 && UUID.test(b ?? "") && c === "variants") return { name: "content_variants", id: b };
+    return null;
+  }
   return null;
 }
 
@@ -234,6 +247,8 @@ export function requiredScope(route: ApiRoute): ApiScope {
     case "routines_list":
     case "tasks_list":
     case "calendar":
+    case "analytics_insights":
+    case "content_list":
       return "read";
     case "member_role_set":
     case "routine_create":

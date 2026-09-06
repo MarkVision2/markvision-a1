@@ -128,7 +128,11 @@ export interface Persona {
 }
 
 export interface PublishSettings {
-  settings: { notify_mode: NotifyMode; digest_chat_id: string | null; max_parallel_workers: number; paused?: boolean; features?: Record<string, boolean> };
+  settings: {
+    notify_mode: NotifyMode; digest_chat_id: string | null; max_parallel_workers: number; paused?: boolean; features?: Record<string, boolean>;
+    /** Политика AI (Phase 4): ворота для публикаций через API / MCP. */
+    ai_policy?: AiPolicy; ai_daily_limit?: number;
+  };
   budget: { daily_usd: number; monthly_usd: number };
   spend: { today_usd: number; month_usd: number };
 }
@@ -164,7 +168,28 @@ export interface PublishJob {
 }
 
 /** Сколько заданий в каждом статусе по всей очереди проекта (не по отданной странице). */
-export type JobCounts = Partial<Record<PublishJobStatus | "all", number>>;
+export type JobCounts = Partial<Record<PublishJobStatus | "all" | "awaiting_approval", number>>;
+
+/* ───────────── AI Content Analyst (Phase 4, _lib/publishInsights.ts) ───────────── */
+
+export interface InsightBucket { key: string; publications: number; measured: number; views_avg: number | null; score_avg: number | null }
+export interface ContentInsights {
+  period_days: number;
+  publications: number;
+  measured: number;
+  verified_rate: number | null;
+  views_total: number;
+  by_platform: (InsightBucket & { verified_rate: number | null })[];
+  by_hour: InsightBucket[];
+  by_weekday: InsightBucket[];
+  best_hours: number[];
+  best_weekdays: number[];
+  accounts_top: (InsightBucket & { account_id: string; account_name: string; platform: string })[];
+  accounts_bottom: (InsightBucket & { account_id: string; account_name: string; platform: string })[];
+  errors: { error_class: string; count: number; platforms: string[] }[];
+  top_content: { content_id: string; title: string | null; publications: number; views_avg: number | null; score_avg: number | null }[];
+  recommendations: string[];
+}
 
 export interface PublishMetrics {
   accounts_total: number;
@@ -656,10 +681,21 @@ export interface SettingsUpsertResult {
   budget: PublishSettings["budget"] | null;
 }
 
+export type AiPolicy = "manual" | "assisted" | "automatic";
+export const AI_POLICY_META: Record<AiPolicy, { label: string; hint: string }> = {
+  manual: { label: "Ручная", hint: "Каждая публикация, поставленная AI-агентом или по API, ждёт согласования во вкладке «Задания»." },
+  assisted: { label: "С помощником", hint: "Первые N публикаций в сутки уходят сами, остальные — на согласование." },
+  automatic: { label: "Автоматическая", hint: "Публикации от AI / API уходят без ворот — как из интерфейса." },
+};
+/** Маркер задания на согласовании (publish_jobs.error_code при status = manual_review). */
+export const AWAITING_APPROVAL_CODE = "awaiting_approval";
+
 export interface SettingsUpsertInput {
   notify_mode?: NotifyMode;
   digest_chat_id?: string | null;
   paused?: boolean;
+  ai_policy?: AiPolicy;
+  ai_daily_limit?: number;
   /** null — вернуть бюджет по умолчанию (20 / 300 $). */
   daily_usd?: number | null;
   monthly_usd?: number | null;
@@ -799,6 +835,13 @@ export const publishingApi = {
   jobsRetryFailed: (project_id: string, video_id?: string | null) =>
     call<{ retried: number; skipped: number }>("jobs_retry_failed", { project_id, ...(video_id ? { video_id } : {}) }),
   jobCancel: (project_id: string, job_id: string) => call<{ ok: true; status: "cancelled" }>("job_cancel", { project_id, job_id }),
+  /** Согласование публикаций, удержанных политикой AI (manual_review + awaiting_approval). */
+  jobsApprove: (project_id: string, scope: { video_id?: string | null; job_ids?: string[] } = {}) =>
+    call<{ approved: number; rejected: number; skipped: number }>("jobs_approve", { project_id, ...(scope.video_id ? { video_id: scope.video_id } : {}), ...(scope.job_ids?.length ? { job_ids: scope.job_ids } : {}) }),
+  jobsReject: (project_id: string, scope: { video_id?: string | null; job_ids?: string[] } = {}) =>
+    call<{ approved: number; rejected: number; skipped: number }>("jobs_reject", { project_id, ...(scope.video_id ? { video_id: scope.video_id } : {}), ...(scope.job_ids?.length ? { job_ids: scope.job_ids } : {}) }),
+  /** AI Content Analyst — инсайты за период. */
+  insights: (project_id: string, days = 30) => call<{ insights: ContentInsights; generated_at: string }>("analytics_insights", { project_id, days }),
   publishVideo: (project_id: string, input: PublishVideoInput) =>
     call<PublishVideoResult>("publish_video", { project_id, ...input }),
 

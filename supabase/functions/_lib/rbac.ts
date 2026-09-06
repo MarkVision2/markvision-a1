@@ -87,7 +87,7 @@ export const ACTION_LEVELS: Record<string, PermissionLevel> = {
   list: "read", group_list: "read", persona_list: "read", settings_get: "read", jobs_list: "read", job_get: "read",
   metrics: "read", notifications_list: "read", campaign_list: "read", campaign_get: "read",
   webhook_list: "read", webhook_deliveries: "read", api_key_list: "read", member_list: "read",
-  routine_list: "read", tasks_list: "read", calendar: "read",
+  routine_list: "read", tasks_list: "read", calendar: "read", analytics_insights: "read",
   // облачные телефоны в карточке аккаунта: смотреть можно с правом чтения
   phones: "read", warmup_status: "read", accounts_free: "read", options: "read",
   // оператор: разбор ошибок, проверка здоровья, уведомления
@@ -95,6 +95,8 @@ export const ACTION_LEVELS: Record<string, PermissionLevel> = {
   // контент и расписание
   publish_video: "publish", campaign_upsert: "publish", campaign_items_add: "publish", campaign_items_remove: "publish",
   campaign_status: "publish", campaign_plan_now: "publish",
+  // согласование AI-публикаций — решение о выпуске, уровень publish (через MCP недоступно)
+  jobs_approve: "publish", jobs_reject: "publish",
   // управление аккаунтами, группами, настройками, подключениями, ключами, вебхуками, рутинами
   available: "manage", connect: "manage", connect_threads: "manage", disconnect: "manage", update: "manage",
   accounts_bulk_update: "manage",

@@ -5,6 +5,8 @@
  * по аккаунтам), и n8n-воркфлоу «Video Intake» обычно делает обе за раз:
  *   { action: "video_ready", ... }  — принять видео (+ сразу поставить задания)
  *   { action: "create_jobs", ... }  — поставить задания на уже принятое видео
+ *   origin: "api" в любом действии — задания от публичного API / MCP: проходят ворота
+ *   политики AI проекта (applyAiPolicy → manual_review + awaiting_approval)
  *
  * Раскладка по времени — планировщик слотов plan_publish_slots (миграция
  * publishing_scale): окно публикаций в поясе аккаунта, минимальный интервал,
@@ -30,6 +32,8 @@ import {
   validateVideoRef,
 } from "../_lib/publishSchedule.ts";
 import { DEFAULT_PER_DAY, planDistribution } from "../_lib/publishDistribute.ts";
+import { AWAITING_APPROVAL_CODE, DEFAULT_AI_DAILY_LIMIT, DEFAULT_AI_POLICY, isAiPolicy, policyDecision, utcDayStart, type AiPolicy } from "../_lib/publishAiPolicy.ts";
+import { notifyCenter } from "../_lib/publishTrace.ts";
 
 interface AccountRow {
   id: string;
@@ -127,10 +131,10 @@ async function createJobs(
   admin: SupabaseClient,
   video: VideoRow,
   rawTarget: Target,
-): Promise<{ created: number; skipped: number; accounts: { id: string; account_name: string; scheduled_at: string }[] }> {
+): Promise<{ created: number; skipped: number; accounts: { id: string; account_name: string; scheduled_at: string }[]; job_ids: string[] }> {
   const target = await applyGroupStrategy(admin, video.project_id, rawTarget);
   const accounts = await resolveAccounts(admin, video.project_id, target);
-  if (!accounts.length) return { created: 0, skipped: 0, accounts: [] };
+  if (!accounts.length) return { created: 0, skipped: 0, accounts: [], job_ids: [] };
 
   // Планировщик слотов: окна, интервалы, лимиты и разгон — в SQL, один вызов на видео.
   if (target.plan !== "legacy") {
@@ -147,6 +151,7 @@ async function createJobs(
     return {
       created: planned.filter((p) => p.created).length,
       skipped: planned.filter((p) => !p.created).length + (accounts.length - planned.length),
+      job_ids: planned.filter((p) => p.created && p.job_id).map((p) => p.job_id),
       accounts: planned.map((p) => ({
         id: p.account_id,
         account_name: byId.get(p.account_id)?.account_name ?? "",
@@ -166,7 +171,7 @@ async function createJobs(
     scheduled_at: scheduleFor(target, i),
   }));
 
-  if (!rows.length) return { created: 0, skipped: 0, accounts: [] };
+  if (!rows.length) return { created: 0, skipped: 0, accounts: [], job_ids: [] };
 
   // Повторный вызов не породит второй пост в тот же аккаунт: у аккаунта уже есть
   // задание с этим видео (кроме отменённого) — пропускаем. Раньше это держала
@@ -191,6 +196,7 @@ async function createJobs(
   return {
     created,
     skipped: rows.length - created,
+    job_ids: ((data ?? []) as { id: string }[]).map((r) => r.id),
     accounts: accounts.map((acc, i) => ({
       id: acc.id, account_name: acc.account_name, scheduled_at: rows[i].scheduled_at,
     })),
@@ -218,6 +224,7 @@ async function distributeBatch(
   skipped: number;
   unassigned: string[];
   assignments: { video_id: string; account_id: string; account_name: string; day: number; scheduled_at: string | null }[];
+  job_ids: string[];
 }> {
   const ids = input.videos.map((v) => v.id);
   const { data: rows } = await admin.from("publish_videos").select("id").eq("project_id", projectId).in("id", ids);
@@ -253,6 +260,7 @@ async function distributeBatch(
   const byId = new Map(accounts.map((a) => [a.id, a]));
   let created = 0;
   let skipped = 0;
+  const jobIds: string[] = [];
   const assignments: { video_id: string; account_id: string; account_name: string; day: number; scheduled_at: string | null }[] = [];
   for (const a of plan.assignments) {
     const { data, error } = await admin.rpc("plan_publish_slots", {
@@ -263,8 +271,8 @@ async function distributeBatch(
       p_mode: "drip",
     });
     if (error) throw new Error(error.message);
-    const planned = ((data ?? []) as { account_id: string; scheduled_at: string; created: boolean }[])[0];
-    if (planned?.created) created += 1; else skipped += 1;
+    const planned = ((data ?? []) as { job_id?: string; account_id: string; scheduled_at: string; created: boolean }[])[0];
+    if (planned?.created) { created += 1; if (planned.job_id) jobIds.push(planned.job_id); } else skipped += 1;
     assignments.push({
       video_id: a.video_id,
       account_id: a.account_id,
@@ -273,7 +281,56 @@ async function distributeBatch(
       scheduled_at: planned?.scheduled_at ?? null,
     });
   }
-  return { created, skipped, unassigned: plan.unassigned, assignments };
+  return { created, skipped, unassigned: plan.unassigned, assignments, job_ids: jobIds };
+}
+
+/**
+ * Ворота политики AI (docs/MCP.md, _lib/publishAiPolicy.ts): задания, поставленные
+ * через публичный API / MCP (origin = api), по политике проекта уходят на
+ * согласование — status manual_review + error_code awaiting_approval. Интерфейс,
+ * конвейер и кампании ворота не проходят (origin не передают).
+ */
+async function applyAiPolicy(
+  admin: SupabaseClient,
+  projectId: string,
+  jobIds: string[],
+): Promise<{ policy: AiPolicy; held: number; auto: number }> {
+  if (!jobIds.length) return { policy: DEFAULT_AI_POLICY, held: 0, auto: 0 };
+  await admin.from("publish_jobs").update({ origin: "api" }).in("id", jobIds);
+
+  const { data: s } = await admin.from("publish_project_settings")
+    .select("ai_policy, ai_daily_limit").eq("project_id", projectId).maybeSingle();
+  const row = s as { ai_policy?: string; ai_daily_limit?: number } | null;
+  const policy: AiPolicy = isAiPolicy(row?.ai_policy) ? row.ai_policy : DEFAULT_AI_POLICY;
+  const dailyLimit = Number.isFinite(Number(row?.ai_daily_limit)) ? Number(row?.ai_daily_limit) : DEFAULT_AI_DAILY_LIMIT;
+
+  let autoToday = 0;
+  if (policy === "assisted") {
+    // Сколько API-заданий за сутки уже ушло само (без этой пачки — она пока pending и попадёт в счёт).
+    const { count } = await admin.from("publish_jobs").select("id", { count: "exact", head: true })
+      .eq("project_id", projectId).eq("origin", "api").gte("created_at", utcDayStart())
+      .neq("status", "cancelled")
+      .or(`status.neq.manual_review,error_code.neq.${AWAITING_APPROVAL_CODE}`);
+    autoToday = Math.max(0, (count ?? 0) - jobIds.length);
+  }
+  const d = policyDecision(policy, { incoming: jobIds.length, autoToday, dailyLimit });
+  if (d.hold > 0) {
+    const holdIds = jobIds.slice(d.auto);
+    await admin.from("publish_jobs").update({
+      status: "manual_review", error_code: AWAITING_APPROVAL_CODE, error_class: null, error_message: d.reason,
+    }).in("id", holdIds).eq("status", "pending");
+    await notifyCenter(admin, {
+      projectId,
+      kind: "ai_pending_approval",
+      severity: "info",
+      title: `AI поставил ${d.hold} публикаций — ждут согласования`,
+      body: `${d.reason}. Вкладка «Задания» → «Согласовать» или POST /api/v1/jobs/approve.`,
+      entityType: "publish_job",
+      entityId: holdIds[0],
+      dedupeKey: `ai_pending:${holdIds[0]}`,
+    });
+  }
+  return { policy, held: d.hold, auto: d.auto };
 }
 
 /** Тело distribute: список видео (id + topic_key), пачка, цель с per_day. */
@@ -346,8 +403,9 @@ Deno.serve(async (req) => {
       if (!video) return json({ error: "видео не найдено" }, 404);
 
       const result = await createJobs(admin, video, (body?.target ?? {}) as Target);
+      const policy = body?.origin === "api" ? await applyAiPolicy(admin, video.project_id, result.job_ids) : null;
       if (result.created) await kickWorker(admin);
-      return json({ ok: true, video_id: video.id, ...result });
+      return json({ ok: true, video_id: video.id, ...result, ...(policy ? { policy } : {}) });
     }
 
     if (action === "distribute") {
@@ -356,8 +414,9 @@ Deno.serve(async (req) => {
       const parsed = parseDistributeBody(body ?? {});
       if (!parsed.ok) return json({ error: parsed.error }, 400);
       const result = await distributeBatch(admin, projectId, parsed.input);
+      const policy = body?.origin === "api" ? await applyAiPolicy(admin, projectId, result.job_ids) : null;
       if (result.created) await kickWorker(admin);
-      return json({ ok: true, ...result });
+      return json({ ok: true, ...result, ...(policy ? { policy } : {}) });
     }
 
     if (action !== "video_ready") return json({ error: `неизвестное действие: ${action}` }, 400);
@@ -391,8 +450,9 @@ Deno.serve(async (req) => {
         const preview = composeCaption(existing.base_caption, existing.hashtags ?? []).slice(0, 300);
         if (!body?.target) return json({ ok: true, video_id: existing.id, caption_preview: preview, created: 0, skipped: 0, idempotent: true });
         const result = await createJobs(admin, existing, body.target as Target);
+        const policy = body?.origin === "api" ? await applyAiPolicy(admin, projectId, result.job_ids) : null;
         if (result.created) await kickWorker(admin);
-        return json({ ok: true, video_id: existing.id, caption_preview: preview, idempotent: true, ...result });
+        return json({ ok: true, video_id: existing.id, caption_preview: preview, idempotent: true, ...result, ...(policy ? { policy } : {}) });
       }
     }
 
@@ -424,8 +484,9 @@ Deno.serve(async (req) => {
     if (!body?.target) return json({ ok: true, video_id: video.id, caption_preview: preview, created: 0 });
 
     const result = await createJobs(admin, video, body.target as Target);
+    const policy = body?.origin === "api" ? await applyAiPolicy(admin, projectId, result.job_ids) : null;
     if (result.created) await kickWorker(admin);
-    return json({ ok: true, video_id: video.id, caption_preview: preview, ...result });
+    return json({ ok: true, video_id: video.id, caption_preview: preview, ...result, ...(policy ? { policy } : {}) });
   } catch (e) {
     if (e instanceof PausedGroupError) return json({ error: e.message, reason: "group_paused" }, 409);
     return json({ error: e instanceof Error ? e.message : String(e) }, 500);

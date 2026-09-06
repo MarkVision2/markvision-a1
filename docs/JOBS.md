@@ -133,6 +133,28 @@ due-доставки): `POST` с заголовками `X-MarkVision-Event`, `X
 `publish-metrics {job_ids, checkpoint: "r<N>m"}` (точка `r20m`, `r240m`, … в `post_metrics`). До 3 попыток
 с паузой 5 минут, потом `failed`. Задачи видны в трассе задания и `GET /api/v1/tasks`.
 
+## Политика AI и согласование (Phase 4)
+
+`publish-intake` получает `origin: "api"` от edge `api` (публичный API / MCP) и после планирования
+слотов зовёт `applyAiPolicy`: помечает задания `origin = api`, читает `publish_project_settings.ai_policy`
+/ `ai_daily_limit` и по `policyDecision` (`_lib/publishAiPolicy.ts`) переводит удержанные в
+`manual_review` + `error_code = awaiting_approval` (`error_message` — причина). Суточный счёт assisted —
+`origin = api` за сутки UTC без отменённых и удержанных. Уведомление `ai_pending_approval`
+(dedupe по первому заданию пачки). Согласование — `jobs_approve` / `jobs_reject` в `publish-accounts`
+(уровень RBAC `publish`): одобренное → `pending` со своим слотом (прошедший → сейчас), отклонённое →
+`cancelled`; `jobs_list.counts.awaiting_approval` питает баннер во вкладке «Задания». Интерфейс,
+кампании и конвейер `origin` не передают — для них ворот нет (у групп свой `review_mode`).
+
+## AI Content Analyst
+
+`publish-accounts action=analytics_insights { days }` → `buildContentInsights` (`_lib/publishInsights.ts`):
+публикации из `publish_publications` за период, пояса аккаунтов, упавшие задания. Часы и дни недели —
+в поясе аккаунта; корзина считается показательной от `MIN_SAMPLE = 3` измеренных публикаций; лидеры —
+топ-5 аккаунтов по среднему score, аутсайдеры — три худших при выборке > 5. Рекомендации — русские
+фразы из тех же чисел (лучшие часы против остальных, слабая площадка, доля подтверждённых постов,
+главный класс отказов с подсказкой, лучший ролик как кандидат на варианты). Панель «Что работает»
+во вкладке «Видео», `GET /analytics/insights`, MCP `markvision_content_insights`.
+
 ## Роли (RBAC)
 
 Роль в проекте (`_lib/rbac.ts`, SQL `project_role_of`): владелец → `owner`; явная `project_members.role`;

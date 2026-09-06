@@ -81,6 +81,18 @@ describe("matchRoute", () => {
     expect(matchRoute("POST", "/api/v1/accounts/bulk")).toEqual({ name: "accounts_bulk_update" });
     expect(matchRoute("GET", "/api/v1/accounts/bulk")).toBeNull();
     expect(requiredScope({ name: "calendar" })).toBe("read");
+    // Phase 4: согласование, аналитик, темы и варианты
+    expect(matchRoute("POST", "/api/v1/jobs/approve")).toEqual({ name: "jobs_approve" });
+    expect(matchRoute("POST", "/api/v1/jobs/reject")).toEqual({ name: "jobs_reject" });
+    expect(matchRoute("GET", "/api/v1/jobs/approve")).toBeNull();
+    expect(matchRoute("GET", "/api/v1/analytics/insights")).toEqual({ name: "analytics_insights" });
+    expect(matchRoute("GET", "/api/v1/content")).toEqual({ name: "content_list" });
+    expect(matchRoute("POST", `/api/v1/content/${ID}/variants`)).toEqual({ name: "content_variants", id: ID });
+    expect(matchRoute("POST", "/api/v1/content/not-uuid/variants")).toBeNull();
+    expect(requiredScope({ name: "jobs_approve" })).toBe("publish");
+    expect(requiredScope({ name: "analytics_insights" })).toBe("read");
+    expect(requiredScope({ name: "content_list" })).toBe("read");
+    expect(requiredScope({ name: "content_variants", id: ID })).toBe("publish");
     expect(requiredScope({ name: "accounts_bulk_update" })).toBe("manage");
     expect(requiredScope({ name: "routine_create" })).toBe("manage");
     expect(requiredScope({ name: "member_role_set", id: ID })).toBe("manage");

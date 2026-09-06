@@ -83,7 +83,7 @@ MCP: mcp/markvision (stdio) → /api/v1
 | 74–76. Rate limits, locks | **EXISTS** | Лимиты площадок в публикаторах, `daily_limit`, аренда | — |
 | 77–79. Scaling, concurrency | **EXISTS** | Партиции воркера (добавить кроны `p3…`), `max_parallel_workers` | — |
 | 80–81. Environments, flags | **PARTIAL → добавлено** | Один прод-проект; флагов не было | Mock-коннектор только переменной окружения; флаги проекта — `publish_project_settings.features` (`ai_autopublish_enabled`, `winner_replication_enabled`, `tiktok_direct_publish_enabled`, `phonegrid_enabled`), по умолчанию выключены |
-| 82–88. AI content factory | **PARTIAL** | Радар → идея → контент-план → конвейер (HeyGen/Reels) → варианты по группам → согласование → публикация → метрики → `outcome_score` | Winner replication — Phase 4 |
+| 82–88. AI content factory | **PARTIAL → добавлено** | Радар → идея → контент-план → конвейер (HeyGen/Reels) → варианты по группам → согласование → публикация → метрики → `outcome_score` | Phase 4: политика AI (manual/assisted/automatic) с воротами согласования, AI Content Analyst (`analytics_insights`), варианты победителя по API/MCP (`POST /content/:id/variants`), удалённый MCP по HTTP. Автономный цикл winner → варианты → согласование → метрики — Phase 5 |
 | 93–94. Миграции, совместимость | **EXISTS** | Только миграции, идемпотентные, CI-проверка версий | — |
 | 99–100. Тесты, mock | **PARTIAL → расширено** | vitest на чистых модулях, deno test на `api` | Тесты policy/capabilities/verification/score; `MockSocialConnector` |
 
@@ -173,10 +173,27 @@ Frontend: вкладка «Задания» — статус «Проверяе�
   в диалоге подключения Instagram применяется ко всей подключённой пачке (`connect.preset`).
 - **RLS проектов** — сверено, действующая политика уже owner/admin/member (раздел 3, п. 5).
 
+## 5d. Пятый заход — Phase 4 (миграция `20260910150000`)
+
+- **Политика AI проекта**: `publish_project_settings.ai_policy` (manual / assisted / automatic) и
+  `ai_daily_limit`; `publish_jobs.origin = api` для заданий из публичного API / MCP; ворота в
+  `publish-intake` (`applyAiPolicy`), согласование `jobs_approve` / `jobs_reject`, баннер во вкладке
+  «Задания», секция в настройках, уведомление `ai_pending_approval`, `POST /jobs/approve|reject`.
+- **AI Content Analyst**: `_lib/publishInsights.ts` (чистый расчёт) → `analytics_insights`, панель
+  «Что работает» во вкладке «Видео», `GET /analytics/insights`, MCP `markvision_content_insights`.
+- **Варианты через конвейер**: `content-pipeline` принимает ключ автоматизации для
+  `POST /items/:id/variants`; `GET /content`, `POST /content/:id/variants`, MCP `markvision_list_content`,
+  `markvision_create_variations`.
+- **Удалённый MCP по HTTP**: инструменты вынесены в `mcp/markvision/src/tools.ts`, `http.ts` —
+  Streamable HTTP без сессий, ключ проекта в `Authorization: Bearer` каждого запроса. MCP 0.6.0, 49 инструментов.
+
 ## 6. План дальше (по приоритету)
 
 **Phase 2 — закрыт.** Остаток на потом: PKCE для TikTok, ротация ключа шифрования `v2:`, витрина
 `content_items`, `MEDIA_PREPARE` как шаг очереди (раздел 2).
+
+**Phase 4 — закрыт** (раздел 5d). Дальше — автономный цикл Phase 5 и Device engine Phase 3, когда
+появится провайдер устройств.
 
 **Phase 3 — Device engine.** `DeviceProvider` (PhoneGrid/Multilogin) как отдельный сервис только для
 health-check / native-only сценариев; `secondary_executor` у аккаунта; Execution Router выбирает

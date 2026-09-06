@@ -35,6 +35,24 @@ npm run build
 
 Claude Desktop — тот же блок в `claude_desktop_config.json`.
 
+## Удалённый MCP по HTTP
+
+Тот же набор инструментов по Streamable HTTP, без сессий: ключ проекта приходит в заголовке
+каждого запроса, сервер ничего не хранит и обслуживает любое число проектов.
+
+```bash
+MARKVISION_API_URL=https://<проект>.supabase.co/functions/v1/api/v1 \
+MARKVISION_MCP_HOST=127.0.0.1 MARKVISION_MCP_PORT=8787 npm run start:http   # → http://127.0.0.1:8787/mcp
+```
+
+Наружу — только через TLS-прокси (Caddy/nginx). Подключение из Claude Code:
+
+```bash
+claude mcp add --transport http markvision https://mcp.example.com/mcp --header "Authorization: Bearer mv_live_…"
+```
+
+Проверка: `GET /healthz` → `{ ok: true }`; запрос без `Authorization` → `401`.
+
 ## Инструменты
 
 | Инструмент | Что делает |
@@ -67,6 +85,12 @@ Claude Desktop — тот же блок в `claude_desktop_config.json`.
 | `markvision_daily_report` | отчёт за сутки |
 | `markvision_list_routines`, `markvision_create_routine`, `markvision_update_routine`, `markvision_assign_routine`, `markvision_list_tasks` | рутины (проверка до публикации, метрики после) и их задачи |
 | `markvision_list_members` | участники проекта и роли |
+| `markvision_content_insights` | AI Content Analyst: лучшие часы и дни, площадки, аккаунты, ошибки, рекомендации |
+| `markvision_list_content`, `markvision_create_variations` | темы контент-плана и варианты победителя по группам через конвейер |
+
+Чего нет намеренно: подключение и удаление аккаунтов, токены, смена политики AI и согласование
+удержанных публикаций — это решения человека (`docs/MCP.md`). Публикации, поставленные агентом,
+проходят политику проекта (`manual` по умолчанию → ждут согласования во вкладке «Задания»).
 
 Типичный диалог: «загрузи `~/Movies/clip.mp4` в MarkVision и опубликуй в группу «Стоматологии» по капле с завтрашнего утра».
 

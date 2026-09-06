@@ -64,6 +64,8 @@ Authorization: Bearer mv_live_…        (или заголовок x-api-key: m
 | `POST /jobs/:id/cancel` | publish | отменить не ушедшее задание |
 | `POST /jobs/:id/retry` | publish | вернуть упавшее задание в очередь |
 | `GET /jobs/:id` | read | задание целиком: статус, верификация, `error_class`, трасса шагов (`events`), журнал площадки (`logs`), снятые метрики |
+| `POST /jobs/approve`, `POST /jobs/reject` | publish | согласование публикаций, удержанных политикой AI (`{ video_id? \| job_ids? }` → `approved` / `rejected`, `skipped`); для человека, Telegram и n8n — в MCP этого инструмента нет намеренно |
+| `GET /analytics/insights?days=` | read | AI Content Analyst: площадки, лучшие часы и дни недели в поясе аккаунта, лидеры/аутсайдеры, классы ошибок, лучший ролик, рекомендации словами (детерминированно, `_lib/publishInsights.ts`) |
 | `GET /analytics/content?limit=&winners=1` | read | витрина по видео: публикаций, сумма/среднее просмотров, реакции, лучший аккаунт, `score` 0–100, `is_winner` |
 | `GET /analytics/content/:id` | read | одно видео и его публикации по аккаунтам с последней точкой метрик |
 | `GET /analytics/accounts/:id` | read | витрина аккаунта (`publish_account_metrics`) и последние публикации |
@@ -83,6 +85,8 @@ Authorization: Bearer mv_live_…        (или заголовок x-api-key: m
 | `POST /webhooks/:id/delete` | manage | удалить |
 | `GET /webhooks/:id/deliveries` | read | последние доставки: статус, попытки, код ответа |
 | `GET /reports/daily` | read | отчёт за сутки (аккаунты, задания, успешность, просмотры за 7 дней, топ контента) |
+| `GET /content?status=&roots=1&limit=` | read | темы контент-плана проекта (`content_plan_items`): id, название, статус, родитель, целевая группа, готовое видео |
+| `POST /content/:id/variants` | publish | варианты корневой темы под группы (`{ group_ids }`) через конвейер контента (персона группы, запуск n8n); так масштабируется победитель |
 | `GET /members` | read | участники проекта и их роли (RBAC) |
 | `POST /members/:userId/role` | manage | `role`: `admin` (только владелец) \| `manager` \| `content_manager` \| `operator` \| `viewer` |
 | `GET /routines` | read | рутины проекта, назначения группам/аккаунтам |
@@ -197,12 +201,32 @@ error_message, publish_accounts.account_name`.
 у `published` поле `verification_status` = `verified` / `unverified` / `skipped` (`docs/JOBS.md`).
 Класс ошибки — `error_class` (`AUTH_EXPIRED`, `RATE_LIMIT`, `MEDIA_INVALID`, …), сырой код площадки — `error_code`.
 
+### Политика AI
+
+Публикации, поставленные по API-ключу (в том числе агентом через MCP), проходят ворота
+`publish_project_settings.ai_policy` (Настройки → «Политика AI-публикаций»):
+
+| Политика | Что происходит с заданиями из API |
+|---|---|
+| `manual` (по умолчанию) | все → `manual_review` с `error_code = awaiting_approval`; человек согласует во вкладке «Задания» или `POST /jobs/approve` |
+| `assisted` | первые `ai_daily_limit` за сутки (UTC) уходят сами, остальные — на согласование |
+| `automatic` | без ворот — как из интерфейса |
+
+Ответ `POST /publications`, `/publications/:id/jobs`, `/publications/distribute` содержит
+`policy: { policy, auto, held }` и `job_ids`. Удержанные задания помечены `origin = api`; после
+согласования они возвращаются в `pending` со своим слотом (прошедший слот → сейчас). Отклонённые —
+`cancelled`. Уведомление `ai_pending_approval` приходит в центр уведомлений. Сменить политику
+или согласовать через MCP нельзя — только человек (`docs/MCP.md`).
+
 ### Аудит
 
 Каждый вызов пишется в `api_request_logs` (ключ, маршрут, статус, sha256 параметров, длительность) —
 основа AI audit log: кто, что и когда запустил через MCP.
 
 ## MCP-сервер
+
+Два транспорта: stdio (`node dist/index.js`, ключ в переменной окружения) и удалённый HTTP
+(`node dist/http.js`, ключ в заголовке `Authorization: Bearer` каждого запроса) — `mcp/markvision/README.md`.
 
 Пакет `mcp/markvision/` — stdio-сервер поверх этого API для Claude Code / Claude Desktop /
 Cursor. Установка, конфиг и список инструментов — [mcp/markvision/README.md](../mcp/markvision/README.md).

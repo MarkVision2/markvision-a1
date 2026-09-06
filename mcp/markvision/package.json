@@ -1,16 +1,17 @@
 {
   "name": "markvision-mcp",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "MCP-сервер MarkVision: загрузка видео и постановка публикаций по API-ключу проекта",
   "type": "module",
   "private": true,
-  "bin": { "markvision-mcp": "dist/index.js" },
+  "bin": { "markvision-mcp": "dist/index.js", "markvision-mcp-http": "dist/http.js" },
   "files": ["dist"],
   "engines": { "node": ">=20" },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/index.js",
+    "start:http": "node dist/http.js",
     "test": "node --test --import tsx tests/*.test.ts"
   },
   "dependencies": {
