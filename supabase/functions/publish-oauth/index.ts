@@ -115,6 +115,23 @@ async function diag(req: Request, admin: SupabaseClient): Promise<Response> {
     const auth = await requireUser(req);
     if (!auth.ok) return auth.response;
   }
+  // Instagram живёт на секретах Meta и в diag попадает отдельной строкой: у него
+  // другой набор переменных, но тот же вопрос — какой redirect_uri зарегистрировать.
+  const meta = metaCredentials();
+  const rawMetaSecret = Deno.env.get("META_APP_SECRET");
+  const instagram = {
+    platform: "instagram" as const,
+    client_id_env: "META_APP_ID",
+    client_id_set: Boolean(meta?.clientId),
+    client_id_length: meta?.clientId.length ?? 0,
+    client_id_prefix: meta ? `${meta.clientId.slice(0, 2)}…` : null,
+    client_id_had_whitespace: false,
+    secret_env: "META_APP_SECRET",
+    secret_set: Boolean(rawMetaSecret?.trim()),
+    secret_had_whitespace: Boolean(rawMetaSecret && rawMetaSecret !== rawMetaSecret.trim()),
+    shape_problem: null,
+    redirect_uri: redirectUri("instagram"),
+  };
   const platforms = (["threads", "tiktok", "youtube"] as OAuthPlatform[]).map((platform) => {
     const [idKey, secretKey] = envKeys(platform);
     const rawId = Deno.env.get(idKey);
@@ -139,8 +156,15 @@ async function diag(req: Request, admin: SupabaseClient): Promise<Response> {
   return json({
     ok: true,
     token_key_configured: tokenKeyConfigured(),
-    platforms,
+    app_origin: APP_ORIGIN(),
+    platforms: [instagram, ...platforms],
     notes: {
+      redirect_uri: [
+        "Каждый redirect_uri из списка выше должен быть зарегистрирован в консоли своего приложения — иначе площадка отбивает вход ДО того, как мы что-то узнаем.",
+        "Instagram: приложение Meta → Facebook Login → Settings → Valid OAuth Redirect URIs. Meta сверяет адрес только ПОСЛЕ входа, поэтому проверить заранее нельзя — клиент увидит «URL Blocked».",
+        "YouTube: Google Cloud Console → Credentials → OAuth client → Authorized redirect URIs. Google сверяет адрес ДО входа и отвечает «Ошибка 400: redirect_uri_mismatch».",
+        "TikTok: Login Kit приложения (или его песочницы) → Redirect URI.",
+      ],
       tiktok: [
         "Ошибка «client_key» на странице TikTok ПОСЛЕ входа — это не про значение ключа: у приложения, которое ещё не Live, авторизоваться могут только target users песочницы.",
         "Ключ с префиксом aw — production; он заработает для всех только после одобрения приложения (App review).",

@@ -367,14 +367,28 @@ Facebook. Просить пароль нельзя, сажать человек�
 `https://www.markvision.kz`). Площадка без настроенных секретов показывается
 клиенту неактивной кнопкой с причиной, а не отваливается после входа.
 
-**Один шаг руками — redirect URI Instagram.** Адрес возврата
-`…/functions/v1/publish-oauth/callback/instagram` новый: у обычного входа через
-Facebook он другой (`…/facebook-oauth-callback`). Его нужно один раз добавить в
-приложении Meta (App → Facebook Login → Settings → Valid OAuth Redirect URIs),
-иначе клиент увидит «URL Blocked» уже ПОСЛЕ входа. Проверить заранее нельзя:
-Meta, как и TikTok, сверяет redirect_uri только после авторизации — до входа
-любой адрес уводит на `/login`. TikTok и YouTube этого шага не требуют: их
-callback'и те же, что у подключения из кабинета.
+**Адреса возврата в консолях площадок — самая частая причина «ссылка не
+работает».** Ключи в секретах и регистрация redirect URI — разные вещи: без
+ключей кнопка у клиента просто неактивна и это видно, а незарегистрированный
+адрес отбивается самой площадкой уже ПОСЛЕ входа, и до нас запрос не доходит
+вовсе — ни ошибки в журнале, ни уведомления. Поэтому в окне «Подключение по
+ссылке» есть раскрывающаяся строка со всеми адресами и местом, куда их вписать;
+те же данные отдаёт `GET /publish-oauth/diag`.
+
+| Площадка | Куда вписать | Когда сверяет |
+|---|---|---|
+| Instagram | приложение Meta → Facebook Login → Settings → Valid OAuth Redirect URIs | только ПОСЛЕ входа («URL Blocked») — заранее не проверить |
+| YouTube | Google Cloud Console → Credentials → OAuth client → Authorized redirect URIs | ДО входа («Ошибка 400: redirect_uri_mismatch») |
+| TikTok | приложение TikTok → Login Kit → Redirect URI | ДО входа |
+
+Проверено на проде 6 сентября 2026: TikTok уводит на свой вход штатно (ключ
+песочницы `sbaw…` — авторизоваться могут только target users приложения);
+YouTube отвечает `redirect_uri_mismatch` — адрес
+`…/functions/v1/publish-oauth/callback/youtube` в клиенте Google не
+зарегистрирован. Это не про ссылки-приглашения: тот же адрес использует и
+подключение YouTube из кабинета, то есть оно не работало и раньше.
+Адрес Instagram `…/functions/v1/publish-oauth/callback/instagram` новый — у
+обычного входа через Facebook он другой (`…/facebook-oauth-callback`).
 
 Состояние на 6 сентября 2026: `META_APP_SECRET`, `PUBLISH_TOKEN_KEY`,
 `TIKTOK_CLIENT_KEY/SECRET`, `GOOGLE_OAUTH_CLIENT_ID/SECRET` и `PUBLIC_APP_URL`

@@ -11,7 +11,7 @@
  * него остаются: рвётся только связь со ссылкой.
  */
 import { useCallback, useEffect, useState } from "react";
-import { Check, Copy, Link2, Loader2, Plus, RotateCcw, Trash2, Users } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, Copy, Link2, Loader2, Plus, RotateCcw, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,9 +35,11 @@ import {
   connectLinkHref,
   createConnectLink,
   deleteConnectLink,
+  fetchOAuthDiag,
   listConnectLinks,
   revokeConnectLink,
   type ConnectLink,
+  type OAuthDiag,
   type PublishPlatform,
 } from "@/lib/publishingClient";
 import { fmtExact, fmtRelative } from "@/lib/publishingFormat";
@@ -159,6 +161,108 @@ function LinkRow({ link, onChanged, pub }: { link: ConnectLink; onChanged: () =>
   );
 }
 
+
+/**
+ * Готовность площадок — то, что иначе всплывает у клиента и выглядит как
+ * «ссылка не работает».
+ *
+ * Две разные беды, и обе не видны из интерфейса:
+ *   1. не заданы ключи приложения — тогда кнопка у клиента просто неактивна;
+ *   2. ключи есть, но адрес возврата не зарегистрирован в консоли площадки —
+ *      это хуже: клиент доходит до входа и упирается в чужую страницу ошибки
+ *      («URL Blocked» у Meta, «Ошибка 400: redirect_uri_mismatch» у Google),
+ *      а до нас запрос вообще не доходит и в журнале ничего нет.
+ * Проверить второе программно нельзя, поэтому показываем адрес для копирования
+ * и куда его вписать.
+ */
+const REGISTER_WHERE: Record<PublishPlatform, string> = {
+  instagram: "приложение Meta → Facebook Login → Settings → Valid OAuth Redirect URIs",
+  tiktok: "приложение TikTok → Login Kit → Redirect URI",
+  youtube: "Google Cloud Console → Credentials → OAuth client → Authorized redirect URIs",
+  threads: "приложение Threads → Redirect Callback URLs",
+};
+
+function CopyLine({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      className="flex w-full min-w-0 items-center gap-1.5 rounded-lg bg-muted px-2 py-1 text-left text-[11px] hover:bg-muted/70"
+      onClick={() => {
+        navigator.clipboard.writeText(value).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1600);
+        }).catch(() => toast.info(value));
+      }}
+    >
+      <code className="min-w-0 flex-1 truncate">{value}</code>
+      {copied ? <Check className="h-3 w-3 shrink-0 text-emerald-600" /> : <Copy className="h-3 w-3 shrink-0 opacity-60" />}
+    </button>
+  );
+}
+
+function PlatformSetup() {
+  const [diag, setDiag] = useState<OAuthDiag | null>(null);
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchOAuthDiag().then(setDiag).catch((e) => setError(errMsg(e)));
+  }, []);
+
+  if (error) return null; // нет прав читать диагностику — не мешаем работать со ссылками
+  if (!diag) return null;
+
+  const notReady = diag.platforms.filter((p) => !p.client_id_set || !p.secret_set || p.shape_problem);
+
+  return (
+    <div className="rounded-xl border border-dashed">
+      <button
+        type="button"
+        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs"
+        onClick={() => setOpen((v) => !v)}
+      >
+        {notReady.length > 0 && <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" />}
+        <span className="min-w-0 flex-1 truncate text-muted-foreground">
+          {notReady.length
+            ? `Не настроены площадки: ${notReady.map((p) => PLATFORM_META[p.platform]?.label ?? p.platform).join(", ")}`
+            : "Ключи всех площадок заданы"}
+          {" · адреса возврата для консолей приложений"}
+        </span>
+        <ChevronDown className={cn("h-3.5 w-3.5 shrink-0 opacity-60 transition-transform", open && "rotate-180")} />
+      </button>
+      {open && (
+        <div className="space-y-2.5 border-t px-3 py-2.5">
+          <p className="text-[11px] text-muted-foreground">
+            Каждый адрес ниже должен быть в списке разрешённых у своего приложения. Если его там нет, клиент
+            дойдёт до входа и упрётся в ошибку самой площадки — до нас такой запрос не доходит.
+          </p>
+          {diag.platforms.map((p) => {
+            const meta = PLATFORM_META[p.platform];
+            const bad = !p.client_id_set || !p.secret_set || p.shape_problem;
+            return (
+              <div key={p.platform} className="space-y-1">
+                <div className="flex items-center gap-1.5 text-xs">
+                  <Badge variant="outline" className={cn("border-transparent text-[10px]", meta?.cls)}>{meta?.label ?? p.platform}</Badge>
+                  {bad ? (
+                    <span className="text-amber-600 dark:text-amber-400">
+                      {p.shape_problem ?? `не заданы ${[!p.client_id_set && p.client_id_env, !p.secret_set && p.secret_env].filter(Boolean).join(" / ")}`}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground">ключи заданы</span>
+                  )}
+                </div>
+                <CopyLine value={p.redirect_uri} />
+                <div className="px-0.5 text-[11px] text-muted-foreground">{REGISTER_WHERE[p.platform]}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ConnectLinksDialog({ open, onClose, pub }: { open: boolean; onClose: () => void; pub: UsePublishing }) {
   const projectId = pub.projectId;
   const [links, setLinks] = useState<ConnectLink[]>([]);
@@ -227,6 +331,8 @@ export function ConnectLinksDialog({ open, onClose, pub }: { open: boolean; onCl
             появляется в сетке со статусом, статистикой и здоровьем.
           </DialogDescription>
         </DialogHeader>
+
+        <PlatformSetup />
 
         <div className="space-y-3 rounded-xl border p-3">
           <div className="grid gap-3 sm:grid-cols-2">

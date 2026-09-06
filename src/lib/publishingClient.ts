@@ -1211,6 +1211,41 @@ export async function deleteConnectLink(projectId: string, linkId: string): Prom
   await call("connect_link_delete", { project_id: projectId, link_id: linkId });
 }
 
+/* ── настройка площадок: что зарегистрировать в консолях приложений ── */
+
+export interface OAuthPlatformDiag {
+  platform: PublishPlatform;
+  client_id_env: string;
+  client_id_set: boolean;
+  secret_env: string;
+  secret_set: boolean;
+  /** Ключ похож на чужой (например, App ID вместо client key). */
+  shape_problem: string | null;
+  /** Этот адрес должен быть в списке разрешённых у приложения площадки. */
+  redirect_uri: string;
+}
+
+export interface OAuthDiag {
+  token_key_configured: boolean;
+  app_origin: string;
+  platforms: OAuthPlatformDiag[];
+  notes?: Record<string, string[]>;
+}
+
+/**
+ * Что настроено у площадок (edge publish-oauth/diag). Значения секретов наружу
+ * не идут — только «задан / не задан» и адрес возврата, который нужно
+ * зарегистрировать в консоли приложения.
+ */
+export async function fetchOAuthDiag(): Promise<OAuthDiag> {
+  const { data, error } = await supabase.functions.invoke("publish-oauth/diag", { method: "GET" });
+  if (error) throw new Error(error.message || "Не удалось прочитать настройку площадок");
+  const d = data as (OAuthDiag & { error?: string }) | null;
+  if (!d) throw new Error("Пустой ответ");
+  if (d.error) throw new Error(d.error);
+  return d;
+}
+
 /* ── публичная сторона: страница /connect/:token, без авторизации ── */
 
 export interface ConnectInvitePlatform {
