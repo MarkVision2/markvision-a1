@@ -1,7 +1,7 @@
 {
-  "git_sha": "83d345b",
-  "git_sha_full": "83d345bd4c871065046dc1b05f5562468849d5ef",
-  "updated_at": "2026-09-06T14:06:13+04:00",
-  "label": "feat(auth): страница входа — центр управления коммерческим отделом + выход из аккаунта [vercel-deploy]",
+  "git_sha": "13ea94a",
+  "git_sha_full": "13ea94a39a9e3f69a3b0ecc7aedbf91de56142ef",
+  "updated_at": "2026-09-06T14:31:21+04:00",
+  "label": "fix(devices): Instagram снова в списке приложений, автообновление экрана [vercel-deploy]",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
