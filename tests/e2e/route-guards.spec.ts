@@ -36,7 +36,7 @@ for (const path of PROTECTED) {
 
 test("публичные маршруты открываются без сессии", async ({ page }) => {
   await page.goto("/login");
-  await expect(page.getByRole("heading", { name: "Добро пожаловать" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Вход в систему" })).toBeVisible();
 
   await page.goto("/reset-password");
   await expect(page).toHaveURL(/\/reset-password/);

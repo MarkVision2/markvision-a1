@@ -185,6 +185,7 @@ export function AuthForm() {
                 <button
                   type="button"
                   onClick={() => setShowPwd((v) => !v)}
+                  aria-label={showPwd ? "Скрыть пароль" : "Показать пароль"}
                   className="absolute right-2 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded text-muted-foreground hover:bg-secondary"
                 >
                   {showPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
