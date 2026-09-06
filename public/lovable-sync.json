@@ -1,7 +1,7 @@
 {
-  "git_sha": "d4aa958",
-  "git_sha_full": "d4aa958388bc13399f9bb6050fd0782be5cb82ac",
-  "updated_at": "2026-09-06T19:10:24+04:00",
-  "label": "fix(publishing): шов в библиотеку проходит проверку типов приложения [vercel-deploy]",
+  "git_sha": "689571e",
+  "git_sha_full": "689571ecfb9baece9896dc6712d51c10c9306fb9",
+  "updated_at": "2026-09-06T19:31:44+04:00",
+  "label": "docs(video-creative-system): подключение внешней системы VoiceOver-креативов к платформе",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
