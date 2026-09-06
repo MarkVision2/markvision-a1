@@ -93,6 +93,12 @@ describe("matchRoute", () => {
     expect(requiredScope({ name: "analytics_insights" })).toBe("read");
     expect(requiredScope({ name: "content_list" })).toBe("read");
     expect(requiredScope({ name: "content_variants", id: ID })).toBe("publish");
+    // Phase 5: автопилот победителей
+    expect(matchRoute("POST", `/api/v1/analytics/content/${ID}/replicate`)).toEqual({ name: "content_replicate", id: ID });
+    expect(matchRoute("GET", `/api/v1/analytics/content/${ID}/replicate`)).toBeNull();
+    expect(matchRoute("GET", "/api/v1/replications")).toEqual({ name: "replications_list" });
+    expect(requiredScope({ name: "content_replicate", id: ID })).toBe("publish");
+    expect(requiredScope({ name: "replications_list" })).toBe("read");
     expect(requiredScope({ name: "accounts_bulk_update" })).toBe("manage");
     expect(requiredScope({ name: "routine_create" })).toBe("manage");
     expect(requiredScope({ name: "member_role_set", id: ID })).toBe("manage");
@@ -105,6 +111,19 @@ describe("matchRoute", () => {
     for (const name of ["job_get", "analytics_content", "notifications_list", "notification_read"] as const) {
       expect(requiredScope({ name, id: ID } as never)).toBe("read");
     }
+  });
+
+  it("метаданные контента: короткие ключи, source_video_id только uuid", () => {
+    const r = parsePublicationInput({ file_url: "https://x/v.mp4", topic_key: "  имплантация  ", hook_type: "вопрос", cta_type: "", source_video_id: "nope" });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.input.topic_key).toBe("имплантация");
+      expect(r.input.hook_type).toBe("вопрос");
+      expect(r.input.cta_type).toBeNull();
+      expect(r.input.source_video_id).toBeNull();
+    }
+    const ok = parsePublicationInput({ file_url: "https://x/v.mp4", source_video_id: ID });
+    expect(ok.ok && ok.input.source_video_id).toBe(ID);
   });
 
   it("client_ref попадает во вход публикации обрезанным, пустой — null", () => {

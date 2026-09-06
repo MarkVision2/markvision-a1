@@ -86,7 +86,8 @@ claude mcp add --transport http markvision https://mcp.example.com/mcp --header 
 | `markvision_list_routines`, `markvision_create_routine`, `markvision_update_routine`, `markvision_assign_routine`, `markvision_list_tasks` | рутины (проверка до публикации, метрики после) и их задачи |
 | `markvision_list_members` | участники проекта и роли |
 | `markvision_content_insights` | AI Content Analyst: лучшие часы и дни, площадки, аккаунты, ошибки, рекомендации |
-| `markvision_list_content`, `markvision_create_variations` | темы контент-плана и варианты победителя по группам через конвейер |
+| `markvision_list_content`, `markvision_create_variations` | темы контент-плана и варианты темы по группам через конвейер |
+| `markvision_replicate_winner`, `markvision_list_replications` | автопилот: победитель → варианты в группы, где не выходил; журнал |
 
 Чего нет намеренно: подключение и удаление аккаунтов, токены, смена политики AI и согласование
 удержанных публикаций — это решения человека (`docs/MCP.md`). Публикации, поставленные агентом,

@@ -26,6 +26,10 @@ export interface InsightPublication {
   saves: number | null;
   score: number | null;
   metrics_checkpoint: string | null;
+  /** Метаданные ролика (Phase 5): тема, хук, призыв — могут отсутствовать. */
+  topic_key?: string | null;
+  hook_type?: string | null;
+  cta_type?: string | null;
 }
 
 export interface InsightFailure {
@@ -62,6 +66,10 @@ export interface ContentInsights {
   accounts_bottom: AccountInsight[];
   errors: { error_class: string; count: number; platforms: string[] }[];
   top_content: { content_id: string; title: string | null; publications: number; views_avg: number | null; score_avg: number | null }[];
+  /** По типу хука / призыва / теме — только для роликов с заполненными метаданными. */
+  by_hook: InsightBucket[];
+  by_cta: InsightBucket[];
+  by_topic: InsightBucket[];
   recommendations: string[];
 }
 
@@ -182,6 +190,14 @@ export function buildContentInsights(
     .sort((a, b) => (b.score_avg ?? 0) - (a.score_avg ?? 0))
     .slice(0, 5);
 
+  const metaBuckets = (field: "hook_type" | "cta_type" | "topic_key") =>
+    [...bucketize(pubs, (p) => p[field] || null).entries()]
+      .map(([k, rows]) => summarize(k, rows))
+      .sort((a, b) => (b.score_avg ?? -1) - (a.score_avg ?? -1) || b.publications - a.publications);
+  const byHook = metaBuckets("hook_type");
+  const byCta = metaBuckets("cta_type");
+  const byTopic = metaBuckets("topic_key");
+
   const bestHours = bestKeys(byHour, 3).map(Number);
   const bestWeekdays = bestKeys(byWeekday, 2).map(Number);
 
@@ -231,6 +247,12 @@ export function buildContentInsights(
   if (topContent.length && (topContent[0].score_avg ?? 0) > 0) {
     recommendations.push(`Лучший ролик периода — «${topContent[0].title ?? topContent[0].content_id.slice(0, 8)}» (score ${topContent[0].score_avg}): кандидат на варианты по группам.`);
   }
+  for (const [label, buckets] of [["хук", byHook], ["призыв", byCta], ["тема", byTopic]] as const) {
+    const shown = buckets.filter((b) => b.measured >= MIN_SAMPLE);
+    if (shown.length >= 2) {
+      recommendations.push(`Лучший ${label} — «${shown[0].key}» (score ${shown[0].score_avg}), слабейший — «${shown[shown.length - 1].key}» (score ${shown[shown.length - 1].score_avg}).`);
+    }
+  }
 
   return {
     period_days: input.periodDays,
@@ -247,6 +269,9 @@ export function buildContentInsights(
     accounts_bottom: accountsBottom,
     errors,
     top_content: topContent,
+    by_hook: byHook,
+    by_cta: byCta,
+    by_topic: byTopic,
     recommendations,
   };
 }

@@ -1005,6 +1005,7 @@ function SettingsTab({ pub }: { pub: UsePublishing }) {
   const [daily, setDaily] = useState("");
   const [monthly, setMonthly] = useState("");
   const [paused, setPaused] = useState(false);
+  const [autopilot, setAutopilot] = useState(false);
   const [aiPolicy, setAiPolicy] = useState<AiPolicy>("manual");
   const [aiLimit, setAiLimit] = useState("10");
 
@@ -1020,6 +1021,7 @@ function SettingsTab({ pub }: { pub: UsePublishing }) {
     setDaily(String(s.budget.daily_usd));
     setMonthly(String(s.budget.monthly_usd));
     setPaused(Boolean(s.settings.paused));
+    setAutopilot(Boolean(s.settings.features?.winner_replication_enabled));
     setAiPolicy(s.settings.ai_policy ?? "manual");
     setAiLimit(String(s.settings.ai_daily_limit ?? 10));
   }, [s, pub.projectId]);
@@ -1067,6 +1069,18 @@ function SettingsTab({ pub }: { pub: UsePublishing }) {
       toast.success(r.own_chat ? `Сообщение ушло в чат ${r.chat_id}` : `Сообщение ушло в чат проекта ${r.chat_id}`);
     } catch (e) {
       toast.error(errMsg(e, "Проверка не прошла"));
+    }
+  };
+
+  // Флаг автопилота — тоже сразу: это не настройка формы, а включатель процесса.
+  const toggleAutopilot = async (next: boolean) => {
+    setAutopilot(next);
+    try {
+      await pub.settingsUpsert({ features: { winner_replication_enabled: next } });
+      toast.success(next ? "Автопилот победителей включён" : "Автопилот победителей выключен");
+    } catch (e) {
+      setAutopilot(!next);
+      toast.error(errMsg(e));
     }
   };
 
@@ -1183,6 +1197,21 @@ function SettingsTab({ pub }: { pub: UsePublishing }) {
         <p className="text-xs text-muted-foreground">
           Удержанные публикации видны во вкладке «Задания» баннером «Ждут согласования»; сменить политику через MCP агент не может.
         </p>
+      </section>
+
+      {/* Автопилот победителей: флаг проекта, действует сразу — как пауза */}
+      <section className={cn("space-y-3 rounded-2xl border p-4", autopilot ? "border-emerald-500/40 bg-emerald-500/5" : "bg-card")}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-1">
+            <h3 className="text-sm font-medium">Автопилот победителей</h3>
+            <p className="text-xs text-muted-foreground">
+              Раз в сутки ролики из верхних 10 % проекта (не меньше трёх измеренных публикаций) размножаются
+              вариантами по группам, где ещё не выходили, через конвейер контента. Готовые ролики проходят
+              обычное согласование. Работает только для роликов из конвейера — у загруженных руками нет темы.
+            </p>
+          </div>
+          <Switch checked={autopilot} disabled={disabled} onCheckedChange={(v) => void toggleAutopilot(v)} aria-label="Автопилот победителей" />
+        </div>
       </section>
 
       {/* Бюджет */}

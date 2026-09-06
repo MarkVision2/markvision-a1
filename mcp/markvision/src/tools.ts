@@ -11,7 +11,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { ApiError, type MarkVisionClient } from "./client.js";
 
-export const MCP_VERSION = "0.6.0";
+export const MCP_VERSION = "0.7.0";
 
 export function createMarkVisionServer(client: MarkVisionClient, version: string = MCP_VERSION): McpServer {
   const server = new McpServer({ name: "markvision", version });
@@ -118,6 +118,10 @@ export function createMarkVisionServer(client: MarkVisionClient, version: string
       caption: z.string().optional().describe("Подпись к посту. Хэштеги передаются отдельно."),
       hashtags: z.array(z.string()).optional().describe("Без решётки или с ней — всё равно."),
       caption_variants: z.array(z.string()).optional().describe("Варианты подписи — раздаются аккаунтам по кругу."),
+      topic_key: z.string().max(80).optional().describe("Ключ темы — для аналитики и раскладки (похожие ролики не в один день)."),
+      hook_type: z.string().max(80).optional().describe("Тип хука первых секунд (вопрос, боль, цифра…) — аналитик сравнит, что работает."),
+      cta_type: z.string().max(80).optional().describe("Тип призыва (запись, подписка, комментарий…)."),
+      source_video_id: uuid.optional().describe("Ролик-источник, если это вариант или ремейк."),
       duration_sec: z.number().min(3).max(900).optional().describe("Длительность в секундах, если известна: 3–900."),
       ...targetShape,
     },
@@ -465,6 +469,22 @@ export function createMarkVisionServer(client: MarkVisionClient, version: string
       limit: z.number().int().min(1).max(500).optional(),
     },
   }, (opts) => run(() => client.contentItems(compact(opts))));
+
+  server.registerTool("markvision_replicate_winner", {
+    title: "Размножить победителя",
+    description:
+      "Автопилот: ролик из верхних 10 % проекта (markvision_content_analytics, is_winner) размножается вариантами по группам аккаунтов, " +
+      "где он ещё не выходил, через конвейер контента (тема ролика в контент-плане → дочерние темы с персоной группы). " +
+      "Без group_ids — все подходящие группы (до 10). Готовые ролики проходят согласование по политике проекта. " +
+      "Ролик, загруженный не через конвейер, размножить нельзя (нет темы).",
+    inputSchema: { content_id: uuid, group_ids: z.array(uuid).max(50).optional() },
+  }, ({ content_id, group_ids }) => run(() => client.replicateWinner(content_id, group_ids)));
+
+  server.registerTool("markvision_list_replications", {
+    title: "Журнал автоповтора",
+    description: "Что автопилот и операторы уже размножили: ролик × группа → дочерняя тема, статус, причина пропуска.",
+    inputSchema: { content_id: uuid.optional(), limit: z.number().int().min(1).max(500).optional() },
+  }, (opts) => run(() => client.replications(compact(opts))));
 
   server.registerTool("markvision_create_variations", {
     title: "Варианты темы по группам",

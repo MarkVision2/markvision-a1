@@ -64,7 +64,9 @@ export type ApiRoute =
   | { name: "jobs_reject" }
   | { name: "analytics_insights" }
   | { name: "content_list" }
-  | { name: "content_variants"; id: string };
+  | { name: "content_variants"; id: string }
+  | { name: "content_replicate"; id: string }
+  | { name: "replications_list" };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -137,6 +139,9 @@ export function matchRoute(method: string, pathname: string): ApiRoute | null {
     return null;
   }
 
+  if (a === "analytics" && m === "POST" && seg.length === 4 && b === "content" && UUID.test(c ?? "") && seg[3] === "replicate") {
+    return { name: "content_replicate", id: c };
+  }
   if (a === "analytics" && m === "GET") {
     if (seg.length === 2 && b === "content") return { name: "analytics_content" };
     if (seg.length === 2 && b === "insights") return { name: "analytics_insights" };
@@ -210,6 +215,7 @@ export function matchRoute(method: string, pathname: string): ApiRoute | null {
 
   if (a === "tasks" && m === "GET" && seg.length === 1) return { name: "tasks_list" };
   if (a === "calendar" && m === "GET" && seg.length === 1) return { name: "calendar" };
+  if (a === "replications" && m === "GET" && seg.length === 1) return { name: "replications_list" };
   if (a === "content") {
     if (m === "GET" && seg.length === 1) return { name: "content_list" };
     if (m === "POST" && seg.length === 3 && UUID.test(b ?? "") && c === "variants") return { name: "content_variants", id: b };
@@ -249,6 +255,7 @@ export function requiredScope(route: ApiRoute): ApiScope {
     case "calendar":
     case "analytics_insights":
     case "content_list":
+    case "replications_list":
       return "read";
     case "member_role_set":
     case "routine_create":
@@ -293,6 +300,11 @@ export interface PublicationInput {
   target: PublicationTarget | null;
   /** Ключ идемпотентности клиента: тот же client_ref → то же видео, без второго набора заданий. */
   client_ref: string | null;
+  /** Метаданные для аналитики и родословной (Phase 5): тема, хук, призыв, ролик-источник. */
+  topic_key: string | null;
+  hook_type: string | null;
+  cta_type: string | null;
+  source_video_id: string | null;
 }
 
 const MODES = ["now", "drip", "daily"] as const;
@@ -414,6 +426,17 @@ export function parsePublicationInput(body: unknown): { ok: true; input: Publica
       duration_sec: duration,
       target,
       client_ref: b.client_ref != null && String(b.client_ref).trim() ? String(b.client_ref).trim().slice(0, 200) : null,
+      topic_key: shortKey(b.topic_key),
+      hook_type: shortKey(b.hook_type),
+      cta_type: shortKey(b.cta_type),
+      source_video_id: b.source_video_id != null && UUID.test(String(b.source_video_id)) ? String(b.source_video_id) : null,
     },
   };
+}
+
+/** Короткий ключ метаданных (тема, хук, призыв): строка до 80 символов или null. */
+function shortKey(v: unknown): string | null {
+  if (v == null) return null;
+  const s = String(v).trim();
+  return s ? s.slice(0, 80) : null;
 }

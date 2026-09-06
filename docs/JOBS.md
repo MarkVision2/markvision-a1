@@ -155,6 +155,18 @@ due-доставки): `POST` с заголовками `X-MarkVision-Event`, `X
 главный класс отказов с подсказкой, лучший ролик как кандидат на варианты). Панель «Что работает»
 во вкладке «Видео», `GET /analytics/insights`, MCP `markvision_content_insights`.
 
+## Автопилот победителей (Phase 5)
+
+`runWinnerReplication` (`publish-monitor mode=winner_replication`, крон `publish-monitor-winner-replication-daily`
+06:50 UTC): проекты с `features.winner_replication_enabled` → `pickWinners` (is_winner, ≥ `MIN_MEASURED_FOR_REPLICATION`
+= 3 измерений, до 3 победителей за проход) → `replicateContent`: тема ролика (`content_plan_items.publish_video_id`)
+→ корень → `pickReplicationTargets` (группа не на паузе, ролик там не выходил, варианта и записи ещё нет,
+до 10 групп) → `POST content-pipeline/items/:root/variants` по ключу автоматизации → строки
+`publish_replications` (UNIQUE ролик × группа) → уведомление `winner_replicated`. Руками: `winner_replicate`
+в `publish-accounts` (уровень `publish`), `POST /analytics/content/:id/replicate`, MCP; кнопка «По группам»
+у лучших роликов в панели «Что работает». Метаданные `publish_videos.hook_type / cta_type / topic_key /
+source_video_id` попадают в `publish_publications` и инсайты (`by_hook`, `by_cta`, `by_topic`).
+
 ## Роли (RBAC)
 
 Роль в проекте (`_lib/rbac.ts`, SQL `project_role_of`): владелец → `owner`; явная `project_members.role`;

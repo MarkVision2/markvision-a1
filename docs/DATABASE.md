@@ -11,7 +11,8 @@
 | `publish_accounts_safe` (view) | то же без шифротекста | для интерфейса |
 | `publish_account_groups` | группы | стратегия, темп, окно, `review_mode` (`review_required|auto_publish|paused`), персона |
 | `personas` | tone of voice, движок по умолчанию | |
-| `publish_videos` | библиотека медиа для очереди | `file_url`, `title`, `base_caption`, `caption_variants`, `hashtags`, `status` (`ready|queued|publishing|done|failed`), `source`, `source_ref`, `client_ref` (UNIQUE в проекте) |
+| `publish_videos` | библиотека медиа для очереди | `file_url`, `title`, `base_caption`, `caption_variants`, `hashtags`, `status` (`ready|queued|publishing|done|failed`), `source`, `source_ref`, `client_ref` (UNIQUE в проекте), `topic_key`, `hook_type`, `cta_type`, `source_video_id` (родословная вариантов), `batch_id` |
+| `publish_replications` | автопилот победителей | `content_id` × `group_id` (UNIQUE), `item_id` (корневая тема), `child_item_id` (вариант), `status` (`created|skipped|failed`), `reason`, `created_by` (`autopilot|api|ui`) |
 | `publish_jobs` | одно задание = одна публикация в одном аккаунте | `status` (см. `JOBS.md`), `attempts`, `poll_count`, `locked_at`, `container_id`, `external_post_id/url`, `published_at`, `verification_status`, `verified_at`, `verify_attempts`, `error_code` (`awaiting_approval` — удержано политикой AI), `error_class`, `error_message`, `trace_id`, `metrics_unavailable_reason`, `origin` (`api` — из публичного API / MCP), `campaign_id`; `UNIQUE (video_id, account_id)` |
 | `publish_slots` | брони планировщика | `UNIQUE (account_id, slot_at)` |
 | `publish_job_events` | трасса шагов | `job_id`, `trace_id`, `step`, `level`, `message`, `data` |

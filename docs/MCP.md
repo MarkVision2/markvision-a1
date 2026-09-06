@@ -9,7 +9,7 @@ AI не имеет доступа к базе, токенам площадок �
 `MARKVISION_API_KEY` (права `read` / `publish` / `manage`, `project_id` зашит в ключ) и адрес
 `MARKVISION_API_URL`. Контракт API — `PUBLIC-API.md`; установка и конфиг — `mcp/markvision/README.md`.
 
-## Инструменты (49)
+## Инструменты (51)
 
 | Группа | Инструменты |
 |---|---|
@@ -18,7 +18,7 @@ AI не имеет доступа к базе, токенам площадок �
 | Контент и публикация | `markvision_upload_media`, `markvision_create_publication`, `markvision_create_jobs`, `markvision_list_publications`, `markvision_get_publication` |
 | Задания | `markvision_list_jobs` (страница `offset`, фильтры по видео/аккаунту/кампании), `markvision_get_job` (трасса шагов, верификация, метрики), `markvision_cancel_job`, `markvision_retry_job`, `markvision_calendar` (что и когда выходит в каждом аккаунте за период) |
 | Аналитика | `markvision_metrics`, `markvision_content_analytics` (score, победители), `markvision_content_analytics_item`, `markvision_content_insights` (AI Content Analyst: часы, дни, площадки, аккаунты, ошибки, рекомендации) |
-| Контент-план | `markvision_list_content`, `markvision_create_variations` (варианты победителя по группам через конвейер) |
+| Контент-план, автопилот | `markvision_list_content`, `markvision_create_variations` (варианты темы по группам через конвейер), `markvision_replicate_winner` (победитель → варианты в группы, где не выходил), `markvision_list_replications` |
 | Уведомления | `markvision_notifications`, `markvision_notification_read` |
 | Кампании | `markvision_list_campaigns`, `markvision_get_campaign`, `markvision_create_campaign`, `markvision_update_campaign`, `markvision_campaign_add_content`, `markvision_campaign_remove_content`, `markvision_campaign_action` |
 | Вебхуки, отчёты | `markvision_list_webhooks`, `markvision_create_webhook`, `markvision_webhook_deliveries`, `markvision_daily_report` |
@@ -46,7 +46,16 @@ AI не имеет доступа к базе, токенам площадок �
 оператору. Интерфейс: вкладка «Задания» → баннер «Ждут согласования» → «Согласовать все» / «Отклонить все».
 
 Аудит: каждый вызов — строка `api_request_logs` (ключ, маршрут, статус, sha256 параметров, длительность);
-лимит 120 запросов/мин на ключ.
+лимит 120 запросов/мин на ключ — в изоляте и глобально по журналу за последнюю минуту.
+
+### Автопилот победителей (Phase 5)
+
+Флаг проекта `features.winner_replication_enabled` (Настройки → «Автопилот победителей»). Раз в сутки
+(`publish-monitor mode=winner_replication`, 06:50 UTC, после снятия метрик) ролики с `is_winner` и ≥ 3
+измеренными публикациями размножаются вариантами по группам, где ещё не выходили
+(`_lib/publishReplication.ts` → `content-pipeline /items/:id/variants`); журнал — `publish_replications`,
+уведомление `winner_replicated`. Дальше ролики идут обычным путём: согласование в конвейере (или доверенная
+группа `auto_publish`), политика AI, слоты. Агент может запустить то же руками — `markvision_replicate_winner`.
 
 ## Удалённый MCP (HTTP)
 

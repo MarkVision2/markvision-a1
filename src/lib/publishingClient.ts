@@ -188,7 +188,33 @@ export interface ContentInsights {
   accounts_bottom: (InsightBucket & { account_id: string; account_name: string; platform: string })[];
   errors: { error_class: string; count: number; platforms: string[] }[];
   top_content: { content_id: string; title: string | null; publications: number; views_avg: number | null; score_avg: number | null }[];
+  by_hook?: InsightBucket[];
+  by_cta?: InsightBucket[];
+  by_topic?: InsightBucket[];
   recommendations: string[];
+}
+
+/* ───────────── автопилот победителей (Phase 5) ───────────── */
+
+export interface ReplicateResult {
+  content_id: string;
+  item_id: string | null;
+  created: { group_id: string; group_name: string; child_item_id: string | null }[];
+  skipped: { group_id: string; name: string; reason: string }[];
+  error?: string;
+}
+export interface PublishReplication {
+  id: string;
+  content_id: string;
+  item_id: string | null;
+  group_id: string;
+  child_item_id: string | null;
+  status: "created" | "skipped" | "failed";
+  reason: string | null;
+  created_by: string;
+  created_at: string;
+  publish_videos?: { title: string | null } | null;
+  publish_account_groups?: { name: string } | null;
 }
 
 export interface PublishMetrics {
@@ -699,6 +725,7 @@ export interface SettingsUpsertInput {
   /** null — вернуть бюджет по умолчанию (20 / 300 $). */
   daily_usd?: number | null;
   monthly_usd?: number | null;
+  features?: Record<string, boolean>;
 }
 
 /* ───────────── API-ключи проекта (edge api, docs/PUBLIC-API.md) ───────────── */
@@ -842,6 +869,11 @@ export const publishingApi = {
     call<{ approved: number; rejected: number; skipped: number }>("jobs_reject", { project_id, ...(scope.video_id ? { video_id: scope.video_id } : {}), ...(scope.job_ids?.length ? { job_ids: scope.job_ids } : {}) }),
   /** AI Content Analyst — инсайты за период. */
   insights: (project_id: string, days = 30) => call<{ insights: ContentInsights; generated_at: string }>("analytics_insights", { project_id, days }),
+  /** Автопилот: размножить победителя вариантами по группам через конвейер. */
+  winnerReplicate: (project_id: string, content_id: string, group_ids?: string[]) =>
+    call<ReplicateResult>("winner_replicate", { project_id, content_id, ...(group_ids?.length ? { group_ids } : {}) }),
+  replicationList: (project_id: string, content_id?: string | null) =>
+    call<{ replications: PublishReplication[] }>("replication_list", { project_id, ...(content_id ? { content_id } : {}) }),
   publishVideo: (project_id: string, input: PublishVideoInput) =>
     call<PublishVideoResult>("publish_video", { project_id, ...input }),
 

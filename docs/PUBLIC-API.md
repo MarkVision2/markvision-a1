@@ -68,6 +68,8 @@ Authorization: Bearer mv_live_…        (или заголовок x-api-key: m
 | `GET /analytics/insights?days=` | read | AI Content Analyst: площадки, лучшие часы и дни недели в поясе аккаунта, лидеры/аутсайдеры, классы ошибок, лучший ролик, рекомендации словами (детерминированно, `_lib/publishInsights.ts`) |
 | `GET /analytics/content?limit=&winners=1` | read | витрина по видео: публикаций, сумма/среднее просмотров, реакции, лучший аккаунт, `score` 0–100, `is_winner` |
 | `GET /analytics/content/:id` | read | одно видео и его публикации по аккаунтам с последней точкой метрик |
+| `POST /analytics/content/:id/replicate` | publish | автопилот руками: размножить победителя вариантами по группам (`{ group_ids? }`) через конвейер → `created[]`, `skipped[]` с причинами; `409`, если у ролика нет темы конвейера |
+| `GET /replications?content_id=&limit=` | read | журнал автоповтора: ролик × группа → дочерняя тема, статус, причина |
 | `GET /analytics/accounts/:id` | read | витрина аккаунта (`publish_account_metrics`) и последние публикации |
 | `GET /notifications?unread=1&limit=` | read | центр уведомлений проекта (`unread` — счётчик непрочитанных) |
 | `POST /notifications/:id/read` | read | отметить уведомление прочитанным |
@@ -152,6 +154,8 @@ curl -X POST "$API/publications/distribute" -H "Authorization: Bearer $KEY" -H "
   с минимальным интервалом и дневным лимитом; `daily` — по одному в день.
 - Без `group_id` и `account_ids` задания ставятся на **все активные аккаунты проекта**.
 - `caption_variants` раздаются аккаунтам по кругу, хэштеги подклеиваются к подписи.
+- `topic_key`, `hook_type`, `cta_type` (до 80 символов) и `source_video_id` — метаданные ролика для
+  аналитика (`GET /analytics/insights` сравнивает хуки, призывы и темы) и родословной вариантов.
 - `client_ref` (до 200 символов) — ключ идемпотентности: повторный вызов с тем же `client_ref` в проекте
   вернёт то же `video_id` с `idempotent: true` и не заведёт второй ролик; задания по-прежнему уникальны
   на пару видео + аккаунт.

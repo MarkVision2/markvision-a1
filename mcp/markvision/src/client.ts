@@ -156,6 +156,16 @@ export class MarkVisionClient {
     const qs = q.toString();
     return this.request<{ items: unknown[] }>("GET", `/content${qs ? `?${qs}` : ""}`);
   }
+  replicateWinner(contentId: string, groupIds?: string[]) {
+    return this.request<Record<string, unknown>>("POST", `/analytics/content/${contentId}/replicate`, groupIds?.length ? { group_ids: groupIds } : {});
+  }
+  replications(opts: { content_id?: string; limit?: number } = {}) {
+    const q = new URLSearchParams();
+    if (opts.content_id) q.set("content_id", opts.content_id);
+    if (opts.limit) q.set("limit", String(opts.limit));
+    const qs = q.toString();
+    return this.request<{ replications: unknown[] }>("GET", `/replications${qs ? `?${qs}` : ""}`);
+  }
   createVariations(itemId: string, groupIds: string[]) {
     return this.request<Record<string, unknown>>("POST", `/content/${itemId}/variants`, { group_ids: groupIds });
   }

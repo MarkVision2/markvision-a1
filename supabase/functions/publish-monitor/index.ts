@@ -38,6 +38,7 @@ import { resolveCapabilities, tokenKindOf } from "../_lib/publishCapabilities.ts
 import { notifyCenter } from "../_lib/publishTrace.ts";
 import { requireProjectAccess } from "../_lib/auth.ts";
 import { computeHealth } from "../_lib/publishHealth.ts";
+import { pickWinners, replicateContent, type WinnerRow } from "../_lib/publishReplication.ts";
 
 /** Сколько отказов подряд считаем поломкой аккаунта, а не невезением. */
 const ERROR_STREAK_LIMIT = 3;
@@ -616,6 +617,8 @@ async function buildDailyReport(admin: SupabaseClient, projectId: string): Promi
 }
 
 /**
+ * mode: "winner_replication" — см. runWinnerReplication ниже (крон раз в сутки, 06:50 UTC).
+ *
  * mode: "daily_report" — отчёт каждому проекту с подключёнными аккаунтами: Telegram
  * (чат дайджеста или чат проекта), уведомление report.daily (через него — вебхуки).
  * С project_id и dry_run — только вернуть JSON (публичный API GET /reports/daily).
@@ -648,6 +651,55 @@ async function sendDailyReports(admin: SupabaseClient, projectId: string | null,
     });
   }
   return { projects: projects.length, sent, reports: projectId ? reports : undefined };
+}
+
+/**
+ * mode: "winner_replication" — автопилот победителей (Phase 5, крон раз в сутки после
+ * снятия метрик): в проектах с флагом features.winner_replication_enabled ролики из
+ * верхних 10 % (publish_content_metrics.is_winner, ≥ 3 измерений) размножаются
+ * вариантами по группам, где ещё не выходили, через конвейер контента. Дальше —
+ * обычные ворота: согласование ролика конвейера, политика AI, слоты.
+ */
+async function runWinnerReplication(admin: SupabaseClient, projectId: string | null) {
+  const { data: auto } = await admin.from("automation_settings").select("cron_secret").eq("id", true).maybeSingle();
+  const key = (auto as { cron_secret?: string } | null)?.cron_secret;
+  if (!key) return { projects: 0, winners: 0, created: 0, error: "automation_settings.cron_secret не настроен" };
+
+  let q = admin.from("publish_project_settings").select("project_id, features");
+  if (projectId) q = q.eq("project_id", projectId);
+  const { data: rows } = await q;
+  const projects = ((rows ?? []) as { project_id: string; features: Record<string, boolean> | null }[])
+    .filter((r) => r.features?.winner_replication_enabled === true)
+    .map((r) => r.project_id);
+
+  let winners = 0;
+  let created = 0;
+  const details: { project_id: string; content_id: string; created: number; skipped: number; error?: string }[] = [];
+  for (const pid of projects) {
+    const { data: metrics } = await admin.from("publish_content_metrics")
+      .select("content_id, title, score, publications_measured, is_winner")
+      .eq("project_id", pid).eq("is_winner", true);
+    const picked = pickWinners((metrics ?? []) as WinnerRow[]);
+    for (const w of picked) {
+      winners++;
+      const r = await replicateContent(admin, {
+        projectId: pid, contentId: w.content_id, createdBy: "autopilot",
+        supabaseUrl: Deno.env.get("SUPABASE_URL")!, automationKey: key,
+      });
+      created += r.created.length;
+      details.push({ project_id: pid, content_id: w.content_id, created: r.created.length, skipped: r.skipped.length, ...(r.error ? { error: r.error } : {}) });
+      if (r.created.length) {
+        await notifyCenter(admin, {
+          projectId: pid, kind: "winner_replicated", severity: "info",
+          title: `Автопилот: «${w.title ?? w.content_id.slice(0, 8)}» размножен на ${r.created.length} групп`,
+          body: r.created.map((c) => c.group_name).join(", ") + ". Варианты ушли в конвейер контента; готовые ролики пройдут согласование.",
+          entityType: "publish_video", entityId: w.content_id,
+          dedupeKey: `winner:${w.content_id}:${r.created.map((c) => c.group_id).sort().join(",")}`,
+        });
+      }
+    }
+  }
+  return { projects: projects.length, winners, created, details };
 }
 
 Deno.serve(async (req) => {
@@ -683,6 +735,7 @@ Deno.serve(async (req) => {
     if (mode === "digest") return json({ ok: true, mode, ...(await sendDigests(admin)) });
     if (mode === "daily_report") return json({ ok: true, mode, ...(await sendDailyReports(admin, projectId, body?.dry_run === true)) });
     if (mode === "shadow") return json({ ok: true, mode, ...(await checkShadowban(admin)) });
+    if (mode === "winner_replication") return json({ ok: true, mode, ...(await runWinnerReplication(admin, projectId)) });
     return json({ error: `неизвестный режим: ${mode}` }, 400);
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : String(e) }, 500);
