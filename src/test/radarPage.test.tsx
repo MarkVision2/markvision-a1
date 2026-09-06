@@ -132,28 +132,39 @@ describe("Radar page", () => {
     updateIdea.mockClear();
   });
 
-  it("рисует плитки метрик и строку статуса радара", () => {
+  it("сводка: воронка, рекорд, ниша, источники и расход с разбивкой", () => {
     renderPage();
-    expect(screen.getByText("Источников")).toBeTruthy();
-    expect(screen.getByText("42")).toBeTruthy();
-    expect(screen.getByText("Залетевших")).toBeTruthy();
-    expect(screen.getByText("Ждут разбора")).toBeTruthy();
-    expect(screen.getByText("Новых идей")).toBeTruthy();
-    expect(screen.getByText("Идей в плане")).toBeTruthy();
-    // Расход — суммой и с разбивкой; «$0.00» на центах врал бы.
-    expect(screen.getByText("$0.066")).toBeTruthy();
-    expect(screen.getByText("сбор $0.021 · разбор $0.045")).toBeTruthy();
+    const pulse = screen.getByTestId("radar-pulse");
+    // Воронка: шесть шагов с числами из витрины.
+    for (const label of ["Собрано", "Разобрано", "Залетевших", "Идей", "Одобрено", "В плане"]) {
+      expect(within(pulse).getByText(label)).toBeTruthy();
+    }
+    expect(within(pulse).getByTestId("funnel-collected")).toHaveTextContent("60");
+    expect(within(pulse).getByText("за 7 дней 42 · сегодня +2")).toBeTruthy();
+    expect(within(pulse).getByText("ждут разбора 5")).toBeTruthy();
+    expect(within(pulse).getByText("из 48 с X-фактором")).toBeTruthy();
+    // Одобрено = одобренные + уже в плане (1 + 2), из них 1 ждёт плана.
+    expect(within(pulse).getByTestId("funnel-approved")).toHaveTextContent("3");
+    expect(within(pulse).getByText("1 ждут плана")).toBeTruthy();
+    // Рекорд, ниша, источники, расход.
+    expect(within(pulse).getByTestId("pulse-best")).toHaveTextContent("×526");
+    expect(within(pulse).getByTestId("pulse-best")).toHaveTextContent("@ai_sashka.ua");
+    expect(within(pulse).getByTestId("pulse-niche")).toHaveTextContent("AI-маркетинг");
+    expect(within(pulse).getByTestId("pulse-sources")).toHaveTextContent("включено из 4");
+    expect(within(pulse).getByText("$0.066")).toBeTruthy();
+    expect(within(pulse).getByText("сбор $0.021 · разбор $0.045")).toBeTruthy();
     expect(screen.getByText(/постов под наблюдением/)).toBeTruthy();
-    // Каждое число подписано, откуда оно: знаменатели и периоды.
-    expect(screen.getByText("сегодня +2 · всего 60")).toBeTruthy();
-    expect(screen.getByText("из 48 с X-фактором")).toBeTruthy();
-    expect(screen.getByText("разобрано 55")).toBeTruthy();
-    expect(screen.getByText("включено из 4")).toBeTruthy();
-    // Рекорд и топ-ниша — чтобы сводка отвечала «что вообще происходит».
-    expect(screen.getByText("×526")).toBeTruthy();
-    expect(screen.getByText("@ai_sashka.ua")).toBeTruthy();
-    expect(screen.getByText("AI-маркетинг")).toBeTruthy();
     expect(screen.getByRole("textbox", { name: "Ссылка на публикацию" })).toBeTruthy();
+  });
+
+  it("клик по «Залетевших» в воронке включает фильтр ленты, «В плане» открывает идеи", async () => {
+    renderPage();
+    fireEvent.click(screen.getByTestId("funnel-viral"));
+    expect(await screen.findByText(/только залетевшие/)).toBeTruthy();
+    fireEvent.click(screen.getByTestId("funnel-used"));
+    await waitFor(() => expect(screen.getByRole("tab", { name: /Идеи/ })).toHaveAttribute("aria-selected", "true"));
+    // Фильтр «В плане» включён: единственная идея — «Новая», список пуст.
+    expect(screen.getByText(/Идей пока нет/)).toBeTruthy();
   });
 
   const openIdeas = () => fireEvent.mouseDown(screen.getByRole("tab", { name: /Идеи/ }), { button: 0 });

@@ -29,7 +29,6 @@ export function RadarHero({ metrics, sourcesCount, crawling, busy, onAnalyzeUrl 
     setUrl("");
   };
   const watching = metrics?.posts_total ?? 0;
-  const viral = metrics?.posts_viral ?? 0;
   const last = metrics?.last_run_at ?? null;
 
   return (
@@ -43,9 +42,7 @@ export function RadarHero({ metrics, sourcesCount, crawling, busy, onAnalyzeUrl 
         <span>·</span>
         <span><b className="tabular-nums text-foreground">{num(sourcesCount)}</b> {sourcesCount === 1 ? "источник" : sourcesCount >= 2 && sourcesCount <= 4 ? "источника" : "источников"}</span>
         <span>·</span>
-        <span><b className="tabular-nums text-foreground">{num(viral)}</b> залетевших</span>
-        <span>·</span>
-        <span>{crawling ? "идёт сбор…" : last ? `последний сбор ${formatAge(last)}` : "сборов ещё не было"}</span>
+        <span className={cn(crawling && "text-success")}>{crawling ? "идёт сбор…" : last ? `последний сбор ${formatAge(last)}` : "сборов ещё не было"}</span>
       </div>
 
       <h2 className="mt-4 text-balance text-xl font-semibold leading-tight sm:text-2xl">

@@ -3,7 +3,7 @@
  * залетевшие, поиск), сортировка (горячее / X-фактор / просмотры / свежие /
  * оценка) и сетка карточек постов.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Flame, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,10 +19,17 @@ import { TrendCard } from "./TrendCard";
 const ALL_NICHES = "__all__";
 const PLATFORMS = Object.keys(PLATFORM_META) as RadarPlatform[];
 
+/** Внешняя правка фильтра (клик по сводке): seq растёт, чтобы одинаковый patch применялся повторно. */
+export interface TrendFilterRequest {
+  seq: number;
+  patch: Partial<TrendFilter>;
+}
+
 interface TrendsTabProps {
   posts: RadarPost[];
   ownSourceIds: Set<string>;
   busy: string | null;
+  filterRequest?: TrendFilterRequest | null;
   onOpen: (post: RadarPost) => void;
   onAnalyze: (post: RadarPost) => void;
   onAddSource: () => void;
@@ -36,9 +43,13 @@ function FilterChip({ active, onClick, children }: { active: boolean; onClick: (
   );
 }
 
-export function TrendsTab({ posts, ownSourceIds, busy, onOpen, onAnalyze, onAddSource }: TrendsTabProps) {
-  const [filter, setFilter] = useState<TrendFilter>(DEFAULT_TREND_FILTER);
+export function TrendsTab({ posts, ownSourceIds, busy, filterRequest, onOpen, onAnalyze, onAddSource }: TrendsTabProps) {
+  const [filter, setFilter] = useState<TrendFilter>(() => ({ ...DEFAULT_TREND_FILTER, ...(filterRequest?.patch ?? {}) }));
   const set = (patch: Partial<TrendFilter>) => setFilter((f) => ({ ...f, ...patch }));
+  useEffect(() => {
+    if (filterRequest) setFilter((f) => ({ ...f, ...filterRequest.patch }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterRequest?.seq]);
   const niches = useMemo(() => nicheOptions(posts), [posts]);
   const platformsPresent = useMemo(() => new Set(posts.map((p) => p.platform)), [posts]);
   const visible = useMemo(() => filterTrends(posts, filter), [posts, filter]);

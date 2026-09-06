@@ -4,7 +4,7 @@
  * (хук, структура, почему залетел) → сценарий для нас → тема контент-плана.
  * Данные — хук useRadar (edge-функция `radar`); компоненты — src/components/radar.
  */
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { AlertTriangle, Loader2, Plus, Radar as RadarIcon, RefreshCw } from "lucide-react";
@@ -15,11 +15,11 @@ import { AuthorsTab } from "@/components/radar/AuthorsTab";
 import { IdeaCard } from "@/components/radar/IdeaCard";
 import { PostXraySheet } from "@/components/radar/PostXraySheet";
 import { Empty, errMsg } from "@/components/radar/RadarBits";
-import { MetricsRow } from "@/components/radar/MetricsRow";
+import { RadarPulse, type PulseTarget } from "@/components/radar/RadarPulse";
 import { RadarHero } from "@/components/radar/RadarHero";
 import { RunsTab } from "@/components/radar/RunsTab";
 import { SourcesTab, sourceTitle } from "@/components/radar/SourcesTab";
-import { TrendsTab } from "@/components/radar/TrendsTab";
+import { TrendsTab, type TrendFilterRequest } from "@/components/radar/TrendsTab";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
@@ -40,6 +40,22 @@ export default function Radar() {
   const [ideaFilter, setIdeaFilter] = useState<IdeaStatus | "all">("all");
   const [openPost, setOpenPost] = useState<RadarPost | null>(null);
   const [version, setVersion] = useState(0);
+  const [tab, setTab] = useState("trends");
+  const [trendRequest, setTrendRequest] = useState<TrendFilterRequest | null>(null);
+  const tabsRef = useRef<HTMLDivElement>(null);
+
+  /** Клик по сводке: открыть вкладку с нужным фильтром и подвести к ней экран. */
+  const go = (target: PulseTarget) => {
+    if (target.tab === "add-source") {
+      setAddPreset(null);
+      setAddOpen(true);
+      return;
+    }
+    setTab(target.tab);
+    if (target.tab === "trends" && target.filter) setTrendRequest((r) => ({ seq: (r?.seq ?? 0) + 1, patch: target.filter! }));
+    if (target.tab === "ideas") setIdeaFilter(target.status ?? "all");
+    requestAnimationFrame(() => tabsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  };
 
   const ownSourceIds = useMemo(() => new Set(sources.filter((s) => s.kind === "own_account").map((s) => s.id)), [sources]);
   const sourcesById = useMemo(() => new Map(sources.map((s) => [s.id, s] as const)), [sources]);
@@ -220,9 +236,9 @@ export default function Radar() {
         <RadarHero metrics={metrics} sourcesCount={sources.length} crawling={crawling} busy={busy === "analyze-url"} onAnalyzeUrl={analyzeUrl} />
       </div>
 
-      <MetricsRow metrics={metrics} sourcesFallback={sources.length} />
+      <RadarPulse metrics={metrics} posts={posts} sourcesFallback={sources.length} crawling={crawling} onGo={go} onOpenPost={setOpenPost} />
 
-      <Tabs defaultValue="trends" className="mt-6">
+      <Tabs value={tab} onValueChange={setTab} className="mt-6 scroll-mt-4" ref={tabsRef}>
         {/* Пять вкладок со счётчиками не влезают в 390 px одной строкой — переносим. */}
         <TabsList className="h-auto flex-wrap">
           <TabsTrigger value="trends">Тренды{posts.length ? ` (${posts.length})` : ""}</TabsTrigger>
@@ -240,6 +256,7 @@ export default function Radar() {
             posts={posts}
             ownSourceIds={ownSourceIds}
             busy={busy}
+            filterRequest={trendRequest}
             onOpen={setOpenPost}
             onAnalyze={(p) => void analyzePost(p)}
             onAddSource={() => setAddOpen(true)}
