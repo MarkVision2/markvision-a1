@@ -1,7 +1,7 @@
 {
-  "git_sha": "8d5824d",
-  "git_sha_full": "8d5824d18898b0bceb869c2d144001f2fcbe05a9",
-  "updated_at": "2026-09-06T12:33:27+04:00",
-  "label": "feat(devices): предупреждение об общем IP у нескольких устройств [vercel-deploy]",
+  "git_sha": "c53ae1f",
+  "git_sha_full": "c53ae1f518ad536224dd4922f8f4c7cfbf526211",
+  "updated_at": "2026-09-06T13:05:28+04:00",
+  "label": "feat(devices): включение из окна телефона, установка приложений, точнее про общий IP [vercel-deploy]",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
