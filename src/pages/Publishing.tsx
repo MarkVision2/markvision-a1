@@ -39,6 +39,7 @@ import { JobsTab } from "@/components/publishing/JobsTab";
 import { NetworkTab } from "@/components/publishing/NetworkTab";
 import { NotificationsPanel } from "@/components/publishing/NotificationsPanel";
 import { CampaignsTab } from "@/components/publishing/CampaignsTab";
+import { DevicesTab } from "@/components/publishing/DevicesTab";
 import { CalendarTab } from "@/components/publishing/CalendarTab";
 import { ConnectLinksDialog } from "@/components/publishing/ConnectLinksDialog";
 import { WebhooksSection } from "@/components/publishing/WebhooksSection";
@@ -274,6 +275,7 @@ export default function Publishing() {
             <TabsTrigger value="calendar">Календарь</TabsTrigger>
             <TabsTrigger value="videos">Видео</TabsTrigger>
             <TabsTrigger value="jobs">Задания</TabsTrigger>
+            <TabsTrigger value="devices">Устройства</TabsTrigger>
             <TabsTrigger value="settings">Настройки</TabsTrigger>
           </TabsList>
           <TabsContent value="accounts" forceMount className="mt-3 data-[state=inactive]:hidden"><AccountsTable pub={pub} /></TabsContent>
@@ -314,6 +316,7 @@ export default function Publishing() {
               onShowJobs={(v) => { pub.setJobsVideo(v.id); setTab("jobs"); }}
             />
           </TabsContent>
+          <TabsContent value="devices" className="mt-3"><DevicesTab /></TabsContent>
           <TabsContent value="campaigns" className="mt-3"><CampaignsTab pub={pub} /></TabsContent>
           <TabsContent value="calendar" className="mt-3"><CalendarTab pub={pub} /></TabsContent>
           <TabsContent value="jobs" className="mt-3 space-y-4">

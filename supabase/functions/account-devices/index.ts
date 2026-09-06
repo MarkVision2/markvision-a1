@@ -12,7 +12,8 @@
  *   • не публикует — публикация идёт через официальные API площадок.
  *
  * Действия (POST { action, project_id, … }):
- *   phones        — телефоны PhoneGrid + к какому аккаунту привязан каждый
+ *   phones        — телефоны PhoneGrid: статус, прокси, аккаунт и день прогрева
+ *   accounts_free — аккаунты проекта без телефона (для привязки из списка устройств)
  *   attach        — привязать телефон к аккаунту (одно устройство = один аккаунт)
  *   detach        — отвязать
  *   power         — включить / выключить телефон
@@ -101,13 +102,40 @@ Deno.serve(async (req) => {
       const data = await phonegridCall<{ dataList?: Record<string, unknown>[] }>(cfg, "/cloudphone/page", PAGE);
       const phones = (data.dataList ?? []).map(summarizePhone);
       const { data: linked } = await admin.from("publish_accounts")
-        .select("id, account_name, handle, platform, device_phone_id")
+        .select("id, account_name, handle, platform, device_phone_id, warmup_started_at, warmup_last_run_at, warmup_last_state")
         .eq("project_id", projectId).not("device_phone_id", "is", null);
       const byPhone = new Map((linked ?? []).map((a) => [String(a.device_phone_id), a]));
       return json({
         ok: true,
-        phones: phones.map((p) => ({ ...p, account: byPhone.get(p.id) ?? null })),
+        phones: phones.map((p) => {
+          const a = byPhone.get(p.id) ?? null;
+          // День прогрева считаем здесь же, чтобы список телефонов сразу показывал прогресс.
+          const day = a ? warmupDayFrom(a.warmup_started_at as string | null) : null;
+          return {
+            ...p,
+            account: a
+              ? { id: a.id, account_name: a.account_name, handle: a.handle, platform: a.platform }
+              : null,
+            warmup: a
+              ? {
+                day,
+                ready: (day ?? 0) >= 15,
+                startedAt: a.warmup_started_at,
+                lastRunAt: a.warmup_last_run_at,
+                lastState: a.warmup_last_state,
+              }
+              : null,
+          };
+        }),
       });
+    }
+
+    if (action === "accounts_free") {
+      // Аккаунты проекта, к которым ещё не привязан телефон — для выпадашки в списке устройств.
+      const { data } = await admin.from("publish_accounts")
+        .select("id, account_name, handle, platform")
+        .eq("project_id", projectId).is("device_phone_id", null).order("account_name");
+      return json({ ok: true, accounts: data ?? [] });
     }
 
     if (action === "attach" || action === "detach") {

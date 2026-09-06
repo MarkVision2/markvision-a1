@@ -89,7 +89,7 @@ export const ACTION_LEVELS: Record<string, PermissionLevel> = {
   webhook_list: "read", webhook_deliveries: "read", api_key_list: "read", member_list: "read",
   routine_list: "read", tasks_list: "read", calendar: "read",
   // облачные телефоны в карточке аккаунта: смотреть можно с правом чтения
-  phones: "read", warmup_status: "read",
+  phones: "read", warmup_status: "read", accounts_free: "read",
   // оператор: разбор ошибок, проверка здоровья, уведомления
   notification_read: "operate", job_retry: "operate", job_cancel: "operate", health_check: "operate",
   // контент и расписание

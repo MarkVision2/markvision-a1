@@ -10,6 +10,13 @@
  */
 import { supabase } from "@/integrations/supabase/client";
 
+export interface DeviceAccountRef {
+  id: string;
+  account_name: string;
+  handle: string | null;
+  platform: string;
+}
+
 export interface DevicePhone {
   id: string;
   name: string;
@@ -19,7 +26,15 @@ export interface DevicePhone {
   proxyId: string | null;
   proxyIp: string | null;
   country: string | null;
-  account: { id: string; account_name: string; handle: string | null; platform: string } | null;
+  account: DeviceAccountRef | null;
+  /** Прогрев привязанного аккаунта; null — телефон свободен. */
+  warmup: {
+    day: number | null;
+    ready: boolean;
+    startedAt: string | null;
+    lastRunAt: string | null;
+    lastState: string | null;
+  } | null;
 }
 
 export interface WarmupPlan {
@@ -78,6 +93,12 @@ async function call<T>(action: string, projectId: string, body: Record<string, u
 export async function listPhones(projectId: string): Promise<DevicePhone[]> {
   const r = await call<{ phones: DevicePhone[] }>("phones", projectId);
   return r.phones ?? [];
+}
+
+/** Аккаунты проекта без телефона — для привязки прямо из списка устройств. */
+export async function listFreeAccounts(projectId: string): Promise<DeviceAccountRef[]> {
+  const r = await call<{ accounts: DeviceAccountRef[] }>("accounts_free", projectId);
+  return r.accounts ?? [];
 }
 
 export async function attachPhone(projectId: string, accountId: string, phoneId: string): Promise<void> {
