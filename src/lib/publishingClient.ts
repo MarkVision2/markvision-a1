@@ -65,6 +65,14 @@ export interface PublishAccount {
   /** Кто подключил: менеджер из кабинета, клиент по ссылке, публичный API или облачный телефон. */
   connected_via?: "dashboard" | "invite" | "api" | "device";
   connect_link_id?: string | null;
+  /** Облачный телефон аккаунта: нужен, чтобы завести и прогреть его (docs/AUTOPOST-ARCHITECTURE.md). */
+  device_provider?: string | null;
+  device_phone_id?: string | null;
+  device_phone_name?: string | null;
+  /** Начало прогрева: от неё считается день, с 15-го аккаунт готов к публикации. */
+  warmup_started_at?: string | null;
+  warmup_last_run_at?: string | null;
+  warmup_last_state?: string | null;
 }
 
 export type PublishAuthStatus = "connected" | "expiring" | "expired" | "reconnect_required";

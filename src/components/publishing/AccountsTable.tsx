@@ -37,6 +37,7 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { AccountWindowDialog } from "@/components/publishing/AccountWindowDialog";
+import { AccountDeviceDialog } from "@/components/publishing/AccountDeviceDialog";
 import { BulkAccountsBar } from "@/components/publishing/BulkAccountsBar";
 import { initials } from "@/components/publishing/PostPreview";
 import type { UsePublishing } from "@/hooks/usePublishing";
@@ -693,6 +694,7 @@ function AccountRow({
   const [limit, setLimit] = useState(String(a.daily_limit));
   useEffect(() => setLimit(String(a.daily_limit)), [a.daily_limit]);
   const [windowOpen, setWindowOpen] = useState(false);
+  const [deviceOpen, setDeviceOpen] = useState(false);
   // Действие идёт именно по этой строке (update:<id>, disconnect:<id>) — спиннер только у неё.
   const rowBusy = pub.busy != null && pub.busy.endsWith(`:${a.id}`);
 
@@ -854,6 +856,9 @@ function AccountRow({
                 Перезапустить разгон
               </DropdownMenuItem>
             )}
+            <DropdownMenuItem disabled={disabled} onSelect={() => setDeviceOpen(true)}>
+              Устройство и прогрев{a.device_phone_name ? `: ${a.device_phone_name}` : "…"}
+            </DropdownMenuItem>
             <DropdownMenuItem disabled={disabled} onSelect={() => setWindowOpen(true)}>
               Окно публикаций{a.window_start && a.window_end ? `: ${a.window_start.slice(0, 5)}–${a.window_end.slice(0, 5)}` : a.timezone ? `: ${a.timezone}` : "…"}
             </DropdownMenuItem>
@@ -902,6 +907,9 @@ function AccountRow({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        {deviceOpen && (
+          <AccountDeviceDialog open account={a} onClose={() => setDeviceOpen(false)} />
+        )}
         {windowOpen && (
           <AccountWindowDialog
             open
