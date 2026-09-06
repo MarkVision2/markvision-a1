@@ -48,6 +48,7 @@ const SettingsConnection = lazy(routeImports.SettingsConnection);
 const ResetPassword = lazy(routeImports.ResetPassword);
 const ProjectStrategy = lazy(routeImports.ProjectStrategy);
 const ClientDashboard = lazy(routeImports.ClientDashboard);
+const ConnectAccount = lazy(routeImports.ConnectAccount);
 const ProjectIntegrationWizard = lazy(routeImports.ProjectIntegrationWizard);
 
 const queryClient = new QueryClient({
@@ -83,6 +84,8 @@ const App = () => (
               <Route path="/lab" element={<Lab />} />
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/client/:token" element={<ClientDashboard />} />
+              {/* Подключение аккаунта клиентом по ссылке — публично, без входа в MarkVision. */}
+              <Route path="/connect/:token" element={<ConnectAccount />} />
               {/* Публичные юридические страницы — их адреса указываются в кабинетах площадок (TikTok, Meta, Google). */}
               <Route path="/terms" element={<Legal doc="terms" />} />
               <Route path="/privacy" element={<Legal doc="privacy" />} />

@@ -58,7 +58,7 @@ const marketing: NavItem[] = [
   { title: "Контент-центр", url: "/marketing/content-center", icon: Instagram, module: "content_center" },
   { title: "Контент-план", url: "/marketing/content-plan", icon: ClipboardList, module: "content_plan" },
   { title: "Радар идей", url: "/marketing/radar", icon: Radar, module: "content_plan" },
-  { title: "Публикации", url: "/marketing/publishing", icon: Share2, module: "content_plan" },
+  { title: "Сетка аккаунтов", url: "/marketing/publishing", icon: Share2, module: "content_plan" },
 ];
 
 // Marketing OS — собирается динамически в компоненте, т.к. URL зависит от активного проекта

@@ -4,6 +4,7 @@
  * Контракт ответов — supabase/functions/publish-accounts/index.ts.
  */
 import { supabase } from "@/integrations/supabase/client";
+import { supabasePublishableKey, supabaseUrl } from "@/lib/supabaseConfig";
 
 /* ───────────────────────────── типы ───────────────────────────── */
 
@@ -61,6 +62,9 @@ export interface PublishAccount {
   connection_type?: "oauth" | "device" | "hybrid";
   auth_status?: PublishAuthStatus;
   routine_id?: string | null;
+  /** Кто подключил: менеджер из кабинета, клиент по ссылке, публичный API или облачный телефон. */
+  connected_via?: "dashboard" | "invite" | "api" | "device";
+  connect_link_id?: string | null;
 }
 
 export type PublishAuthStatus = "connected" | "expiring" | "expired" | "reconnect_required";
@@ -1125,6 +1129,151 @@ export async function startPublishOAuth(projectId: string, platform: OAuthPlatfo
   const url = (data as { url?: string } | null)?.url;
   if (!url) throw new Error("Площадка не вернула ссылку на согласие");
   return url;
+}
+
+/* ─────────────────────── подключение по ссылке ─────────────────────── */
+
+export type ConnectLinkState = "active" | "revoked" | "expired" | "exhausted";
+
+export const CONNECT_LINK_STATE_META: Record<ConnectLinkState, { label: string; cls: string }> = {
+  active: { label: "Активна", cls: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" },
+  revoked: { label: "Отозвана", cls: "bg-muted text-muted-foreground" },
+  expired: { label: "Истекла", cls: "bg-amber-500/15 text-amber-600 dark:text-amber-400" },
+  exhausted: { label: "Исчерпана", cls: "bg-muted text-muted-foreground" },
+};
+
+export interface ConnectLinkAccount {
+  platform: string;
+  account_name: string;
+  handle: string | null;
+  status: string;
+}
+
+export interface ConnectLink {
+  id: string;
+  token: string;
+  label: string;
+  note: string | null;
+  /** Пустой массив — предлагаются все площадки. */
+  platforms: PublishPlatform[] | null;
+  group_id: string | null;
+  persona_id: string | null;
+  max_uses: number | null;
+  used_count: number;
+  expires_at: string | null;
+  revoked_at: string | null;
+  last_used_at: string | null;
+  created_at: string;
+  state: ConnectLinkState;
+  /** Адрес, собранный сервером; интерфейс подставляет свой origin (connectLinkHref). */
+  url: string;
+  accounts: ConnectLinkAccount[];
+}
+
+export interface ConnectLinkCreateInput {
+  label: string;
+  note?: string | null;
+  platforms?: PublishPlatform[];
+  group_id?: string | null;
+  persona_id?: string | null;
+  max_uses?: number | null;
+  expires_days?: number | null;
+}
+
+/** Адрес для клиента с origin текущего приложения — его и копируем в буфер. */
+export function connectLinkHref(link: Pick<ConnectLink, "token">): string {
+  return `${window.location.origin}/connect/${link.token}`;
+}
+
+export async function listConnectLinks(projectId: string): Promise<ConnectLink[]> {
+  const r = await call<{ links: ConnectLink[] }>("connect_link_list", { project_id: projectId });
+  return r.links ?? [];
+}
+
+export async function createConnectLink(projectId: string, input: ConnectLinkCreateInput): Promise<ConnectLink> {
+  const r = await call<{ link: ConnectLink }>("connect_link_create", { project_id: projectId, ...input });
+  return r.link;
+}
+
+export async function revokeConnectLink(projectId: string, linkId: string, revoke = true): Promise<void> {
+  await call("connect_link_revoke", { project_id: projectId, link_id: linkId, revoke });
+}
+
+export async function deleteConnectLink(projectId: string, linkId: string): Promise<void> {
+  await call("connect_link_delete", { project_id: projectId, link_id: linkId });
+}
+
+/* ── публичная сторона: страница /connect/:token, без авторизации ── */
+
+export interface ConnectInvitePlatform {
+  platform: PublishPlatform;
+  /** Секреты площадки на сервере в порядке — иначе кнопка неактивна с подсказкой. */
+  ready: boolean;
+  hint: string | null;
+}
+
+export interface ConnectInvite {
+  state: ConnectLinkState;
+  state_text: string;
+  project_name: string | null;
+  label: string;
+  note: string | null;
+  expires_at: string | null;
+  /** Сколько аккаунтов ещё можно подключить; null — без ограничения. */
+  remaining: number | null;
+  platforms: ConnectInvitePlatform[];
+  connected: ConnectLinkAccount[];
+}
+
+export interface ConnectInvitePage {
+  page_id: string;
+  page_name: string | null;
+  ig_user_id: string | null;
+  ig_username: string | null;
+  ig_name: string | null;
+  ig_avatar_url: string | null;
+  ig_followers: number | null;
+  connectable: boolean;
+}
+
+const FUNCTIONS_BASE = `${supabaseUrl}/functions/v1`;
+
+/**
+ * Публичные вызовы приглашения идут обычным fetch, а не supabase.functions.invoke:
+ * у клиента нет сессии, и invoke подставил бы отсутствующий Authorization.
+ * Тело ошибки — человеческий текст в message, его и показываем.
+ */
+async function invite<T>(path: string, init: RequestInit): Promise<T> {
+  const r = await fetch(`${FUNCTIONS_BASE}/publish-oauth/invite${path}`, {
+    ...init,
+    headers: { "Content-Type": "application/json", apikey: supabasePublishableKey, ...(init.headers ?? {}) },
+  });
+  const body = (await r.json().catch(() => null)) as (T & { error?: string; message?: string }) | null;
+  if (!body) throw new Error("Сервер не ответил");
+  if (!r.ok || body.error) throw new Error(body.message ?? body.error ?? "Ошибка");
+  return body;
+}
+
+export function fetchConnectInvite(token: string): Promise<ConnectInvite> {
+  return invite<ConnectInvite>(`?token=${encodeURIComponent(token)}`, { method: "GET" });
+}
+
+export async function startConnectInvite(token: string, platform: PublishPlatform): Promise<string> {
+  const r = await invite<{ url: string }>("/start", { method: "POST", body: JSON.stringify({ token, platform }) });
+  return r.url;
+}
+
+export async function connectInvitePages(token: string, pendingId: string): Promise<ConnectInvitePage[]> {
+  const r = await invite<{ pages: ConnectInvitePage[] }>("/pages", { method: "POST", body: JSON.stringify({ token, pending_id: pendingId }) });
+  return r.pages ?? [];
+}
+
+export async function finishConnectInvite(token: string, pendingId: string, pageIds: string[]): Promise<ConnectLinkAccount[]> {
+  const r = await invite<{ connected: { account_name: string; handle: string | null }[] }>("/finish", {
+    method: "POST",
+    body: JSON.stringify({ token, pending_id: pendingId, page_ids: pageIds }),
+  });
+  return (r.connected ?? []).map((a) => ({ platform: "instagram", account_name: a.account_name, handle: a.handle, status: "active" }));
 }
 
 /** Итог OAuth-редиректа из адресной строки: ?publish_connected=… или ?publish_error=…. */

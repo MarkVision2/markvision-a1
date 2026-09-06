@@ -126,7 +126,7 @@ function VariantsBlock({ detail, busy, onCreate }: {
       {open && (
         <div className="space-y-2 text-sm">
           {groups.length === 0 ? (
-            <p className="text-xs text-muted-foreground">Групп аккаунтов пока нет — создайте их на странице «Публикации».</p>
+            <p className="text-xs text-muted-foreground">Групп аккаунтов пока нет — создайте их на странице «Сетка аккаунтов».</p>
           ) : (
             <div className="flex flex-wrap gap-2">
               {groups.map((g) => {
