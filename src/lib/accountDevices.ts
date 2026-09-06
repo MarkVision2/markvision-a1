@@ -26,6 +26,8 @@ export interface DevicePhone {
   proxyId: string | null;
   proxyIp: string | null;
   country: string | null;
+  /** Закреплён за этим проектом. false — ничей: закрепится при первом действии управления. */
+  claimed: boolean;
   account: DeviceAccountRef | null;
   /** Прогрев привязанного аккаунта; null — телефон свободен. */
   warmup: {

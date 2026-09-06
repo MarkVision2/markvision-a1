@@ -15,6 +15,8 @@
 | `YOUTUBE_PRIVACY_STATUS` | publisher youtube | `public` (по умолчанию) / `unlisted` / `private` |
 | `PUBLISH_MOCK_CONNECTOR` | worker | `1` — включить Mock-коннектор для аккаунтов `mock:*` (**только тестовый проект**) |
 | `APIFY_TOKEN`, `OPENAI_API_KEY` / `LOVABLE_API_KEY` | radar, content-pipeline | сборщик и LLM |
+| `PHONEGRID_OPEN_API_ID`, `PHONEGRID_OPEN_API_KEY` | account-devices | облачные телефоны PhoneGrid для заведения и прогрева аккаунтов («Сетка аккаунтов → Устройства»); API ID — числовой, ключ из клиента PhoneGrid (API & MCP → Open API). Без них раздел отвечает «PhoneGrid не подключён» |
+| `PHONEGRID_<ПЛОЩАДКА>_WARMUP_VERSION` + `PHONEGRID_<ПЛОЩАДКА>_WARMUP_APP_VERSION_ID` | account-devices | необязательно: версия приложения под шаблон прогрева и её id в каталоге PhoneGrid (`INSTAGRAM`, `TIKTOK`). Задаются парой; переопределяют зашитые в `_lib/phonegrid.ts`, без деплоя. Для TikTok версия пока не выяснена — без этой пары прогрев TikTok выключен |
 
 Ключ автоматизации — не переменная: `automation_settings.cron_secret` в БД (заголовок `x-automation-key`
 для pg_cron и n8n). Внешним клиентам — только `api_keys` (`PUBLIC-API.md`).

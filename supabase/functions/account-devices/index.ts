@@ -31,22 +31,29 @@
  * Права: смотреть (phones, warmup_status) — с правом чтения проекта; привязывать телефон,
  * включать его и запускать прогрев — с правом управления. Секреты — PHONEGRID_OPEN_API_ID
  * и PHONEGRID_OPEN_API_KEY.
+ *
+ * Изоляция проектов. Ключ PhoneGrid один на всю платформу, а телефоны в нём общие, поэтому
+ * принадлежность телефона проекту ведём сами — реестр `publish_devices`. Проект видит и
+ * трогает только свои телефоны и незакреплённые; телефон закрепляется за проектом при
+ * создании и при первом действии управления (включение, привязка, экран, установка).
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { projectRoleOf, requireProjectAccess, requireUser } from "../_lib/auth.ts";
 import { canDo } from "../_lib/rbac.ts";
 import { CORS_HEADERS, json } from "../_lib/publishing.ts";
 import {
+  inputTextCommand,
   parseProxyUrl,
   phonegridCall,
   phonegridConfig,
   PHONE_MODELS,
   RPA_STATE,
+  shellQuote,
   summarizePhone,
   warmupDayFrom,
   warmupParameter,
   warmupPlan,
-  WARMUP_TEMPLATES,
+  warmupTemplates,
 } from "../_lib/phonegrid.ts";
 
 const admin = createClient(
@@ -56,6 +63,25 @@ const admin = createClient(
 );
 
 const PAGE = { pageNo: 1, pageSize: 100 };
+const PROVIDER = "phonegrid";
+
+/** Все страницы списка PhoneGrid: у сети может быть больше сотни телефонов. */
+async function phonegridAll(
+  cfg: NonNullable<ReturnType<typeof phonegridConfig>>,
+  path: string,
+  body: Record<string, unknown> = {},
+): Promise<Record<string, unknown>[]> {
+  const out: Record<string, unknown>[] = [];
+  for (let pageNo = 1; pageNo <= 20; pageNo++) {
+    const data = await phonegridCall<{ dataList?: Record<string, unknown>[] }>(
+      cfg, path, { ...body, pageNo, pageSize: PAGE.pageSize },
+    );
+    const list = data.dataList ?? [];
+    out.push(...list);
+    if (list.length < PAGE.pageSize) break;
+  }
+  return out;
+}
 
 interface AccountRow {
   id: string;
@@ -78,6 +104,40 @@ async function loadAccount(accountId: string, projectId: string): Promise<Accoun
   const { data } = await admin.from("publish_accounts")
     .select(ACCOUNT_FIELDS).eq("id", accountId).eq("project_id", projectId).maybeSingle();
   return (data as AccountRow) ?? null;
+}
+
+/** Реестр принадлежности: id телефона → проект. Телефона нет в реестре — он ничей. */
+async function loadRegistry(): Promise<Map<string, string>> {
+  const { data } = await admin.from("publish_devices")
+    .select("phone_id, project_id").eq("provider", PROVIDER);
+  return new Map((data ?? []).map((d) => [String(d.phone_id), String(d.project_id)]));
+}
+
+class ForeignPhoneError extends Error {}
+
+/**
+ * Телефон можно трогать, если он закреплён за этим проектом или ничей. При действии
+ * управления ничей телефон закрепляется за проектом — дальше другие его не видят.
+ */
+async function ensurePhoneAccess(
+  phoneId: string, projectId: string, userId: string,
+  opts: { claim: boolean; name?: string | null },
+): Promise<void> {
+  const { data } = await admin.from("publish_devices")
+    .select("project_id, phone_name").eq("provider", PROVIDER).eq("phone_id", phoneId).maybeSingle();
+  if (data && String(data.project_id) !== projectId) {
+    throw new ForeignPhoneError("Этот телефон закреплён за другим проектом");
+  }
+  if (!opts.claim) return;
+  if (!data) {
+    await admin.from("publish_devices").insert({
+      project_id: projectId, provider: PROVIDER, phone_id: phoneId,
+      phone_name: opts.name ?? null, created_by: userId,
+    });
+  } else if (opts.name && opts.name !== data.phone_name) {
+    await admin.from("publish_devices").update({ phone_name: opts.name })
+      .eq("provider", PROVIDER).eq("phone_id", phoneId);
+  }
 }
 
 /** Телефон должен быть выключён — RPA включает его сам, иначе PhoneGrid отвечает 33309. */
@@ -109,8 +169,12 @@ Deno.serve(async (req) => {
 
   try {
     if (action === "phones") {
-      const data = await phonegridCall<{ dataList?: Record<string, unknown>[] }>(cfg, "/cloudphone/page", PAGE);
-      const phones = (data.dataList ?? []).map(summarizePhone);
+      const [all, registry] = await Promise.all([phonegridAll(cfg, "/cloudphone/page"), loadRegistry()]);
+      // Чужие телефоны проекту не показываем; ничьи — показываем как незакреплённые.
+      const phones = all.map(summarizePhone).filter((p) => {
+        const owner = registry.get(p.id);
+        return !owner || owner === projectId;
+      });
       const { data: linked } = await admin.from("publish_accounts")
         .select("id, account_name, handle, platform, device_phone_id, warmup_started_at, warmup_last_run_at, warmup_last_state")
         .eq("project_id", projectId).not("device_phone_id", "is", null);
@@ -123,6 +187,7 @@ Deno.serve(async (req) => {
           const day = a ? warmupDayFrom(a.warmup_started_at as string | null) : null;
           return {
             ...p,
+            claimed: registry.get(p.id) === projectId,
             account: a
               ? { id: a.id, account_name: a.account_name, handle: a.handle, platform: a.platform }
               : null,
@@ -200,7 +265,15 @@ Deno.serve(async (req) => {
         automaticLocation: true,
         ...(Array.isArray(body.tags) && body.tags.length ? { tags: body.tags } : {}),
       });
-      return json({ ok: true, created: created ?? [], quantity });
+      // Созданные телефоны сразу закрепляем за проектом: с этого момента их видит только он.
+      const ids = (created ?? []).map((id) => String(id)).filter(Boolean);
+      if (ids.length) {
+        await admin.from("publish_devices").upsert(
+          ids.map((phone_id) => ({ project_id: projectId, provider: PROVIDER, phone_id, created_by: user.userId })),
+          { onConflict: "provider,phone_id", ignoreDuplicates: true },
+        );
+      }
+      return json({ ok: true, created: ids, quantity });
     }
 
     if (action === "screen" || action === "input" || action === "open_url") {
@@ -212,6 +285,7 @@ Deno.serve(async (req) => {
         if (!account?.device_phone_id) return json({ error: "Не указан телефон" }, 400);
         phoneId = account.device_phone_id;
       }
+      await ensurePhoneAccess(phoneId, projectId, user.userId, { claim: true });
       const id = Number(phoneId);
 
       if (action === "open_url") {
@@ -220,7 +294,7 @@ Deno.serve(async (req) => {
         if (!/^https?:\/\//i.test(url)) return json({ error: "Ссылка должна начинаться с http:// или https://" }, 400);
         await phonegridCall(cfg, "/cloudphone/exeCommand", {
           id,
-          command: `am start -a android.intent.action.VIEW -d ${JSON.stringify(url)}`,
+          command: `am start -a android.intent.action.VIEW -d ${shellQuote(url)}`,
         });
         return json({ ok: true });
       }
@@ -232,9 +306,12 @@ Deno.serve(async (req) => {
         if (kind === "tap") command = `input tap ${n(body.x)} ${n(body.y)}`;
         else if (kind === "swipe") command = `input swipe ${n(body.x)} ${n(body.y)} ${n(body.x2)} ${n(body.y2)} ${Math.min(n(body.ms) || 300, 3000)}`;
         else if (kind === "text") {
-          // input text не умеет пробелы и кавычки — экранируем, ввод идёт как с клавиатуры.
-          const raw = String(body.text ?? "").slice(0, 500);
-          command = `input text ${JSON.stringify(raw.replace(/ /g, "%s"))}`;
+          // Только ASCII и экранирование под shell — иначе текст теряется или ломает команду.
+          try {
+            command = inputTextCommand(String(body.text ?? "").slice(0, 500));
+          } catch (e) {
+            return json({ error: e instanceof Error ? e.message : String(e) }, 400);
+          }
         } else if (kind === "key") {
           const allowed: Record<string, number> = { home: 3, back: 4, enter: 66, tab: 61, delete: 67, recent: 187, power: 26 };
           const code = allowed[String(body.key ?? "")];
@@ -270,6 +347,7 @@ Deno.serve(async (req) => {
         if (!account?.device_phone_id) return json({ error: "Не указан телефон" }, 400);
         phoneId = account.device_phone_id;
       }
+      await ensurePhoneAccess(phoneId, projectId, user.userId, { claim: action === "install_app" });
       const id = Number(phoneId);
 
       if (action === "install_app") {
@@ -282,7 +360,7 @@ Deno.serve(async (req) => {
       const installed = await phonegridCall<Record<string, unknown>[]>(cfg, "/cloudphone/app/installedList", { id });
       // Каталог спрашиваем по имени каждой площадки: общий список отдаёт только первые
       // полсотни приложений, и Instagram в них не попадает.
-      const wanted = Object.values(WARMUP_TEMPLATES);
+      const wanted = Object.values(warmupTemplates());
       const found = await Promise.all(wanted.map(async (tpl) => {
         const title = tpl.title.split(" ")[0]; // «Instagram AI account warmup» → «Instagram»
         const page = await phonegridCall<{ dataList?: Record<string, unknown>[] }>(
@@ -335,6 +413,7 @@ Deno.serve(async (req) => {
       const phoneId = String(body.phone_id ?? "");
       if (!phoneId) return json({ error: "Не указан телефон" }, 400);
       const info = await phoneInfo(cfg, phoneId);
+      await ensurePhoneAccess(phoneId, projectId, user.userId, { claim: true, name: String(info.envName ?? "") || null });
       const { error } = await admin.from("publish_accounts").update({
         device_provider: "phonegrid",
         device_phone_id: phoneId,
@@ -362,6 +441,7 @@ Deno.serve(async (req) => {
         if (!account?.device_phone_id) return json({ error: "Не указан телефон" }, 400);
         phoneId = account.device_phone_id;
       }
+      await ensurePhoneAccess(phoneId, projectId, user.userId, { claim: true });
       const on = body.on !== false;
       await phonegridCall(cfg, on ? "/cloudphone/powerOn" : "/cloudphone/powerOff", { id: Number(phoneId) });
       return json({ ok: true, on });
@@ -371,18 +451,21 @@ Deno.serve(async (req) => {
       const accountId = String(body.account_id ?? "");
       const account = await loadAccount(accountId, projectId);
       if (!account) return json({ error: "Аккаунт не найден" }, 404);
-      const tpl = WARMUP_TEMPLATES[account.platform];
+      const tpl = warmupTemplates()[account.platform];
       const day = warmupDayFrom(account.warmup_started_at);
       const plan = warmupPlan(day, account.platform);
 
       if (action === "warmup_status") {
         let history: unknown[] = [];
         if (account.device_phone_id) {
+          // Список задач общий на весь аккаунт PhoneGrid: берём страницу пошире и
+          // оставляем только этот телефон, иначе при нескольких телефонах история пуста.
           const data = await phonegridCall<{ dataList?: Record<string, unknown>[] }>(
-            cfg, "/cloudphone/rpa/subTask/page", { pageNo: 1, pageSize: 10 },
+            cfg, "/cloudphone/rpa/subTask/page", { pageNo: 1, pageSize: 100 },
           );
           history = (data.dataList ?? [])
             .filter((s) => String(s.cloudPhoneId ?? "") === account.device_phone_id)
+            .slice(0, 10)
             .map((s) => ({
               startedAt: s.triggerTime,
               finishedAt: s.endTime,
@@ -413,10 +496,13 @@ Deno.serve(async (req) => {
       if (!tpl?.requiredVersion || !tpl.appVersionId) {
         return json({
           error: `Для ${account.platform} не задана версия приложения под шаблон прогрева. ` +
-            "Её видно в клиенте PhoneGrid: Автоматизация → Маркетплейс → Просмотр шаблона.",
+            "Её видно в клиенте PhoneGrid (Автоматизация → Маркетплейс → Просмотр шаблона); " +
+            `задайте секреты PHONEGRID_${account.platform.toUpperCase()}_WARMUP_VERSION и ` +
+            `PHONEGRID_${account.platform.toUpperCase()}_WARMUP_APP_VERSION_ID.`,
         }, 400);
       }
 
+      await ensurePhoneAccess(account.device_phone_id, projectId, user.userId, { claim: true });
       // Требования шаблона проверяем до постановки задачи — иначе PhoneGrid отклонит её
       // кодом 33603 (версия/язык) или 33309 (телефон занят) уже после создания.
       const info = await phoneInfo(cfg, account.device_phone_id);
@@ -455,6 +541,7 @@ Deno.serve(async (req) => {
 
     return json({ error: `Неизвестное действие «${action}»` }, 400);
   } catch (e) {
+    if (e instanceof ForeignPhoneError) return json({ error: e.message }, 403);
     return json({ error: e instanceof Error ? e.message : String(e) }, 502);
   }
 });

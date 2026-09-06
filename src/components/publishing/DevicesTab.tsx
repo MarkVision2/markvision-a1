@@ -189,7 +189,17 @@ export function DevicesTab() {
                     return (
                       <TableRow key={p.id}>
                         <TableCell>
-                          <div className="font-medium">{p.name}</div>
+                          <div className="flex items-center gap-1.5 font-medium">
+                            {p.name}
+                            {!p.claimed && (
+                              <Badge
+                                variant="outline" className="font-normal"
+                                title="Телефон ещё ни за кем не закреплён: закрепится за этим проектом при первом включении, привязке или открытии экрана"
+                              >
+                                не закреплён
+                              </Badge>
+                            )}
+                          </div>
                           {p.remark && <div className="text-xs text-muted-foreground">{p.remark}</div>}
                         </TableCell>
                         <TableCell>
@@ -291,6 +301,8 @@ export function DevicesTab() {
               каждый день до пятнадцатого. Одно устройство — один аккаунт: два аккаунта на одном
               телефоне площадка свяжет между собой по отпечатку. Прогрев запускается на выключенном
               телефоне — он включит его сам. Телефоны тарифицируются по минутам, гасите после работы.
+              Телефон, которым проект начал пользоваться, закрепляется за ним — другие проекты
+              его не видят.
             </p>
           </>
         )}

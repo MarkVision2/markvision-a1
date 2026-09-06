@@ -39,13 +39,13 @@ vi.mock("@/lib/accountDevices", () => ({
 
 const withAccount: DevicePhone = {
   id: "1001", name: "CP-1", status: 4, statusText: "работает", remark: "контент-завод",
-  proxyId: "p1", proxyIp: "212.8.248.20", country: "KZ",
+  proxyId: "p1", proxyIp: "212.8.248.20", country: "KZ", claimed: true,
   account: { id: "acc1", account_name: "Клиника Айва", handle: "aiva", platform: "instagram" },
   warmup: { day: 6, ready: false, startedAt: "2026-09-01T00:00:00Z", lastRunAt: null, lastState: "запущен день 6" },
 };
 const freePhone: DevicePhone = {
   id: "1002", name: "CP-2", status: 2, statusText: "выключен", remark: "",
-  proxyId: null, proxyIp: null, country: null, account: null, warmup: null,
+  proxyId: null, proxyIp: null, country: null, claimed: false, account: null, warmup: null,
 };
 
 beforeEach(() => {
@@ -73,6 +73,12 @@ describe("раздел «Устройства»", () => {
     expect(screen.getByText("всего 2")).toBeInTheDocument();
     expect(screen.getByText("включено 1")).toBeInTheDocument();
     expect(screen.getByText("с аккаунтом 1")).toBeInTheDocument();
+  });
+
+  it("ничей телефон помечен «не закреплён», свой — нет", async () => {
+    render(<DevicesTab />);
+    await screen.findByText("CP-2");
+    expect(screen.getAllByText("не закреплён")).toHaveLength(1);
   });
 
   it("телефон без прокси честно говорит, что не включится", async () => {
@@ -163,6 +169,19 @@ describe("окно телефона", () => {
     // jsdom не считает размеры, поэтому проверяем сам факт тапа с числовыми координатами.
     fireEvent.click(img, { clientX: 100, clientY: 200 });
     await waitFor(() => expect(phoneInput).toHaveBeenCalledWith("p1", "1001", expect.objectContaining({ kind: "tap" })));
+  });
+
+  it("кириллицу в поле ввода не отправляет и объясняет почему", async () => {
+    render(<DevicesTab />);
+    await screen.findByText("CP-1");
+    fireEvent.click(screen.getByTitle("Открыть экран телефона"));
+    await screen.findByAltText("Экран CP-1");
+    const field = screen.getByPlaceholderText("Сначала ткните в поле на экране");
+    fireEvent.change(field, { target: { value: "пароль" } });
+    expect(screen.getByRole("button", { name: "Ввести" })).toBeDisabled();
+    expect(screen.getByText(/Только латиница и цифры/)).toBeInTheDocument();
+    fireEvent.change(field, { target: { value: "pass1" } });
+    expect(screen.getByRole("button", { name: "Ввести" })).toBeEnabled();
   });
 
   it("выключенный телефон предлагает включить прямо в окне", async () => {

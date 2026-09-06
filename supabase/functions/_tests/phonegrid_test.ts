@@ -4,11 +4,14 @@
  */
 import { assert, assertEquals, assertThrows } from "jsr:@std/assert@1";
 import {
+  inputTextCommand,
   phoneStatusText,
+  shellQuote,
   summarizePhone,
   warmupDayFrom,
   warmupParameter,
   warmupPlan,
+  warmupTemplates,
   WARMUP_TEMPLATES,
 } from "../_lib/phonegrid.ts";
 
@@ -82,4 +85,29 @@ Deno.test("сводка телефона: статус словами, прок�
   assertEquals(phoneStatusText(2), "выключен");
   assertEquals(phoneStatusText(3), "загружается");
   assertEquals(phoneStatusText(99), "статус 99");
+});
+
+Deno.test("версия под прогрев подменяется секретами только парой версия+id", () => {
+  const env = (n: string) => ({
+    PHONEGRID_TIKTOK_WARMUP_VERSION: "43.9.1",
+    PHONEGRID_TIKTOK_WARMUP_APP_VERSION_ID: "1690000000000001",
+    PHONEGRID_INSTAGRAM_WARMUP_VERSION: "999.0",
+  } as Record<string, string>)[n];
+  const t = warmupTemplates(env);
+  assertEquals(t.tiktok.requiredVersion, "43.9.1");
+  assertEquals(t.tiktok.appVersionId, "1690000000000001");
+  // Без id версия одна ничего не запустит — оставляем зашитую.
+  assertEquals(t.instagram.requiredVersion, WARMUP_TEMPLATES.instagram.requiredVersion);
+  // Без секретов — как в коде.
+  assertEquals(warmupTemplates(() => undefined).tiktok.requiredVersion, null);
+});
+
+Deno.test("аргумент для shell телефона не раскрывает $ и кавычки", () => {
+  assertEquals(shellQuote("a$b `c` \"d\""), "'a$b `c` \"d\"'");
+  assertEquals(shellQuote("o'neil"), "'o'\\''neil'");
+});
+
+Deno.test("ввод текста: пробел как %s, кириллица — понятная ошибка", () => {
+  assertEquals(inputTextCommand("my pass 1"), "input text 'my%spass%s1'");
+  assertThrows(() => inputTextCommand("пароль"), Error, "латиницей");
 });

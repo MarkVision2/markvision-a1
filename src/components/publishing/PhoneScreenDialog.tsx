@@ -24,8 +24,15 @@ import {
   type DevicePhone, type PhoneApps, type PhoneKey,
 } from "@/lib/accountDevices";
 
-/** Экран устройства в пикселях — по нему пересчитываем клик в координаты тапа. */
+/**
+ * Экран устройства в пикселях — запасное значение, пока кадр не загрузился. Снимок
+ * `screencap` идёт в родном разрешении телефона, поэтому реальные размеры берём из
+ * самой картинки: у моделей PhoneGrid они разные, и с зашитой константой тапы съезжали.
+ */
 const SCREEN = { width: 1080, height: 2400 };
+
+/** Только ASCII: Android-команда ввода кириллицу и эмодзи не принимает. */
+const ASCII_ONLY = /^[\x20-\x7e]*$/;
 
 export function PhoneScreenDialog({
   open, phone, onClose,
@@ -121,8 +128,10 @@ export function PhoneScreenDialog({
     const img = imgRef.current;
     if (!img) return;
     const rect = img.getBoundingClientRect();
-    const x = Math.round(((e.clientX - rect.left) / rect.width) * SCREEN.width);
-    const y = Math.round(((e.clientY - rect.top) / rect.height) * SCREEN.height);
+    const width = img.naturalWidth || SCREEN.width;
+    const height = img.naturalHeight || SCREEN.height;
+    const x = Math.round(((e.clientX - rect.left) / rect.width) * width);
+    const y = Math.round(((e.clientY - rect.top) / rect.height) * height);
     void send(() => phoneInput(projectId!, phone.id, { kind: "tap", x, y }));
   };
 
@@ -243,7 +252,8 @@ export function PhoneScreenDialog({
                     placeholder="Сначала ткните в поле на экране"
                   />
                   <Button
-                    size="sm" disabled={loading || !text}
+                    size="sm" disabled={loading || !text || !ASCII_ONLY.test(text)}
+                    title={ASCII_ONLY.test(text) ? undefined : "Только латиница и цифры"}
                     onClick={() => void send(async () => {
                       await phoneInput(projectId!, phone.id, { kind: "text", text });
                       setText("");
@@ -252,8 +262,10 @@ export function PhoneScreenDialog({
                     Ввести
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Пароли и коды вводите здесь же — они остаются внутри телефона, платформа их не хранит.
+                <p className={`text-xs ${ASCII_ONLY.test(text) ? "text-muted-foreground" : "text-amber-600"}`}>
+                  {ASCII_ONLY.test(text)
+                    ? "Пароли и коды вводите здесь же — они остаются внутри телефона, платформа их не хранит."
+                    : "Только латиница и цифры: кириллицу телефон через эту команду не принимает — переключите раскладку."}
                 </p>
               </div>
 

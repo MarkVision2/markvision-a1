@@ -30,7 +30,7 @@ const account = {
 
 const phone: DevicePhone = {
   id: "1001", name: "CP-1", status: 2, statusText: "выключен", remark: "",
-  proxyId: "px1", proxyIp: "212.8.248.20", country: "KZ",
+  proxyId: "px1", proxyIp: "212.8.248.20", country: "KZ", claimed: true,
   account: { id: "acc1", account_name: "Клиника Айва", handle: "aiva", platform: "instagram" },
   warmup: { day: 3, ready: false, startedAt: "2026-09-04T00:00:00Z", lastRunAt: null, lastState: null },
 };

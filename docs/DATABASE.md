@@ -9,6 +9,7 @@
 |---|---|---|
 | `publish_accounts` | реестр аккаунтов + шифрованные токены | `platform`, `external_account_id`, `status` (`active|token_expired|limited|error|disabled`), `auth_status` (`connected|expiring|expired|reconnect_required`), `connection_type` (`oauth|device|hybrid`), `capabilities jsonb`, `health_score`, `health_reasons`, `daily_limit`, окно/пояс/разгон, `group_id`, `persona_id`, `oauth_scope`, `access_token_encrypted` / `refresh_token_encrypted` (AES-GCM `v1:`, SELECT не выдан) |
 | `publish_accounts_safe` (view) | то же без шифротекста | для интерфейса |
+| `publish_devices` | какому проекту принадлежит облачный телефон PhoneGrid | `provider`, `phone_id` (unique), `phone_name`; RLS без политик — только edge `account-devices`. Телефон закрепляется при создании из интерфейса или первом действии управления; `publish_accounts.device_phone_id` ссылается на `phone_id` |
 | `publish_account_groups` | группы | стратегия, темп, окно, `review_mode` (`review_required|auto_publish|paused`), персона |
 | `personas` | tone of voice, движок по умолчанию | |
 | `publish_videos` | библиотека медиа для очереди | `file_url`, `title`, `base_caption`, `caption_variants`, `hashtags`, `status` (`ready|queued|publishing|done|failed`), `source`, `source_ref`, `client_ref` (UNIQUE в проекте) |

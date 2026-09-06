@@ -126,6 +126,48 @@ export const WARMUP_TEMPLATES: Record<string, {
   },
 };
 
+export type WarmupTemplate = (typeof WARMUP_TEMPLATES)[string];
+
+/**
+ * Шаблоны с поправками из секретов: версию под прогрев видно только в клиенте PhoneGrid,
+ * и когда она меняется (или наконец выяснена для TikTok), деплоить функцию не нужно —
+ * достаточно задать PHONEGRID_<ПЛОЩАДКА>_WARMUP_VERSION и PHONEGRID_<ПЛОЩАДКА>_WARMUP_APP_VERSION_ID.
+ */
+export function warmupTemplates(
+  env: (name: string) => string | undefined = (n) => Deno.env.get(n),
+): Record<string, WarmupTemplate> {
+  const out: Record<string, WarmupTemplate> = {};
+  for (const [platform, tpl] of Object.entries(WARMUP_TEMPLATES)) {
+    const key = platform.toUpperCase();
+    const version = env(`PHONEGRID_${key}_WARMUP_VERSION`)?.trim() || null;
+    const appVersionId = env(`PHONEGRID_${key}_WARMUP_APP_VERSION_ID`)?.trim() || null;
+    // Версия и её id в каталоге идут парой: одна без другой шаблон не запустит.
+    out[platform] = version && appVersionId
+      ? { ...tpl, requiredVersion: version, appVersionId }
+      : { ...tpl };
+  }
+  return out;
+}
+
+/**
+ * Аргумент для shell телефона в одинарных кавычках: внутри них ничего не раскрывается,
+ * а сама кавычка передаётся как '\''. Через JSON-кавычки утекали бы $ и обратные кавычки.
+ */
+export function shellQuote(s: string): string {
+  return `'${s.replace(/'/g, `'\\''`)}'`;
+}
+
+/**
+ * Android `input text` принимает только ASCII: кириллица и эмодзи молча теряются.
+ * Пробел передаётся как %s (так устроена команда).
+ */
+export function inputTextCommand(raw: string): string {
+  if (/[^\x20-\x7e]/.test(raw)) {
+    throw new Error("Ввод на телефон работает только латиницей и цифрами: кириллицу Android-команда не принимает");
+  }
+  return `input text ${shellQuote(raw.replace(/ /g, "%s"))}`;
+}
+
 /** Ключи параметров шаблона — человекочитаемые фразы, менять нельзя. */
 const PARAM_KEYS = {
   videos: "Estimated number of videos browsed",
