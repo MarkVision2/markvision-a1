@@ -44,6 +44,8 @@
     "../publish-oauth/index.ts",
     "../api/handler.ts",
     "../api/index.ts",
-    "../_tests/api_test.ts"
+    "../_tests/api_test.ts",
+    "../_lib/publishTokenRefresh.ts",
+    "../_tests/publishTokenRefresh_test.ts"
   ]
 }

@@ -229,8 +229,11 @@ PhoneGrid MCP, уже подключён в проекте (`~/.claude.json`, с
 встанет разом через два месяца, и чинить придётся 100 подключений сразу.
 
 1. На первых 3–5 подключённых аккаунтах вручную прогнать `publish-monitor` в режиме проверки
-   токенов.
+   токенов: `{ mode: "tokens", project_id, account_ids }` — режим принимает выбор аккаунтов и
+   отдаёт `results` по каждому (`node scripts/instagram-connect.mjs tokens --batch <пачка>`).
 2. Убедиться, что `token_refreshed_at` обновляется и `token_expires_at` уезжает вперёд.
+   Свежему токену (моложе 24 часов) площадка продление не даёт — монитор пропускает его с
+   причиной, это не ошибка; отказы продления попадают в `refresh_errors` и в `last_error`.
 3. Проверить поведение на заведомо протухшем токене: аккаунт должен получить
    `auth_status: reconnect_required` и попасть в дайджест, а не молча перестать публиковать.
 
@@ -290,4 +293,35 @@ PhoneGrid MCP, уже подключён в проекте (`~/.claude.json`, с
 | Шов «цех → очередь» | `_lib/publishLibrary.ts` |
 | Облачные телефоны | `account-devices/`, `_lib/phonegrid.ts`, `_lib/phonescreen.ts`, `docs/PHONEGRID.md` |
 | Браузерные профили | MCP-сервер `phonegrid`: `manage_browser`, `browser_operate` |
+| Продление токенов | `publish-monitor/` режим `tokens`, правило — `_lib/publishTokenRefresh.ts` |
+| Конвейер исполнителя | скилл `.claude/skills/instagram-connect/`, скрипт `scripts/instagram-connect.mjs` |
 | Общая карта | `docs/PUBLISHING-SYSTEM.md`, `docs/AUTOPOSTING-PLATFORM.md` |
+
+## 9. Инструменты под это ТЗ
+
+Сделаны по итогам ТЗ, чтобы этапы 2–5 не делались руками и принимались проверяемо.
+
+* **Скилл `instagram-connect`** (`.claude/skills/instagram-connect/SKILL.md`) — порядок
+  действий для Claude-сессии с MCP `phonegrid`: создание профилей, проверка адреса выхода,
+  прогрев и вход с TOTP, конвейер «ссылка → согласие → возврат», ворота и паузы. Команда
+  «подключи пачку аккаунтов» = этот скилл.
+* **`scripts/instagram-connect.mjs`** — всё, что идёт через backend с ключом автоматизации
+  (`AUTOMATION_KEY` в `.env`); реестр пачки `work/ig-connect/<batch>.json`, в git не попадает:
+
+  | Команда | Этап | Что делает |
+  |---|---|---|
+  | `links --project … --handles @a,@b --batch …` | 3 | одноразовая ссылка на аккаунт (`max_uses 1`, только Instagram) |
+  | `ip --batch … --set @a=IP --profile @a=envId` | 2 | реестр «профиль → @хэндл → IP», повторы адресов по всем пачкам; код 0 = приёмка |
+  | `status --batch …` | 3 | по хэндлу: ссылка использована, `auth_status`, право публикации в `oauth_scope`, `connection_type`; код 0 = приёмка |
+  | `preset --batch … --group … --timezone … --window … --daily-limit … --ramp` | 3 | настройки на всю пачку (`accounts_bulk_update`) |
+  | `tokens --batch …` | 4 | `publish-monitor mode=tokens` по аккаунтам пачки: продлён ли, срок, живость, `auth_status` |
+  | `trace --project … --video …` | 5 | трасса задания, `external_post_id`, точки `post_metrics` d1/d3/d7 |
+  | `totp` (секрет со stdin) | 2 | код двухфакторки для входа в профиле |
+
+  Тесты без сети: `node --test scripts/instagram-connect.test.mjs`.
+* **`publish-monitor` режим `tokens`** принимает `project_id` / `account_ids`, отдаёт `results`
+  по каждому аккаунту, не глотает отказ продления и помечает мёртвый токен
+  `auth_status reconnect_required` с уведомлением — раньше режим ставил только
+  `status token_expired`, и сетка показывала «подключён» у аккаунта, который не публикует.
+  Правило продления (за 10 дней, не моложе 24 часов, page-токены не трогать) вынесено в
+  `_lib/publishTokenRefresh.ts` с тестами `_tests/publishTokenRefresh_test.ts`.
