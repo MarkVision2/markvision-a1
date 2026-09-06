@@ -30,6 +30,8 @@
  *   install_app   — поставить приложение нужной версии
  *   uninstall_app — снести (нужно, когда стоит версия, несовместимая с прогревом)
  *   create_account — завести карточку аккаунта, который вы подняли на этом телефоне
+ *   connect_on_phone — открыть на телефоне страницу подключения: OAuth пройдёт с его IP,
+ *                      и платформа получит токен площадки
  *   attach        — привязать телефон к аккаунту (одно устройство = один аккаунт)
  *   detach        — отвязать
  *   power         — включить / выключить телефон (по phone_id или по аккаунту)
@@ -44,6 +46,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { projectRoleOf, requireProjectAccess, requireUser } from "../_lib/auth.ts";
 import { canDo } from "../_lib/rbac.ts";
 import { CORS_HEADERS, json } from "../_lib/publishing.ts";
+import { generateConnectToken } from "../_lib/publishConnectLinks.ts";
 import {
   parseProxyUrl,
   phonegridCall,
@@ -362,6 +365,31 @@ Deno.serve(async (req) => {
         } catch {
           /* без геоданных обойдёмся — главное сам адрес */
         }
+        // Журнал адресов: без него не понять, сменился ли IP между сессиями и не сидят ли
+        // два телефона на одном — а площадка видит такие аккаунты как один источник.
+        const { data: history } = await admin.from("device_ip_log")
+          .select("phone_id, ip, seen_at")
+          .eq("project_id", projectId)
+          .order("seen_at", { ascending: false })
+          .limit(200);
+        const rows = history ?? [];
+        const prevOwn = rows.find((r) => r.phone_id === phoneId);
+        // Тот же адрес у другого телефона за последний час — считаем пересечением: столько
+        // живёт сессия, за которую площадка успевает связать аккаунты.
+        const hourAgo = Date.now() - 3_600_000;
+        const collision = rows.find((r) =>
+          r.ip === ip && r.phone_id !== phoneId && new Date(r.seen_at).getTime() > hourAgo);
+
+        await admin.from("device_ip_log").insert({
+          project_id: projectId,
+          phone_id: phoneId,
+          ip,
+          country: (geo?.country as string) ?? null,
+          city: (geo?.city as string) ?? null,
+          isp: (geo?.isp as string) ?? null,
+          is_mobile: (geo?.mobile as boolean) ?? null,
+        });
+
         return json({
           ok: true,
           ip,
@@ -369,6 +397,11 @@ Deno.serve(async (req) => {
           city: geo?.city ?? null,
           isp: geo?.isp ?? null,
           mobile: geo?.mobile ?? null,
+          previousIp: prevOwn?.ip ?? null,
+          // Адрес не поменялся с прошлой сессии этого телефона.
+          same: Boolean(prevOwn && prevOwn.ip === ip),
+          // Этим же адресом только что выходил другой телефон проекта.
+          collisionWith: collision?.phone_id ?? null,
         });
       }
 
@@ -521,6 +554,38 @@ Deno.serve(async (req) => {
         })),
         catalog: apps,
       });
+    }
+
+    if (action === "connect_on_phone") {
+      // Токен площадки нельзя достать из приложения, в которое вы вошли на телефоне:
+      // Meta и TikTok выдают его только через OAuth. Зато OAuth можно пройти прямо
+      // на этом телефоне — тогда вход виден площадке с его IP, а не с нашего сервера,
+      // и по возврату платформа получает токен (docs/AUTOPOST-ARCHITECTURE.md).
+      const phoneId = String(body.phone_id ?? "");
+      if (!phoneId) return json({ error: "Не указан телефон" }, 400);
+      const platform = String(body.platform ?? "");
+      const info = await phoneInfo(cfg, phoneId);
+      const token = generateConnectToken();
+      const { error } = await admin.from("publish_connect_links").insert({
+        project_id: projectId,
+        token,
+        label: `Телефон ${String(info.envName ?? phoneId)}`,
+        note: "Ссылка открыта на облачном телефоне: вход идёт с его IP",
+        platforms: ["instagram", "tiktok", "youtube", "threads"].includes(platform) ? [platform] : [],
+        // Одноразовая и короткая: она живёт ровно столько, сколько идёт подключение.
+        max_uses: 1,
+        expires_at: new Date(Date.now() + 2 * 3_600_000).toISOString(),
+        created_by: user.userId,
+      });
+      if (error) return json({ error: error.message }, 400);
+
+      const base = Deno.env.get("PUBLIC_SITE_URL") ?? "https://www.markvision.kz";
+      const url = `${base}/connect/${token}`;
+      await phonegridCall(cfg, "/cloudphone/exeCommand", {
+        id: Number(phoneId),
+        command: `am start -a android.intent.action.VIEW -d ${JSON.stringify(url)}`,
+      });
+      return json({ ok: true, url });
     }
 
     if (action === "create_account") {

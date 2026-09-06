@@ -107,7 +107,7 @@ export const ACTION_LEVELS: Record<string, PermissionLevel> = {
   webhook_upsert: "manage", webhook_delete: "manage", routine_upsert: "manage", routine_delete: "manage", routine_assign: "manage",
   // привязка телефона, питание и запуск прогрева — уровень управления аккаунтами
   attach: "manage", detach: "manage", power: "manage", warmup: "manage",
-  create_phone: "manage", proxy_add: "manage", create_account: "manage",
+  create_phone: "manage", proxy_add: "manage", create_account: "manage", connect_on_phone: "manage",
   // экран и ввод — работа с устройством, тот же уровень, что и питание
   screen: "manage", input: "manage", open_url: "manage",
   // разметка экрана и внешний IP — то же чтение экрана, но без вмешательства

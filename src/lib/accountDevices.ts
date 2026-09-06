@@ -129,6 +129,21 @@ export async function addProxy(projectId: string, url: string, name?: string, re
 }
 
 /**
+ * Открыть на телефоне страницу подключения аккаунта.
+ *
+ * Токен площадки нельзя достать из приложения, в которое вы вошли: Meta и TikTok выдают его
+ * только через OAuth. Зато сам OAuth проходит прямо на телефоне — площадка видит вход с его IP,
+ * а платформа по возврату получает токен и заводит аккаунт со статистикой.
+ */
+export async function connectAccountOnPhone(
+  projectId: string,
+  phoneId: string,
+  platform?: string,
+): Promise<{ url: string }> {
+  return await call<{ url: string }>("connect_on_phone", projectId, { phone_id: phoneId, platform });
+}
+
+/**
  * Завести карточку аккаунта, который вы подняли на этом телефоне.
  * Статистики и автопубликации у него пока нет — они появятся после подключения по API.
  */
@@ -228,6 +243,12 @@ export interface PhoneNet {
   city: string | null;
   isp: string | null;
   mobile: boolean | null;
+  /** Адрес прошлой сессии этого телефона — с ним и сравниваем. */
+  previousIp?: string | null;
+  /** IP не сменился с прошлого раза: аккаунт выйдет с того же адреса. */
+  same?: boolean;
+  /** Этим же адресом за последний час выходил другой телефон — площадка свяжет аккаунты. */
+  collisionWith?: string | null;
 }
 
 export async function phoneNet(projectId: string, phoneId: string): Promise<PhoneNet> {

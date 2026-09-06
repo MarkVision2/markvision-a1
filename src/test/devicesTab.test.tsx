@@ -23,6 +23,7 @@ const deviceOptions = vi.fn();
 const createPhones = vi.fn();
 const phoneScreen = vi.fn();
 const createDeviceAccount = vi.fn();
+const connectAccountOnPhone = vi.fn();
 const phoneInput = vi.fn();
 const phoneNet = vi.fn();
 const phoneAppStart = vi.fn();
@@ -44,6 +45,7 @@ vi.mock("@/lib/accountDevices", () => ({
     catalog: [],
   }),
   createDeviceAccount: (...a: unknown[]) => createDeviceAccount(...a),
+  connectAccountOnPhone: (...a: unknown[]) => connectAccountOnPhone(...a),
   installApp: vi.fn(),
   phoneInput: (...a: unknown[]) => phoneInput(...a),
   phoneOpenUrl: vi.fn(),
@@ -94,6 +96,7 @@ beforeEach(() => {
   phoneLogin.mockReset().mockResolvedValue({ state: "success", message: "Вход выполнен" });
   phoneProfile.mockReset().mockResolvedValue({ handle: "aiva", followers: "1 240", posts: "37" });
   createDeviceAccount.mockReset().mockResolvedValue({ account: { id: "acc9" } });
+  connectAccountOnPhone.mockReset().mockResolvedValue({ url: "https://www.markvision.kz/connect/tok" });
 });
 
 describe("раздел «Устройства»", () => {
@@ -357,5 +360,24 @@ describe("аккаунт, поднятый на телефоне", () => {
     await screen.findByText("CP-2");
     fireEvent.click(screen.getByRole("button", { name: "Завести аккаунт" }));
     expect(await screen.findByText(/Статистика и автопубликация включатся после подключения/)).toBeInTheDocument();
+  });
+});
+
+describe("подключение аккаунта с телефона", () => {
+  it("кнопка открывает страницу подключения на самом телефоне", async () => {
+    render(<DevicesTab />);
+    await screen.findByText("CP-1");
+    fireEvent.click(screen.getByTitle("Открыть экран телефона"));
+    const btn = await screen.findByRole("button", { name: /Открыть подключение на телефоне/ });
+    fireEvent.click(btn);
+    // Вход должен идти с IP телефона, поэтому ссылку открываем именно на нём.
+    await waitFor(() => expect(connectAccountOnPhone).toHaveBeenCalledWith("p1", "1001"));
+  });
+
+  it("объясняет, зачем подключение нужно и что даёт", async () => {
+    render(<DevicesTab />);
+    await screen.findByText("CP-1");
+    fireEvent.click(screen.getByTitle("Открыть экран телефона"));
+    expect(await screen.findByText(/платформа получает токен и заводит аккаунт/)).toBeInTheDocument();
   });
 });

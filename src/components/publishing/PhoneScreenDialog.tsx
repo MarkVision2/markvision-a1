@@ -23,6 +23,7 @@ import { toast } from "sonner";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { PhoneLoginPanel } from "@/components/publishing/PhoneLoginPanel";
 import {
+  connectAccountOnPhone,
   installApp, listPhones, phoneAppStart, phoneAppStop, phoneApps, phoneInput, phoneNet,
   phoneOpenUrl, phoneScreen, setPhonePower, uninstallApp, PHONE_APPS,
   type DevicePhone, type LoginPlatform, type PhoneApps, type PhoneKey, type PhoneNet, type PhoneShot,
@@ -392,6 +393,25 @@ export function PhoneScreenDialog({
                         Прокси не привязан — телефон выходит напрямую. Для заведения аккаунта так делать не стоит.
                       </p>
                     )}
+                    {/* Ради этого вся затея с устройствами: у каждого аккаунта свой адрес.
+                        Совпадение адресов площадка читает как один источник. */}
+                    {net.collisionWith && (
+                      <p className="rounded-md border border-destructive/40 bg-destructive/5 p-2 text-destructive">
+                        С этого же адреса за последний час выходил другой телефон. Площадка увидит
+                        аккаунты как один источник — дождитесь смены IP или разведите сессии по времени.
+                      </p>
+                    )}
+                    {!net.collisionWith && net.same && (
+                      <p className="rounded-md border border-amber-500/40 bg-amber-500/5 p-2 text-amber-700 dark:text-amber-500">
+                        Адрес тот же, что был в прошлую сессию этого телефона. Для входа в новый
+                        аккаунт лучше дождаться смены IP.
+                      </p>
+                    )}
+                    {!net.collisionWith && !net.same && net.previousIp && (
+                      <p className="text-muted-foreground">
+                        IP сменился с прошлой сессии (было {net.previousIp}) — можно работать.
+                      </p>
+                    )}
                   </div>
                 ) : (
                   <p className="text-xs text-muted-foreground">
@@ -471,6 +491,25 @@ export function PhoneScreenDialog({
                   </div>
                 </div>
               )}
+
+              <div className="space-y-1.5 border-t pt-3">
+                <label className="text-sm font-medium">Подключить аккаунт к платформе</label>
+                <p className="text-xs text-muted-foreground">
+                  Откроем на телефоне страницу подключения. Вы входите на площадке прямо там —
+                  вход идёт с IP этого телефона, — а платформа получает токен и заводит аккаунт
+                  со статистикой и автопубликацией.
+                </p>
+                <Button
+                  size="sm" disabled={loading}
+                  onClick={() => void send(async () => {
+                    const r = await connectAccountOnPhone(projectId!, phone.id);
+                    toast.success("Страница подключения открыта на телефоне");
+                    return r;
+                  })}
+                >
+                  Открыть подключение на телефоне
+                </Button>
+              </div>
 
               <div className="space-y-1.5 border-t pt-3">
                 <label className="text-sm font-medium">Открыть ссылку в браузере телефона</label>
