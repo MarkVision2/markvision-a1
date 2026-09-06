@@ -34,6 +34,7 @@ import {
   type InstagramConnectMode,
   type PublishPlatform,
 } from "@/lib/publishingClient";
+import { ConnectBlockedHelp, ConnectQrCard } from "@/components/publishing/ConnectHelp";
 import { cn } from "@/lib/utils";
 
 function errMsg(e: unknown): string {
@@ -205,6 +206,9 @@ export default function ConnectAccount() {
         <Card className="border-amber-500/40 bg-amber-500/5 text-sm">{invite.state_text}</Card>
       )}
 
+      {/* Вход с компьютера площадки режут как подозрительный — уводим на телефон. */}
+      {!pages && !done && !inactive && <ConnectQrCard url={`${window.location.origin}/connect/${token}`} />}
+
       {/* Выбор страницы: показываем вместо кнопок, чтобы клиент не потерялся. */}
       {pages ? (
         <Card>
@@ -285,6 +289,9 @@ export default function ConnectAccount() {
           </p>
         </Card>
       )}
+
+      {!pages && !done && <ConnectBlockedHelp />}
+
 
       {invite.connected.length > 0 && (
         <Card>

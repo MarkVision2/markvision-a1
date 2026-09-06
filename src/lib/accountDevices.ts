@@ -159,9 +159,11 @@ export interface PhoneApps {
   catalog: {
     appName: string;
     packageName: string;
-    /** Версия, которую требует сценарий прогрева — ставим сразу её. */
+    /** Версия, которую требует сценарий прогрева; null — ещё не выяснена. */
     warmupVersion: string | null;
-    warmupVersionId: string | null;
+    /** Что поставим: версию под прогрев, а если её нет — самую свежую. */
+    installVersionId: string | null;
+    installVersion: string | null;
     versions: { id: string; version: string }[];
   }[];
 }

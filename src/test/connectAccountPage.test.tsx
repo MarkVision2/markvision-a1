@@ -159,4 +159,24 @@ describe("страница подключения по ссылке", () => {
     await waitFor(() => expect(finishConnectInvite).toHaveBeenCalledWith("tok-1", "pending-1", ["p2"]));
     expect(await screen.findByText("Успешно подключено")).toBeInTheDocument();
   });
+
+  /**
+   * Instagram режет вход по паролю с незнакомого компьютера ещё до нашего
+   * callback — клиента надо увести на телефон до того, как он нажмёт кнопку.
+   */
+  it("предлагает открыть ссылку на телефоне и объясняет блокировку входа", async () => {
+    renderAt();
+    expect(await screen.findByText("Лучше открыть на телефоне")).toBeInTheDocument();
+    expect(screen.getByText(/Площадка заблокировала вход\?/)).toBeInTheDocument();
+    // QR ведёт на ту же ссылку-приглашение, а не на текущий адрес с параметрами.
+    expect(document.querySelector("svg[data-qr-url]")?.getAttribute("data-qr-url"))
+      .toBe(`${window.location.origin}/connect/tok-1`);
+  });
+
+  it("после успешного подключения подсказки про телефон убираются", async () => {
+    renderAt("/connect/tok-1?publish_connected=instagram&account=clinic");
+    expect(await screen.findByText("Успешно подключено")).toBeInTheDocument();
+    expect(screen.queryByText("Лучше открыть на телефоне")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Площадка заблокировала вход\?/)).not.toBeInTheDocument();
+  });
 });

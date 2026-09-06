@@ -280,29 +280,35 @@ Deno.serve(async (req) => {
       }
 
       const installed = await phonegridCall<Record<string, unknown>[]>(cfg, "/cloudphone/app/installedList", { id });
-      // Каталог сужаем до площадок, с которыми работает платформа: остальное на телефоне не нужно.
-      const wanted = Object.values(WARMUP_TEMPLATES).map((t) => t.packageName);
-      const catalog = await phonegridCall<{ dataList?: Record<string, unknown>[] }>(
-        cfg, "/cloudphone/app/page", { pageNo: 1, pageSize: 50, appName: "" },
-      );
-      const apps = (catalog.dataList ?? [])
-        .filter((a) => wanted.includes(String(a.packageName)))
-        .map((a) => {
-          const pkg = String(a.packageName);
-          // Версия под сценарий прогрева: ставим сразу её, иначе позже придётся
-          // переустанавливать приложение и вход в аккаунт слетит.
-          const tpl = Object.values(WARMUP_TEMPLATES).find((t) => t.packageName === pkg);
-          return {
-            appName: String(a.appName ?? ""),
-            packageName: pkg,
-            warmupVersion: tpl?.requiredVersion ?? null,
-            warmupVersionId: tpl?.appVersionId ?? null,
-            versions: ((a.appVersionList as Record<string, unknown>[]) ?? []).slice(0, 8).map((v) => ({
-              id: String(v.id ?? ""),
-              version: String(v.versionName ?? ""),
-            })),
-          };
-        });
+      // Каталог спрашиваем по имени каждой площадки: общий список отдаёт только первые
+      // полсотни приложений, и Instagram в них не попадает.
+      const wanted = Object.values(WARMUP_TEMPLATES);
+      const found = await Promise.all(wanted.map(async (tpl) => {
+        const title = tpl.title.split(" ")[0]; // «Instagram AI account warmup» → «Instagram»
+        const page = await phonegridCall<{ dataList?: Record<string, unknown>[] }>(
+          cfg, "/cloudphone/app/page", { pageNo: 1, pageSize: 20, appName: title },
+        );
+        return (page.dataList ?? []).find((a) => String(a.packageName) === tpl.packageName) ?? null;
+      }));
+      const apps = found.flatMap((a, i) => {
+        if (!a) return [];
+        const tpl = wanted[i];
+        const versions = ((a.appVersionList as Record<string, unknown>[]) ?? []).map((v) => ({
+          id: String(v.id ?? ""),
+          version: String(v.versionName ?? ""),
+        }));
+        // Версия под сценарий прогрева, если она известна: ставим сразу её, иначе позже
+        // придётся переустанавливать приложение и вход в аккаунт слетит. Если версия ещё
+        // не выяснена — ставим свежую, аккаунт завести это не мешает.
+        return [{
+          appName: String(a.appName ?? ""),
+          packageName: tpl.packageName,
+          warmupVersion: tpl.requiredVersion,
+          installVersionId: tpl.appVersionId ?? versions[0]?.id ?? null,
+          installVersion: tpl.requiredVersion ?? versions[0]?.version ?? null,
+          versions: versions.slice(0, 8),
+        }];
+      });
       return json({
         ok: true,
         installed: (installed ?? []).map((a) => ({

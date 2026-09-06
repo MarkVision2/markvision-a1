@@ -41,6 +41,9 @@ export function PhoneScreenDialog({
   const [text, setText] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
   const [apps, setApps] = useState<PhoneApps | null>(null);
+  // Автообновление: страница в браузере телефона грузится не мгновенно, и без него
+  // непонятно, идёт что-то или зависло.
+  const [auto, setAuto] = useState(false);
   // Статус живёт своей жизнью: телефон включается около минуты, и окно должно
   // это показывать, а не замирать на «выключен».
   const [status, setStatus] = useState(phone.status);
@@ -125,6 +128,12 @@ export function PhoneScreenDialog({
 
   const key = (k: PhoneKey) => void send(() => phoneInput(projectId!, phone.id, { kind: "key", key: k }));
 
+  useEffect(() => {
+    if (!open || !auto || status !== 4) return;
+    const t = setInterval(() => { if (!loading) void refresh(); }, 6000);
+    return () => clearInterval(t);
+  }, [open, auto, status, loading, refresh]);
+
   const off = status !== 4;
   const booting = status === 3;
 
@@ -207,6 +216,13 @@ export function PhoneScreenDialog({
                 <Button size="sm" variant="outline" disabled={loading} onClick={() => void refresh()}>
                   <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Обновить
                 </Button>
+                <Button
+                  size="sm" variant={auto ? "default" : "outline"}
+                  onClick={() => setAuto((v) => !v)}
+                  title="Обновлять экран каждые 6 секунд — удобно, пока грузится страница"
+                >
+                  {auto ? "Авто: вкл" : "Авто"}
+                </Button>
                 <Button size="sm" variant="outline" disabled={loading} onClick={() => key("back")} title="Назад">
                   <ArrowLeft className="h-3.5 w-3.5" />
                 </Button>
@@ -257,12 +273,12 @@ export function PhoneScreenDialog({
                     {apps.catalog.filter((c) => !apps.installed.some((i) => i.packageName === c.packageName)).map((c) => (
                       <Button
                         key={c.packageName} size="sm" variant="outline"
-                        disabled={loading || !c.warmupVersionId}
+                        disabled={loading || !c.installVersionId}
                         title={c.warmupVersion
                           ? `Поставим версию ${c.warmupVersion} — её требует сценарий прогрева`
-                          : "Для этой площадки версия под прогрев ещё не выяснена"}
+                          : `Поставим свежую версию ${c.installVersion ?? ""}; версия под прогрев для этой площадки ещё не выяснена`}
                         onClick={() => void send(async () => {
-                          await installApp(projectId!, phone.id, c.warmupVersionId!);
+                          await installApp(projectId!, phone.id, c.installVersionId!);
                           toast.success(`${c.appName} ставится — займёт до минуты`);
                           setTimeout(() => void loadApps(), 30_000);
                         })}
@@ -298,7 +314,8 @@ export function PhoneScreenDialog({
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Подключать аккаунт к платформе лучше отсюда: вход на площадку пойдёт с IP этого
-                  телефона, а не с сервера.
+                  телефона, а не с сервера. Страница открывается в браузере телефона и грузится
+                  через его прокси — включите «Авто», чтобы видеть, как она подтягивается.
                 </p>
               </div>
             </div>

@@ -11,7 +11,7 @@
  * него остаются: рвётся только связь со ссылкой.
  */
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, Check, ChevronDown, Copy, Link2, Loader2, Plus, RotateCcw, Trash2, Users } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, Copy, Link2, Loader2, Plus, RotateCcw, Smartphone, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -340,6 +340,18 @@ export function ConnectLinksDialog({ open, onClose, pub }: { open: boolean; onCl
             появляется в сетке со статусом, статистикой и здоровьем.
           </DialogDescription>
         </DialogHeader>
+
+        {/* Вход с чужого компьютера Instagram режет как попытку взлома —
+            поэтому ссылку отправляем в мессенджер, а не открываем у себя. */}
+        <div className="flex items-start gap-2.5 rounded-xl border border-amber-500/40 bg-amber-500/5 p-3 text-xs">
+          <Smartphone className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+          <p className="text-muted-foreground">
+            Отправьте ссылку клиенту в мессенджер, чтобы он открыл её{" "}
+            <span className="font-medium text-foreground">на телефоне, где уже вошёл в приложение</span>.
+            Вход с чужого компьютера или через VPN Instagram считает попыткой взлома и блокирует — на самой
+            странице подключения для этого есть QR-код.
+          </p>
+        </div>
 
         <PlatformSetup />
 
