@@ -1,7 +1,7 @@
 {
-  "git_sha": "d7e8314",
-  "git_sha_full": "d7e83143a83f1f95b26c09b3393069f60e13aa18",
-  "updated_at": "2026-09-06T13:44:13+04:00",
-  "label": "chore: деплой подключения Instagram [vercel-deploy]",
+  "git_sha": "09b0286",
+  "git_sha_full": "09b0286e8b4aa6dba25fecdc41bbed192af71407",
+  "updated_at": "2026-09-06T13:50:23+04:00",
+  "label": "fix(tiktok): приватная публикация не упирается в пустоту — ссылка на профиль (#280)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
