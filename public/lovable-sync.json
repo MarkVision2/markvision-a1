@@ -1,7 +1,7 @@
 {
-  "git_sha": "e2cb193",
-  "git_sha_full": "e2cb1939d472bbaceeabdf82044bdbd4bb031b55",
-  "updated_at": "2026-09-06T19:37:24+04:00",
-  "label": "docs: ТЗ на подключение 100 Instagram-аккаунтов через браузерные профили",
+  "git_sha": "a3a9152",
+  "git_sha_full": "a3a9152148db2b16134a6cbfb8d1e5941ff9708b",
+  "updated_at": "2026-09-06T19:44:30+04:00",
+  "label": "[vercel-deploy] Merge: feat(radar) — поиск и ниша в «Идеях», docs выката фронта (#287)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
