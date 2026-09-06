@@ -5,6 +5,7 @@ import {
   runHealthCheck,
   type AccountUpdateInput,
   type GroupUpsertInput,
+  type JobCounts,
   type MetricsResponse,
   type PersonaUpsertInput,
   type PublishAccount,
@@ -36,6 +37,8 @@ export function usePublishing() {
   const [settings, setSettings] = useState<PublishSettings | null>(null);
   const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
   const [jobs, setJobs] = useState<PublishJob[]>([]);
+  // Счётчики по всей очереди — чипы фильтра врали, считая только загруженную страницу.
+  const [jobCounts, setJobCounts] = useState<JobCounts>({});
   const [role, setRole] = useState<ProjectRole | null>(null);
   const [jobsStatus, setJobsStatusRaw] = useState<PublishJobStatus | "all">("all");
   // Страница заданий: сервер отдаёт до 500, начинаем с 200 и подгружаем по кнопке.
@@ -64,7 +67,12 @@ export function usePublishing() {
           ...(status === "all" ? {} : { status }),
           ...(videoId ? { video_id: videoId } : {}),
         });
-        if (alive.current && seq === jobsSeq.current) setJobs(r.jobs ?? []);
+        // Счётчики приходят тем же ответом — устаревшая выборка не должна
+        // перетирать чипы фильтра числами от прошлого запроса.
+        if (alive.current && seq === jobsSeq.current) {
+          setJobs(r.jobs ?? []);
+          setJobCounts(r.counts ?? {});
+        }
       } finally {
         if (alive.current && seq === jobsSeq.current) setJobsLoading(false);
       }
@@ -83,6 +91,7 @@ export function usePublishing() {
       setSettings(null);
       setMetrics(null);
       setJobs([]);
+      setJobCounts({});
       setRole(null);
       return;
     }
@@ -166,6 +175,7 @@ export function usePublishing() {
     settings,
     metrics,
     jobs,
+    jobCounts,
     /** Роль пользователя в проекте (RBAC): интерфейс прячет действия не по роли, сервер решает окончательно. */
     role,
     jobsStatus,
@@ -203,6 +213,10 @@ export function usePublishing() {
     healthCheck: (accountIds?: string[]) => act("health_check", (pid) => runHealthCheck(pid, accountIds)),
     jobRetry: (jobId: string) => act(`job_retry:${jobId}`, (pid) => publishingApi.jobRetry(pid, jobId)),
     jobCancel: (jobId: string) => act(`job_cancel:${jobId}`, (pid) => publishingApi.jobCancel(pid, jobId)),
+    jobsRetryFailed: (videoId?: string | null) => act("jobs_retry_failed", (pid) => publishingApi.jobsRetryFailed(pid, videoId)),
+    videoDelete: (videoId: string, force = false) => act(`video_delete:${videoId}`, (pid) => publishingApi.videoDelete(pid, videoId, force)),
+    /** Без перечитывания: ничего не меняет, только проверяет доставку. */
+    notifyTest: () => act("notify_test", (pid) => publishingApi.notifyTest(pid), false),
   };
 }
 

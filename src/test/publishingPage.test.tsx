@@ -21,6 +21,9 @@ vi.mock("@/hooks/useProjectsStore", () => ({
 const disconnect = vi.fn().mockResolvedValue({ ok: true });
 const loadAvailable = vi.fn().mockResolvedValue({ pages: [] });
 const connect = vi.fn().mockResolvedValue({ connected: [{}], skipped: [] });
+const settingsUpsert = vi.fn().mockResolvedValue({ settings: null, budget: null });
+const notifyTest = vi.fn().mockResolvedValue({ chat_id: "-1001", own_chat: false });
+const groupUpsert = vi.fn().mockResolvedValue({ group: {} });
 const publishVideo = vi.fn().mockResolvedValue({ video_id: "v1", created: 1, skipped: 0, jobs: [] });
 
 const tiktokOld: PublishAccount = {
@@ -73,13 +76,14 @@ const account: PublishAccount = {
   ramp_started_at: new Date(Date.now() - 2 * 86_400_000).toISOString(), // 2 дня → ступень 1
   health_score: 82,
   published_today: 1,
-  published_day: null,
+  // Счётчик считается за published_day: без сегодняшней даты «сегодня» — ноль.
+  published_day: new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Almaty", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()),
   token_refreshed_at: null,
   followers: 1200,
 };
 
 // Переключатели состояния мока между тестами (vi.mock поднимается выше объявлений).
-const mockFlags = vi.hoisted(() => ({ paused: false }));
+const mockFlags = vi.hoisted(() => ({ paused: false, overdue: 0 }));
 
 vi.mock("@/hooks/usePublishing", () => ({
   usePublishing: () => ({
@@ -100,6 +104,7 @@ vi.mock("@/hooks/usePublishing", () => ({
         accounts_limited_or_error: 0,
         health_avg: 81.4,
         jobs_queued: 13,
+        jobs_overdue: mockFlags.overdue,
         jobs_processing: 0,
         published_24h: 9,
         failed_24h: 2,
@@ -130,11 +135,12 @@ vi.mock("@/hooks/usePublishing", () => ({
     connectThreads: vi.fn(),
     updateAccount: vi.fn().mockResolvedValue({ account: {} }),
     disconnect,
-    groupUpsert: vi.fn(),
+    groupUpsert,
     groupDelete: vi.fn(),
     personaUpsert: vi.fn(),
     personaDelete: vi.fn(),
-    settingsUpsert: vi.fn(),
+    settingsUpsert,
+    notifyTest,
     publishVideo,
   }),
 }));
@@ -171,13 +177,13 @@ describe("страница «Публикации»", () => {
     renderPage();
     expect(screen.getByText("4 / 7")).toBeTruthy();
     // Разбивка по площадкам считается по списку аккаунтов: 1 Instagram + 1 TikTok, остальные — по нулям, но видны.
-    expect(screen.getByTitle("Instagram").textContent).toMatch(/Instagram 1$/);
-    expect(screen.getByTitle("YouTube").textContent).toMatch(/YouTube 0$/);
+    expect(screen.getByLabelText("Instagram").textContent).toMatch(/Instagram 1$/);
+    expect(screen.getByLabelText("YouTube").textContent).toMatch(/YouTube 0$/);
     expect(screen.getByText("13")).toBeTruthy();
     expect(screen.getByText("9")).toBeTruthy();
     expect(screen.getByText(/ошибок 2/)).toBeTruthy();
     expect(screen.getByText("81%")).toBeTruthy();
-    expect(screen.getByText(/токены истекают 3/)).toBeTruthy();
+    expect(screen.getByText(/токены истекают у 3/)).toBeTruthy();
     expect(screen.getByText("$12.34")).toBeTruthy();
   });
 
@@ -336,5 +342,74 @@ describe("страница «Публикации»", () => {
     expect((await screen.findAllByText(/без права video.list/))[0]).toBeTruthy();
     // У здорового Instagram-аккаунта значка нет вовсе.
     expect(screen.queryByLabelText("Подробности статуса Клиника Айва")).toBeNull();
+  });
+
+  const openSettings = async () => {
+    renderPage();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Настройки" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Настройки" }));
+    await waitFor(() => expect(screen.getByText("Пауза публикаций проекта")).toBeTruthy());
+  };
+
+  it("настройки: пауза применяется сразу, отдельной кнопки «сохранить» для неё нет", async () => {
+    await openSettings();
+    fireEvent.click(screen.getByRole("switch", { name: "Пауза публикаций проекта" }));
+    await waitFor(() => expect(settingsUpsert).toHaveBeenCalledWith({ paused: true }));
+  });
+
+  it("настройки: чужой формат Telegram chat id не даёт сохранить", async () => {
+    await openSettings();
+    fireEvent.change(screen.getByLabelText("Telegram chat id"), { target: { value: "-100…" } });
+    expect(screen.getByText(/id личного чата или группы/)).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Сохранить" }) as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.change(screen.getByLabelText("Telegram chat id"), { target: { value: "-1001234567890" } });
+    fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+    await waitFor(() =>
+      expect(settingsUpsert).toHaveBeenCalledWith(expect.objectContaining({ digest_chat_id: "-1001234567890" })),
+    );
+  });
+
+  it("настройки: без правок сохранять нечего, расход показан против бюджета", async () => {
+    await openSettings();
+    expect((screen.getByRole("button", { name: "Сохранить" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/Сегодня \$0\.50 из \$5/)).toBeTruthy();
+    expect(screen.getByText(/За месяц \$12\.34 из \$100/)).toBeTruthy();
+  });
+
+  it("вставшая очередь: баннер и плитка говорят, что задания не разбираются", () => {
+    mockFlags.overdue = 4;
+    try {
+      renderPage();
+      expect(screen.getByText(/Очередь не разбирается/)).toBeTruthy();
+      expect(screen.getByText(/просрочено 4/)).toBeTruthy();
+    } finally {
+      mockFlags.overdue = 0;
+    }
+  });
+
+  it("живая очередь баннер не показывает", () => {
+    renderPage();
+    expect(screen.queryByText(/Очередь не разбирается/)).toBeNull();
+  });
+
+  it("настройки: «Проверить связь» шлёт тестовое сообщение", async () => {
+    await openSettings();
+    fireEvent.click(screen.getByRole("button", { name: /Проверить связь/ }));
+    await waitFor(() => expect(notifyTest).toHaveBeenCalled());
+  });
+
+  it("группы: порог автопубликации редактируется и уходит на сервер", async () => {
+    renderPage();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Группы" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Группы" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Новая группа/ }));
+
+    fireEvent.change(await screen.findByLabelText("Название"), { target: { value: "Клиники" } });
+    fireEvent.change(screen.getByLabelText("Автопубликация после, одобрений"), { target: { value: "3" } });
+    fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+    await waitFor(() =>
+      expect(groupUpsert).toHaveBeenCalledWith(expect.objectContaining({ name: "Клиники", auto_publish_after: 3 })),
+    );
   });
 });

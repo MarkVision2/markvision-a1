@@ -96,6 +96,16 @@ export function BulkAccountsBar({ pub, selected, onClear }: Props) {
       <Button size="sm" variant="outline" disabled={busy} onClick={() => void applyAll("Публикации включены", { publish_enabled: true }, "on")}>
         {running === "on" && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />} Включить
       </Button>
+      {/* «Включить» чинит только выключатель: погашенный монитором аккаунт
+          остаётся в статусе error, и планировщик всё равно его не берёт. */}
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={busy}
+        onClick={() => void applyAll("Аккаунты вернулись в строй", { status: "active", publish_enabled: true }, "revive")}
+      >
+        {running === "revive" && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />} Вернуть в строй
+      </Button>
       <Button size="sm" variant="outline" disabled={busy} onClick={() => void applyAll("Публикации выключены", { publish_enabled: false }, "off")}>
         {running === "off" && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />} Выключить
       </Button>
