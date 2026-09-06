@@ -12,6 +12,7 @@ export const API_VERSION = "v1";
 export type ApiRoute =
   | { name: "me" }
   | { name: "accounts" }
+  | { name: "accounts_bulk_update" }
   | { name: "account_update"; id: string }
   | { name: "accounts_health_check" }
   | { name: "groups" }
@@ -57,7 +58,8 @@ export type ApiRoute =
   | { name: "routine_update"; id: string }
   | { name: "routine_delete"; id: string }
   | { name: "routine_assign"; id: string }
-  | { name: "tasks_list" };
+  | { name: "tasks_list" }
+  | { name: "calendar" };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -85,6 +87,7 @@ export function matchRoute(method: string, pathname: string): ApiRoute | null {
   if (a === "accounts") {
     if (m === "GET" && seg.length === 1) return { name: "accounts" };
     if (m === "POST" && seg.length === 2 && b === "health-check") return { name: "accounts_health_check" };
+    if (m === "POST" && seg.length === 2 && b === "bulk") return { name: "accounts_bulk_update" };
     if (m === "POST" && seg.length === 2 && UUID.test(b ?? "")) return { name: "account_update", id: b };
     return null;
   }
@@ -198,6 +201,7 @@ export function matchRoute(method: string, pathname: string): ApiRoute | null {
   }
 
   if (a === "tasks" && m === "GET" && seg.length === 1) return { name: "tasks_list" };
+  if (a === "calendar" && m === "GET" && seg.length === 1) return { name: "calendar" };
   return null;
 }
 
@@ -229,6 +233,7 @@ export function requiredScope(route: ApiRoute): ApiScope {
     case "members_list":
     case "routines_list":
     case "tasks_list":
+    case "calendar":
       return "read";
     case "member_role_set":
     case "routine_create":
@@ -241,6 +246,7 @@ export function requiredScope(route: ApiRoute): ApiScope {
     case "webhook_delete":
       return "manage";
     case "account_update":
+    case "accounts_bulk_update":
     case "accounts_health_check":
     case "group_create":
     case "group_update":

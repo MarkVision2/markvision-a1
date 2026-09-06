@@ -7,9 +7,13 @@
  * ig_user_id + page-токен (шифротекстом). Дальше руками не трогаем ничего.
  *
  *   { action: "available",  project_id, meta_token? }        — что можно подключить (перебирает токены проекта)
- *   { action: "connect",    project_id, page_ids: [...], meta_token?, group_id? } — подключить пачкой
- *   { action: "list",       project_id }                     — что подключено
+ *   { action: "connect",    project_id, page_ids: [...], meta_token?, group_id?, preset? } — подключить пачкой;
+ *                             preset — те же поля, что в update, применяются ко всем подключённым (массовый онбординг)
+ *   { action: "list",       project_id, limit?, offset?, q?, platform?, group_id?, status?, publish_enabled? }
+ *                                                            — что подключено; с limit — страница + total/has_more
  *   { action: "update",     account_id, ... }                — вкл/выкл, лимит, статус
+ *   { action: "accounts_bulk_update", project_id, account_ids: [...], patch: {…} } — одна правка на пачку (онбординг 100+)
+ *   { action: "calendar",   project_id, from, to, account_ids?, group_id? } — задания по аккаунтам за период (до 31 дня)
  *   { action: "disconnect", account_id }                     — отключить
  *
  * Группы («залить во все клиники») — тот же endpoint:
@@ -22,7 +26,8 @@
  *   { action: "connect_threads", project_id, threads_user_id, access_token, account_name?, expires_at? }
  *   { action: "persona_list" | "persona_upsert" | "persona_delete", project_id, ... }
  *   { action: "settings_get" | "settings_upsert", project_id,  notify_mode?, digest_chat_id?, paused?, daily_usd?, monthly_usd? }
- *   { action: "jobs_list", project_id, status?, limit?, video_id? } → { jobs, counts } — counts по всей очереди
+ *   { action: "jobs_list", project_id, status?, limit?, offset?, video_id?, account_id?, campaign_id? }
+ *       → { jobs, counts, has_more } — counts по всей очереди, страница по offset
  *   { action: "campaign_list" | "campaign_get" | "campaign_upsert" | "campaign_items_add" | "campaign_items_remove"
  *             | "campaign_status" | "campaign_plan_now", project_id, campaign_id?, ... } — кампании (docs/JOBS.md)
  *   { action: "webhook_list" | "webhook_upsert" | "webhook_delete" | "webhook_deliveries", project_id, webhook_id?, ... }
@@ -222,16 +227,102 @@ Deno.serve(async (req) => {
     return owner === pid ? { ok: true, value: id } : { ok: false };
   };
 
+  /**
+   * Разбор правки аккаунта из тела — общий для update, accounts_bulk_update и
+   * пресета при подключении. Ссылки на группу/персону/рутину — только из этого проекта.
+   */
+  const parseAccountPatch = async (src: unknown): Promise<{ ok: true; patch: Record<string, unknown> } | { ok: false; error: string }> => {
+    const patch: Record<string, unknown> = {};
+    if (!src || typeof src !== "object") return { ok: true, patch };
+    const b = src as Record<string, unknown>;
+    if (typeof b.publish_enabled === "boolean") patch.publish_enabled = b.publish_enabled;
+    // 0 в claim_publish_jobs значит «не публиковать» — из интерфейса такого не задать, для этого есть выключатель.
+    if (typeof b.daily_limit === "number") patch.daily_limit = Math.min(Math.max(Math.round(b.daily_limit), 1), 200);
+    if (typeof b.account_name === "string" && b.account_name.trim()) patch.account_name = b.account_name.trim();
+    if (typeof b.notes === "string") patch.notes = b.notes;
+    if (b.group_id === null || typeof b.group_id === "string") {
+      const g = await ownedRef("publish_account_groups", b.group_id);
+      if (!g.ok) return { ok: false, error: "группа не из этого проекта" };
+      patch.group_id = g.value;
+    }
+    if (b.persona_id === null || typeof b.persona_id === "string") {
+      const p = await ownedRef("personas", b.persona_id);
+      if (!p.ok) return { ok: false, error: "персона не из этого проекта" };
+      patch.persona_id = p.value;
+    }
+    if (b.routine_id === null || typeof b.routine_id === "string") {
+      const r = await ownedRef("publish_routines", b.routine_id);
+      if (!r.ok) return { ok: false, error: "рутина не из этого проекта" };
+      patch.routine_id = r.value;
+    }
+    if (b.timezone === null || typeof b.timezone === "string") {
+      const tz = (b.timezone as string | null)?.trim() || null;
+      if (tz && !validTimeZone(tz)) return { ok: false, error: `неизвестный часовой пояс: ${tz}` };
+      patch.timezone = tz;
+    }
+    if (b.window_start === null || typeof b.window_start === "string") patch.window_start = b.window_start || null;
+    if (b.window_end === null || typeof b.window_end === "string") patch.window_end = b.window_end || null;
+    if (typeof b.ramp_enabled === "boolean") patch.ramp_enabled = b.ramp_enabled;
+    if (b.ramp_restart === true) patch.ramp_started_at = new Date().toISOString();
+    if (typeof b.status === "string") {
+      const allowed = ["active", "token_expired", "limited", "error", "disabled"];
+      if (!allowed.includes(b.status)) return { ok: false, error: `недопустимый статус: ${b.status}` };
+      patch.status = b.status;
+      // Возврат в строй — обнуляем серию ошибок, иначе монитор погасит снова.
+      if (b.status === "active") { patch.consecutive_errors = 0; patch.last_error = null; }
+    }
+    // Пустые ключи (ownedRef вернул undefined на пустую строку) — не отправляем.
+    for (const k of Object.keys(patch)) if (patch[k] === undefined) delete patch[k];
+    return { ok: true, patch };
+  };
+
+  /** Пресет онбординга: применить одну правку ко всем только что подключённым аккаунтам. */
+  const applyPreset = async (ids: string[], preset: unknown): Promise<string | null> => {
+    if (!ids.length) return null;
+    const parsed = await parseAccountPatch(preset);
+    if (!parsed.ok) return parsed.error;
+    if (!Object.keys(parsed.patch).length) return null;
+    const { error } = await admin.from("publish_accounts").update(parsed.patch).eq("project_id", pid).in("id", ids);
+    return error ? error.message : null;
+  };
+
   try {
     if (action === "list") {
       if (!projectId) return json({ error: "project_id обязателен" }, 400);
-      const { data, error } = await admin.from("publish_accounts")
+      // Без limit — весь список (старые клиенты); с limit — страница по offset и
+      // серверные фильтры: на 500+ аккаунтах грузить всё ради поиска нельзя.
+      const limit = body?.limit != null ? Math.min(Math.max(Number(body.limit) || 0, 1), 500) : null;
+      const offset = Math.max(Number(body?.offset ?? 0) || 0, 0);
+      let f = admin.from("publish_accounts")
         .select(
-          "id, platform, account_name, handle, external_account_id, fb_page_id, status, publish_enabled, daily_limit, last_post_at, consecutive_errors, last_error, token_expires_at, group_id, persona_id, timezone, window_start, window_end, ramp_enabled, ramp_started_at, health_score, health_reasons, last_checked_at, published_today, published_day, token_refreshed_at, followers, oauth_scope, capabilities, connection_type, auth_status, routine_id",
+          "id, platform, account_name, handle, external_account_id, fb_page_id, status, publish_enabled, daily_limit, last_post_at, consecutive_errors, last_error, token_expires_at, group_id, persona_id, timezone, window_start, window_end, ramp_enabled, ramp_started_at, health_score, health_reasons, last_checked_at, published_today, published_day, token_refreshed_at, followers, oauth_scope, capabilities, connection_type, auth_status, routine_id, notes",
+          { count: "exact" },
         )
-        .eq("project_id", projectId).order("platform").order("account_name");
-      if (error) return json({ error: error.message }, 500);
-      return json({ ok: true, accounts: data ?? [], role });
+        .eq("project_id", projectId);
+      // Поисковая строка идёт в PostgREST-фильтр `or` — запятые и скобки там разделители.
+      const needle = typeof body?.q === "string" ? body.q.replace(/[,()%\\]/g, " ").trim() : "";
+      if (needle) f = f.or(`account_name.ilike.%${needle}%,handle.ilike.%${needle}%`);
+      if (typeof body?.platform === "string" && body.platform) f = f.eq("platform", body.platform);
+      if (body?.group_id === null) f = f.is("group_id", null);
+      else if (typeof body?.group_id === "string" && body.group_id) f = f.eq("group_id", body.group_id);
+      if (typeof body?.status === "string" && body.status) f = f.eq("status", body.status);
+      if (typeof body?.publish_enabled === "boolean") f = f.eq("publish_enabled", body.publish_enabled);
+      let t = f.order("platform").order("account_name");
+      if (limit != null) t = t.range(offset, offset + limit - 1);
+      const { data, error, count } = await t;
+      // Страница за краем (PGRST103) — не ошибка, а пустой хвост.
+      if (error && error.code !== "PGRST103") return json({ error: error.message }, 500);
+      const accounts = error ? [] : data ?? [];
+      const total = count ?? accounts.length;
+      return json({
+        ok: true,
+        accounts,
+        role,
+        total,
+        offset,
+        limit,
+        has_more: limit != null && offset + accounts.length < total,
+      });
     }
 
     if (action === "available") {
@@ -331,50 +422,20 @@ Deno.serve(async (req) => {
         else connected.push(data);
       }
 
-      return json({ ok: true, connected, skipped });
+      // Пресет онбординга (персона, рутина, пояс, окно, лимит, разгон) — на всю пачку разом.
+      const presetError = await applyPreset(
+        (connected as { id?: string }[]).map((c) => c?.id).filter((x): x is string => Boolean(x)),
+        body?.preset,
+      );
+      return json({ ok: true, connected, skipped, ...(presetError ? { preset_error: presetError } : {}) });
     }
 
     if (action === "update") {
       const accountId = String(body?.account_id ?? "");
       if (!accountId) return json({ error: "account_id обязателен" }, 400);
-
-      const patch: Record<string, unknown> = {};
-      if (typeof body?.publish_enabled === "boolean") patch.publish_enabled = body.publish_enabled;
-      // 0 в claim_publish_jobs значит «не публиковать» — из интерфейса такого не задать, для этого есть выключатель.
-      if (typeof body?.daily_limit === "number") patch.daily_limit = Math.min(Math.max(Math.round(body.daily_limit), 1), 200);
-      if (typeof body?.account_name === "string" && body.account_name.trim()) patch.account_name = body.account_name.trim();
-      if (typeof body?.notes === "string") patch.notes = body.notes;
-      if (body?.group_id === null || typeof body?.group_id === "string") {
-        const g = await ownedRef("publish_account_groups", body.group_id);
-        if (!g.ok) return json({ error: "группа не из этого проекта" }, 400);
-        patch.group_id = g.value;
-      }
-      if (body?.persona_id === null || typeof body?.persona_id === "string") {
-        const p = await ownedRef("personas", body.persona_id);
-        if (!p.ok) return json({ error: "персона не из этого проекта" }, 400);
-        patch.persona_id = p.value;
-      }
-      if (body?.routine_id === null || typeof body?.routine_id === "string") {
-        const r = await ownedRef("publish_routines", body.routine_id);
-        if (!r.ok) return json({ error: "рутина не из этого проекта" }, 400);
-        patch.routine_id = r.value;
-      }
-      if (body?.timezone === null || typeof body?.timezone === "string") {
-        const tz = body.timezone?.trim() || null;
-        if (tz && !validTimeZone(tz)) return json({ error: `неизвестный часовой пояс: ${tz}` }, 400);
-        patch.timezone = tz;
-      }
-      if (body?.window_start === null || typeof body?.window_start === "string") patch.window_start = body.window_start || null;
-      if (body?.window_end === null || typeof body?.window_end === "string") patch.window_end = body.window_end || null;
-      if (typeof body?.ramp_enabled === "boolean") patch.ramp_enabled = body.ramp_enabled;
-      if (body?.ramp_restart === true) patch.ramp_started_at = new Date().toISOString();
-      if (typeof body?.status === "string") {
-        const allowed = ["active", "token_expired", "limited", "error", "disabled"];
-        if (!allowed.includes(body.status)) return json({ error: `недопустимый статус: ${body.status}` }, 400);
-        patch.status = body.status;
-        // Возврат в строй — обнуляем серию ошибок, иначе монитор погасит снова.
-        if (body.status === "active") { patch.consecutive_errors = 0; patch.last_error = null; }
-      }
+      const parsed = await parseAccountPatch(body);
+      if (!parsed.ok) return json({ error: parsed.error }, 400);
+      const patch = parsed.patch;
       if (!Object.keys(patch).length) return json({ error: "нечего менять" }, 400);
 
       const { data, error } = await admin.from("publish_accounts")
@@ -383,6 +444,22 @@ Deno.serve(async (req) => {
       if (error) return json({ error: error.message }, 500);
       if (!data) return json({ error: "аккаунт не найден" }, 404);
       return json({ ok: true, account: data });
+    }
+
+    // Массовый онбординг: одна правка на пачку — сотня последовательных update
+    // из интерфейса упиралась в лимиты edge-функции.
+    if (action === "accounts_bulk_update") {
+      const ids = Array.from(new Set((Array.isArray(body?.account_ids) ? body.account_ids : []).map(String).filter(Boolean)));
+      if (!ids.length) return json({ error: "account_ids обязателен" }, 400);
+      if (ids.length > 500) return json({ error: "за один раз — не больше 500 аккаунтов" }, 400);
+      const parsed = await parseAccountPatch(body?.patch && typeof body.patch === "object" ? body.patch : body);
+      if (!parsed.ok) return json({ error: parsed.error }, 400);
+      if (!Object.keys(parsed.patch).length) return json({ error: "нечего менять" }, 400);
+      const { data, error } = await admin.from("publish_accounts")
+        .update(parsed.patch).eq("project_id", pid).in("id", ids).select("id");
+      if (error) return json({ error: error.message }, 500);
+      const updated = (data ?? []).length;
+      return json({ ok: true, updated, missing: ids.length - updated, patch: parsed.patch });
     }
 
     /* ── группы аккаунтов ── */
@@ -546,7 +623,8 @@ Deno.serve(async (req) => {
       }, { onConflict: "project_id,platform,external_account_id" })
         .select("id, account_name, handle").maybeSingle();
       if (error) return json({ error: error.message }, 500);
-      return json({ ok: true, account: data });
+      const presetError = data?.id ? await applyPreset([data.id], body?.preset) : null;
+      return json({ ok: true, account: data, ...(presetError ? { preset_error: presetError } : {}) });
     }
 
     /* ── персоны ── */
@@ -1092,25 +1170,72 @@ Deno.serve(async (req) => {
         .eq("project_id", projectId)
         // DESC в Postgres по умолчанию NULLS FIRST — задания без времени всплывали бы наверх.
         .order("scheduled_at", { ascending: false, nullsFirst: false })
-        .limit(Math.min(Math.max(Number(body?.limit ?? 100), 1), 500));
+        .order("id");
+      const limit = Math.min(Math.max(Number(body?.limit ?? 100), 1), 500);
+      const offset = Math.max(Number(body?.offset ?? 0) || 0, 0);
+      q = q.range(offset, offset + limit - 1);
       if (typeof body?.status === "string") q = q.eq("status", body.status);
       if (typeof body?.video_id === "string") q = q.eq("video_id", body.video_id);
+      if (typeof body?.account_id === "string") q = q.eq("account_id", body.account_id);
+      if (typeof body?.campaign_id === "string") q = q.eq("campaign_id", body.campaign_id);
       const { data, error } = await q;
-      if (error) return json({ error: error.message }, 500);
+      if (error && error.code !== "PGRST103") return json({ error: error.message }, 500);
+      const jobs = error ? [] : data ?? [];
 
       // Счётчики по всей очереди, а не по отданной странице: чипы фильтра
       // показывали «Ошибка 3» из первых 200 строк и врали на большой сети.
-      const statuses = ["pending", "retry", "processing", "published", "failed", "manual_review", "cancelled"] as const;
+      const statuses = ["pending", "retry", "processing", "verifying", "published", "failed", "manual_review", "cancelled"] as const;
       const counted = await Promise.all(statuses.map(async (st) => {
         let c = admin.from("publish_jobs").select("id", { count: "exact", head: true })
           .eq("project_id", projectId).eq("status", st);
         if (typeof body?.video_id === "string") c = c.eq("video_id", body.video_id);
+        if (typeof body?.account_id === "string") c = c.eq("account_id", body.account_id);
+        if (typeof body?.campaign_id === "string") c = c.eq("campaign_id", body.campaign_id);
         const { count } = await c;
         return [st, count ?? 0] as const;
       }));
       const counts = Object.fromEntries(counted) as Record<string, number>;
       counts.all = counted.reduce((sum, [, n]) => sum + n, 0);
-      return json({ ok: true, jobs: data ?? [], counts });
+      const totalForFilter = typeof body?.status === "string" ? counts[body.status] ?? 0 : counts.all;
+      return json({ ok: true, jobs, counts, offset, limit, has_more: offset + jobs.length < totalForFilter });
+    }
+
+    /* ── календарь публикаций: задания по аккаунтам за период ── */
+    if (action === "calendar") {
+      if (!projectId) return json({ error: "project_id обязателен" }, 400);
+      const fromTs = Date.parse(String(body?.from ?? ""));
+      const toTs = Date.parse(String(body?.to ?? ""));
+      if (!Number.isFinite(fromTs) || !Number.isFinite(toTs) || toTs <= fromTs) {
+        return json({ error: "from/to — даты ISO 8601, to позже from" }, 400);
+      }
+      if (toTs - fromTs > 31 * 86_400_000) return json({ error: "диапазон календаря — не больше 31 дня" }, 400);
+      const from = new Date(fromTs).toISOString();
+      const to = new Date(toTs).toISOString();
+      const CAL_LIMIT = 2000;
+
+      let accountIds: string[] | null = Array.isArray(body?.account_ids) ? body.account_ids.map(String).filter(Boolean) : null;
+      if (typeof body?.group_id === "string" && body.group_id) {
+        const { data: g } = await admin.from("publish_account_groups").select("account_ids").eq("id", body.group_id).eq("project_id", projectId).maybeSingle();
+        if (!g) return json({ error: "Группа не найдена в проекте" }, 400);
+        const inGroup = ((g as { account_ids: string[] | null }).account_ids ?? []);
+        accountIds = accountIds ? accountIds.filter((id) => inGroup.includes(id)) : inGroup;
+      }
+      // Пустой список — пустой календарь: `in.()` PostgREST не разбирает.
+      if (accountIds && !accountIds.length) return json({ ok: true, from, to, accounts: [], jobs: [], truncated: false });
+
+      let acc = admin.from("publish_accounts")
+        .select("id, platform, account_name, handle, status, publish_enabled, daily_limit, timezone, window_start, window_end, group_id")
+        .eq("project_id", projectId).order("platform").order("account_name");
+      if (accountIds) acc = acc.in("id", accountIds);
+      let jq = admin.from("publish_jobs")
+        .select("id, video_id, account_id, platform, status, scheduled_at, published_at, campaign_id, error_class, verification_status, external_post_url, publish_videos(title)")
+        .eq("project_id", projectId).gte("scheduled_at", from).lt("scheduled_at", to)
+        .order("scheduled_at").limit(CAL_LIMIT);
+      if (accountIds) jq = jq.in("account_id", accountIds);
+      const [{ data: accounts, error: accErr }, { data: jobs, error: jobErr }] = await Promise.all([acc, jq]);
+      if (accErr) return json({ error: accErr.message }, 500);
+      if (jobErr) return json({ error: jobErr.message }, 500);
+      return json({ ok: true, from, to, accounts: accounts ?? [], jobs: jobs ?? [], truncated: (jobs ?? []).length >= CAL_LIMIT });
     }
     if (action === "metrics") {
       if (!projectId) return json({ error: "project_id обязателен" }, 400);

@@ -77,7 +77,21 @@ export class MarkVisionClient {
   }
 
   me() { return this.request<{ project: { id: string; name: string | null }; key: { name: string; scopes: string[] } }>("GET", "/me"); }
-  accounts() { return this.request<{ accounts: unknown[] }>("GET", "/accounts"); }
+  accounts(opts: { limit?: number; offset?: number; q?: string; platform?: string; group_id?: string; status?: string } = {}) {
+    const q = new URLSearchParams();
+    for (const [k, v] of Object.entries(opts)) if (v != null && v !== "") q.set(k, String(v));
+    const qs = q.toString();
+    return this.request<{ accounts: unknown[]; total?: number; has_more?: boolean }>("GET", `/accounts${qs ? `?${qs}` : ""}`);
+  }
+  bulkUpdateAccounts(accountIds: string[], patch: Record<string, unknown>) {
+    return this.request<{ updated: number; missing: number }>("POST", "/accounts/bulk", { account_ids: accountIds, patch });
+  }
+  calendar(opts: { from: string; to: string; group_id?: string; account_ids?: string[] }) {
+    const q = new URLSearchParams({ from: opts.from, to: opts.to });
+    if (opts.group_id) q.set("group_id", opts.group_id);
+    if (opts.account_ids?.length) q.set("account_ids", opts.account_ids.join(","));
+    return this.request<{ accounts: unknown[]; jobs: unknown[]; truncated: boolean }>("GET", `/calendar?${q}`);
+  }
   groups() { return this.request<{ groups: unknown[] }>("GET", "/groups"); }
   publications(limit = 20) { return this.request<{ publications: unknown[] }>("GET", `/publications?limit=${limit}`); }
   publication(id: string) { return this.request<{ publication: unknown }>("GET", `/publications/${id}`); }
@@ -96,8 +110,9 @@ export class MarkVisionClient {
   deleteGroup(id: string) { return this.request<Record<string, unknown>>("POST", `/groups/${id}/delete`); }
   settings() { return this.request<Record<string, unknown>>("GET", "/settings"); }
   updateSettings(patch: Record<string, unknown>) { return this.request<Record<string, unknown>>("POST", "/settings", patch); }
-  jobs(status?: string, limit = 100) {
-    const q = new URLSearchParams({ limit: String(limit), ...(status ? { status } : {}) });
+  jobs(status?: string, limit = 100, offset = 0, extra: { video_id?: string; account_id?: string; campaign_id?: string } = {}) {
+    const q = new URLSearchParams({ limit: String(limit), ...(status ? { status } : {}), ...(offset ? { offset: String(offset) } : {}) });
+    for (const [k, v] of Object.entries(extra)) if (v) q.set(k, v);
     return this.request<{ jobs: unknown[] }>("GET", `/jobs?${q}`);
   }
   metrics() { return this.request<Record<string, unknown>>("GET", "/metrics"); }

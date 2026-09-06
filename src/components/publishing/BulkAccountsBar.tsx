@@ -3,8 +3,8 @@
  *
  * При 100+ аккаунтах правка построчно нереальна: включить пачку, перекинуть
  * в группу, назначить персону, выставить общий лимит и разгон — одним нажатием.
- * Каждое действие идёт последовательными запросами к publish-accounts и
- * рапортует, сколько строк изменилось, а сколько упало.
+ * Действие уходит одним запросом accounts_bulk_update (один UPDATE на сервере)
+ * и рапортует, сколько строк изменилось, а сколько не нашлось.
  */
 import { useState } from "react";
 import { Loader2, ShieldCheck, X } from "lucide-react";
@@ -31,28 +31,20 @@ export function BulkAccountsBar({ pub, selected, onClear }: Props) {
   if (!n) return null;
 
   /**
-   * Одна правка на все выделенные строки. Идём последовательно, а не
-   * Promise.all: сотня параллельных вызовов edge-функции упрётся в лимиты.
-   * Перечитываем страницу один раз в конце, а не после каждой строки.
+   * Одна правка на все выделенные строки одним запросом: сотня вызовов
+   * edge-функции подряд упиралась в её лимиты. Сервер перечитывается хуком
+   * после ответа (act → refetch).
    */
   const applyAll = async (label: string, patch: AccountUpdateInput, key: string) => {
     setRunning(key);
-    let ok = 0;
-    const failures: string[] = [];
     try {
-      for (const id of selected) {
-        try {
-          await pub.updateAccountQuiet(id, patch);
-          ok += 1;
-        } catch (e) {
-          failures.push(e instanceof Error ? e.message : "ошибка");
-        }
-      }
-      if (failures.length) toast.error(`${label}: ${ok} из ${n}, ошибок ${failures.length} — ${failures[0]}`);
-      else toast.success(`${label}: ${ok}`);
+      const r = await pub.bulkUpdateAccounts(selected, patch);
+      if (r.missing > 0) toast.error(`${label}: ${r.updated} из ${n}, не найдено ${r.missing}`);
+      else toast.success(`${label}: ${r.updated}`);
+    } catch (e) {
+      toast.error(`${label}: ${e instanceof Error ? e.message : "ошибка"}`);
     } finally {
       setRunning(null);
-      await pub.refetch();
     }
   };
 

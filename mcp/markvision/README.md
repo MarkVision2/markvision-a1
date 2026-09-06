@@ -40,7 +40,9 @@ Claude Desktop — тот же блок в `claude_desktop_config.json`.
 | Инструмент | Что делает |
 |---|---|
 | `markvision_whoami` | проект и права ключа |
-| `markvision_list_accounts` | аккаунты площадок проекта |
+| `markvision_list_accounts` | аккаунты площадок проекта (страница `limit`/`offset`, поиск `q`, фильтры) |
+| `markvision_accounts_bulk_update` | одна правка на пачку аккаунтов: группа, персона, рутина, пояс, окно, лимит, разгон |
+| `markvision_calendar` | календарь: задания по аккаунтам за период (до 31 дня) |
 | `markvision_list_groups` | группы аккаунтов |
 | `markvision_upload_media` | файл с диска → хранилище → `file_url` |
 | `markvision_create_publication` | принять видео и поставить задания (группа / аккаунты / режим) |
@@ -48,7 +50,7 @@ Claude Desktop — тот же блок в `claude_desktop_config.json`.
 | `markvision_list_publications` | последние видео и сводка по статусам |
 | `markvision_get_publication` | задания одного видео по аккаунтам |
 | `markvision_cancel_job`, `markvision_retry_job` | отмена и повтор задания |
-| `markvision_list_jobs` | задания очереди по статусу |
+| `markvision_list_jobs` | задания очереди по статусу, страница по `offset`, фильтры по видео/аккаунту/кампании |
 | `markvision_update_account` | вкл/выкл, лимит, группа, окно, разгон, статус аккаунта |
 | `markvision_health_check` | живая проверка токенов у площадок |
 | `markvision_create_group`, `markvision_update_group`, `markvision_delete_group` | группы аккаунтов |

@@ -25,7 +25,7 @@ if (!apiUrl) {
 }
 
 const client = new MarkVisionClient({ apiKey, baseUrl: apiUrl });
-const server = new McpServer({ name: "markvision", version: "0.4.0" });
+const server = new McpServer({ name: "markvision", version: "0.5.0" });
 
 type ToolResult = { content: { type: "text"; text: string }[]; isError?: boolean };
 
@@ -59,9 +59,51 @@ server.registerTool("markvision_whoami", {
 
 server.registerTool("markvision_list_accounts", {
   title: "Аккаунты площадок",
-  description: "Подключённые аккаунты Instagram / TikTok / YouTube / Threads проекта: id, площадка, имя, статус, здоровье.",
-  inputSchema: {},
-}, () => run(() => client.accounts()));
+  description:
+    "Подключённые аккаунты Instagram / TikTok / YouTube / Threads проекта: id, площадка, имя, статус, здоровье, лимит, группа. " +
+    "Без limit — весь список; с limit — страница по offset и total/has_more. q — поиск по имени/handle.",
+  inputSchema: {
+    limit: z.number().int().min(1).max(500).optional(),
+    offset: z.number().int().min(0).optional(),
+    q: z.string().optional(),
+    platform: z.enum(["instagram", "tiktok", "youtube", "threads"]).optional(),
+    group_id: z.string().optional().describe("uuid группы или none — без группы"),
+    status: z.enum(["active", "token_expired", "limited", "error", "disabled"]).optional(),
+  },
+}, (opts) => run(() => client.accounts(compact(opts))));
+
+server.registerTool("markvision_accounts_bulk_update", {
+  title: "Массовая правка аккаунтов",
+  description:
+    "Одна правка на пачку аккаунтов (массовый онбординг): группа, персона, рутина, пояс, окно, лимит, разгон, включение, статус. " +
+    "Один UPDATE на сервере; возвращает updated и missing (не из проекта / не найдены).",
+  inputSchema: {
+    account_ids: z.array(uuid).min(1).max(500),
+    publish_enabled: z.boolean().optional(),
+    daily_limit: z.number().int().min(1).max(200).optional(),
+    status: z.enum(["active", "disabled"]).optional(),
+    group_id: z.string().nullable().optional(),
+    persona_id: z.string().nullable().optional(),
+    routine_id: z.string().nullable().optional(),
+    timezone: z.string().nullable().optional(),
+    window_start: z.string().nullable().optional().describe("HH:MM"),
+    window_end: z.string().nullable().optional().describe("HH:MM"),
+    ramp_enabled: z.boolean().optional(),
+  },
+}, ({ account_ids, ...patch }) => run(() => client.bulkUpdateAccounts(account_ids, compact(patch))));
+
+server.registerTool("markvision_calendar", {
+  title: "Календарь публикаций",
+  description:
+    "Задания публикации по аккаунтам за период (до 31 дня): что и когда выходит в каждом аккаунте, статусы, дневные лимиты. " +
+    "Основа для вопросов «что запланировано на неделю» и «где свободные слоты».",
+  inputSchema: {
+    from: z.string().describe("Начало периода, ISO 8601."),
+    to: z.string().describe("Конец периода (исключительно), ISO 8601."),
+    group_id: uuid.optional(),
+    account_ids: z.array(uuid).optional(),
+  },
+}, (opts) => run(() => client.calendar(compact(opts) as { from: string; to: string; group_id?: string; account_ids?: string[] })));
 
 server.registerTool("markvision_list_groups", {
   title: "Группы аккаунтов",
@@ -234,10 +276,14 @@ server.registerTool("markvision_list_jobs", {
   title: "Задания очереди",
   description: "Задания публикации проекта, при желании по статусу: pending, processing, published, retry, failed, manual_review, cancelled.",
   inputSchema: {
-    status: z.enum(["pending", "processing", "published", "retry", "failed", "manual_review", "cancelled"]).optional(),
+    status: z.enum(["pending", "processing", "verifying", "published", "retry", "failed", "manual_review", "cancelled"]).optional(),
     limit: z.number().int().min(1).max(500).optional(),
+    offset: z.number().int().min(0).optional().describe("Страница: пропустить столько заданий (ответ содержит has_more)."),
+    video_id: uuid.optional(),
+    account_id: uuid.optional(),
+    campaign_id: uuid.optional(),
   },
-}, ({ status, limit }) => run(() => client.jobs(status, limit ?? 100)));
+}, ({ status, limit, offset, ...extra }) => run(() => client.jobs(status, limit ?? 100, offset ?? 0, compact(extra))));
 
 server.registerTool("markvision_metrics", {
   title: "Метрики",
