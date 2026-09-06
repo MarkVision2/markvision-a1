@@ -38,3 +38,10 @@
 - Трасса (`publish_job_events`) чистит ключи `token|secret|authorization|password|cookie`;
   `publish_logs.raw_response` хранит сырые ответы площадок — токены в них не попадают по построению запросов.
 - Ротация `PUBLISH_TOKEN_KEY` = переподключение всех аккаунтов (формат `v1:` допускает `v2:` с новым ключом).
+
+## Проверка типов edge-функций
+
+Supabase собирает функции esbuild'ом без проверки типов, поэтому в репозитории есть
+`npm run typecheck:functions` — обычный `tsc` по `supabase/functions/_types/tsconfig.check.json`
+(Deno-глобалы — `deno-shim.d.ts` рядом, импорты `esm.sh/@supabase/supabase-js` сопоставлены с
+установленным пакетом). Входит в `npm run ci`. Новую функцию контура публикаций — добавить в `files`.

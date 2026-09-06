@@ -73,7 +73,10 @@ ALTER TABLE public.publish_accounts ADD COLUMN IF NOT EXISTS routine_id uuid REF
 ALTER TABLE public.publish_account_groups ADD COLUMN IF NOT EXISTS routine_id uuid REFERENCES public.publish_routines(id) ON DELETE SET NULL;
 GRANT SELECT (routine_id) ON public.publish_accounts TO authenticated;
 
-CREATE OR REPLACE VIEW public.publish_accounts_safe
+-- DROP + CREATE, а не CREATE OR REPLACE: повторный прогон после более поздней миграции,
+-- добавившей колонки в это же представление, иначе падает с «cannot drop columns from view».
+DROP VIEW IF EXISTS public.publish_accounts_safe;
+CREATE VIEW public.publish_accounts_safe
 WITH (security_invoker = true) AS
 SELECT id, project_id, platform, account_name, handle, external_account_id, fb_page_id,
        token_expires_at, status, publish_enabled, daily_limit, last_post_at,

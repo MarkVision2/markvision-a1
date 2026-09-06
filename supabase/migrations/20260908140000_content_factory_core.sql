@@ -73,7 +73,10 @@ COMMENT ON COLUMN public.publish_accounts.auth_status IS
 
 GRANT SELECT (capabilities, connection_type, auth_status) ON public.publish_accounts TO authenticated;
 
-CREATE OR REPLACE VIEW public.publish_accounts_safe
+-- DROP + CREATE, а не CREATE OR REPLACE: повторный прогон после более поздней миграции,
+-- добавившей колонки в это же представление, иначе падает с «cannot drop columns from view».
+DROP VIEW IF EXISTS public.publish_accounts_safe;
+CREATE VIEW public.publish_accounts_safe
 WITH (security_invoker = true) AS
 SELECT id, project_id, platform, account_name, handle, external_account_id, fb_page_id,
        token_expires_at, status, publish_enabled, daily_limit, last_post_at,
@@ -126,8 +129,11 @@ CREATE TABLE IF NOT EXISTS public.publish_notifications (
 );
 COMMENT ON TABLE public.publish_notifications IS
   'Центр уведомлений: account.reconnect_required, publication.failed, publication.unverified, account.health_error, system.*. dedupe_key не даёт завести одно и то же дважды.';
+-- Не частичный: PostgREST-upsert (on_conflict=project_id,dedupe_key) не умеет предикат частичного
+-- индекса, а NULL-ключи и так не конфликтуют между собой (NULLS DISTINCT).
+DROP INDEX IF EXISTS public.publish_notifications_dedupe_uniq;
 CREATE UNIQUE INDEX IF NOT EXISTS publish_notifications_dedupe_uniq
-  ON public.publish_notifications (project_id, dedupe_key) WHERE dedupe_key IS NOT NULL;
+  ON public.publish_notifications (project_id, dedupe_key);
 CREATE INDEX IF NOT EXISTS publish_notifications_project_idx
   ON public.publish_notifications (project_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS publish_notifications_unread_idx

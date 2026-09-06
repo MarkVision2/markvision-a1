@@ -413,7 +413,7 @@ BEGIN
     INSERT INTO public.publish_notifications (project_id, kind, severity, title, body, entity_type, entity_id, dedupe_key)
     VALUES (NEW.project_id, 'campaign.completed', 'info', 'Кампания завершена: ' || NEW.name,
             'Очередь контента исчерпана или период закончился; открытых заданий не осталось.', 'publish_campaign', NEW.id, 'campaign:' || NEW.id || ':completed')
-    ON CONFLICT (project_id, dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING;
+    ON CONFLICT (project_id, dedupe_key) DO NOTHING;
   END IF;
   RETURN NEW;
 END;
