@@ -51,6 +51,8 @@ const GRAPH_FB = "https://graph.facebook.com/v21.0";
 const GRAPH_THREADS = "https://graph.threads.net/v1.0";
 /** За сколько дней до истечения обновляем long-lived токен. */
 const TOKEN_REFRESH_DAYS = 10;
+/** Метка в last_error для отказов ежедневного автопродления TikTok/YouTube. */
+const REFRESH_ERROR_PREFIX = "автопродление:";
 
 /**
  * Обновление long-lived токена. Instagram Login: graph.instagram.com/refresh_access_token
@@ -263,12 +265,15 @@ async function checkTokens(admin: SupabaseClient) {
     .select("*").in("status", ["active", "limited"]);
   // Ошибку БД возвращаем наружу, а не глотаем: пустой ответ и «таблицы нет» —
   // разные вещи, и диагностика готовности должна их различать.
-  if (error) return { checked: 0, token_expired: 0, expiring_soon: 0, accounts: [], error: error.message };
+  if (error) return { checked: 0, token_expired: 0, expiring_soon: 0, refreshed: 0, refresh_errors: [], accounts: [], error: error.message };
   const accounts = (data ?? []) as PublishAccount[];
 
   const dead: PublishAccount[] = [];
   const expiring: PublishAccount[] = [];
   let refreshed = 0;
+  // Нефатальные отказы refresh (сеть, ключи приложения, ответ без токена): без
+  // этого списка «refreshed: 0» в ответе ничего не объясняет.
+  const refreshErrors: { id: string; account_name: string; platform: string; error: string }[] = [];
   const soon = Date.now() + TOKEN_WARN_DAYS * 86_400_000;
   const refreshBefore = Date.now() + TOKEN_REFRESH_DAYS * 86_400_000;
 
@@ -290,6 +295,13 @@ async function checkTokens(admin: SupabaseClient) {
       else if (!fresh.error) {
         refreshed++;
         if (fresh.expiresAt) account.token_expires_at = fresh.expiresAt;
+        if (account.last_error?.startsWith(REFRESH_ERROR_PREFIX)) {
+          await admin.from("publish_accounts").update({ last_error: null }).eq("id", account.id);
+        }
+      } else {
+        refreshErrors.push({ id: account.id, account_name: account.account_name, platform: account.platform, error: fresh.error });
+        console.error(`[publish-monitor] автопродление ${account.platform} «${account.account_name}»: ${fresh.error}`);
+        await admin.from("publish_accounts").update({ last_error: `${REFRESH_ERROR_PREFIX} ${fresh.error}` }).eq("id", account.id);
       }
       if (account.token_expires_at && new Date(account.token_expires_at).getTime() < soon) expiring.push(account);
       continue;
@@ -373,6 +385,7 @@ async function checkTokens(admin: SupabaseClient) {
     token_expired: dead.length,
     expiring_soon: expiring.length,
     refreshed,
+    refresh_errors: refreshErrors,
     accounts: dead.map((a) => ({ id: a.id, account_name: a.account_name, platform: a.platform })),
   };
 }
