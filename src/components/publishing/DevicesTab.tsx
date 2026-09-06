@@ -98,6 +98,11 @@ export function DevicesTab() {
     return m;
   }, [phones]);
   const sharedProxies = [...perProxy.entries()].filter(([, n]) => n > 1);
+  // Опасна не сама общая запись прокси, а одновременная работа: включённые телефоны
+  // выходят с одного адреса в один момент, и площадка видит их как один источник.
+  const sharedOnline = [...perProxy.keys()].filter(
+    (ip) => (phones ?? []).filter((p) => p.proxyIp === ip && p.status === 4).length > 1,
+  );
 
   return (
     <Card>
@@ -151,11 +156,18 @@ export function DevicesTab() {
               <Badge variant="outline">с аккаунтом {busyCount}</Badge>
             </div>
 
-            {sharedProxies.length > 0 && (
-              <p className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-sm text-amber-700 dark:text-amber-500">
-                {sharedProxies.map(([ip, n]) => `${n} устройства на одном IP ${ip}`).join("; ")}.
-                Площадка увидит их как один источник и свяжет аккаунты между собой. Для сети нужен
-                свой прокси на каждый телефон — или мобильный со сменой IP по ссылке между сессиями.
+            {sharedOnline.length > 0 ? (
+              <p className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+                Сейчас несколько телефонов включены одновременно на одном адресе ({sharedOnline.join(", ")}).
+                Площадка видит их как один источник и связывает аккаунты. Выключите лишние и работайте
+                по очереди.
+              </p>
+            ) : sharedProxies.length > 0 && (
+              <p className="rounded-md border p-3 text-sm text-muted-foreground">
+                {sharedProxies.map(([ip, n]) => `${n} устройства на прокси ${ip}`).join("; ")}.
+                Это нормально, если включать их по очереди: у мобильного прокси адрес меняется со
+                временем, и аккаунты выходят с разных IP. Одновременно включать не стоит — тогда все
+                они окажутся на одном адресе.
               </p>
             )}
 
@@ -186,7 +198,7 @@ export function DevicesTab() {
                         <TableCell className="text-sm">
                           {p.proxyIp
                             ? (
-                              <span className={perProxy.get(p.proxyIp)! > 1 ? "text-amber-700 dark:text-amber-500" : ""}>
+                              <span className={perProxy.get(p.proxyIp)! > 1 ? "text-muted-foreground" : ""}>
                                 {p.proxyIp}{p.country ? ` · ${p.country}` : ""}
                                 {perProxy.get(p.proxyIp)! > 1 && " · общий"}
                               </span>

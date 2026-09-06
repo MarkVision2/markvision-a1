@@ -31,6 +31,8 @@ vi.mock("@/lib/accountDevices", () => ({
   createPhones: (...a: unknown[]) => createPhones(...a),
   addProxy: vi.fn(),
   phoneScreen: (...a: unknown[]) => phoneScreen(...a),
+  phoneApps: vi.fn().mockResolvedValue({ installed: [], catalog: [] }),
+  installApp: vi.fn(),
   phoneInput: (...a: unknown[]) => phoneInput(...a),
   phoneOpenUrl: vi.fn(),
 }));
@@ -163,25 +165,45 @@ describe("окно телефона", () => {
     await waitFor(() => expect(phoneInput).toHaveBeenCalledWith("p1", "1001", expect.objectContaining({ kind: "tap" })));
   });
 
-  it("у выключенного телефона экран не снимается, а объясняет почему", async () => {
+  it("выключенный телефон предлагает включить прямо в окне", async () => {
     render(<DevicesTab />);
     await screen.findByText("CP-2");
     fireEvent.click(screen.getAllByTitle("Сначала включите телефон")[0]);
     expect(await screen.findByText(/Телефон выключен/)).toBeInTheDocument();
     expect(phoneScreen).not.toHaveBeenCalled();
+    // Кнопка включения здесь же — не нужно закрывать окно и искать её в списке.
+    fireEvent.click(screen.getByRole("button", { name: /Включить телефон/ }));
+    await waitFor(() => expect(setPhonePower).toHaveBeenCalledWith("p1", "1002", true));
+  });
+
+  it("загружающийся телефон честно говорит, что ждать около минуты", async () => {
+    listPhones.mockResolvedValue([{ ...freePhone, status: 3, statusText: "загружается" }]);
+    render(<DevicesTab />);
+    await screen.findByText("CP-2");
+    fireEvent.click(screen.getByTitle("Сначала включите телефон"));
+    expect(await screen.findByText(/загружается — обычно около минуты/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Включить телефон/ })).not.toBeInTheDocument();
   });
 });
 
 describe("общий IP у нескольких устройств", () => {
-  it("предупреждает, что площадка свяжет аккаунты между собой", async () => {
-    // Оба телефона на одном прокси — типичная ситуация, когда прокси куплен один.
+  it("выключенные телефоны на одном прокси — спокойная подсказка про очередь", async () => {
     listPhones.mockResolvedValue([
-      withAccount,
+      { ...withAccount, status: 2, statusText: "выключен" },
       { ...freePhone, proxyId: "p1", proxyIp: "212.8.248.20", country: "KZ" },
     ]);
     render(<DevicesTab />);
-    expect(await screen.findByText(/2 устройства на одном IP 212\.8\.248\.20/)).toBeInTheDocument();
+    expect(await screen.findByText(/включать их по очереди/)).toBeInTheDocument();
     expect(screen.getAllByText(/· общий/).length).toBe(2);
+  });
+
+  it("два включённых на одном адресе — уже ошибка, а не подсказка", async () => {
+    listPhones.mockResolvedValue([
+      withAccount,
+      { ...freePhone, status: 4, statusText: "работает", proxyId: "p1", proxyIp: "212.8.248.20", country: "KZ" },
+    ]);
+    render(<DevicesTab />);
+    expect(await screen.findByText(/включены одновременно на одном адресе/)).toBeInTheDocument();
   });
 
   it("у каждого свой IP — предупреждения нет", async () => {

@@ -20,6 +20,8 @@
  *   screen        — снимок экрана телефона (ссылка на картинку)
  *   input         — тап, свайп, текст, клавиша — как палец по экрану
  *   open_url      — открыть ссылку в браузере телефона (например, подключение аккаунта)
+ *   apps          — что стоит на телефоне и что можно поставить
+ *   install_app   — поставить приложение нужной версии
  *   attach        — привязать телефон к аккаунту (одно устройство = один аккаунт)
  *   detach        — отвязать
  *   power         — включить / выключить телефон (по phone_id или по аккаунту)
@@ -259,6 +261,57 @@ Deno.serve(async (req) => {
         if (res?.downUrl) return json({ ok: true, url: res.downUrl });
       }
       return json({ error: "Снимок готовится дольше обычного — повторите" }, 504);
+    }
+
+    if (action === "apps" || action === "install_app") {
+      let phoneId = String(body.phone_id ?? "");
+      if (!phoneId) {
+        const account = await loadAccount(String(body.account_id ?? ""), projectId);
+        if (!account?.device_phone_id) return json({ error: "Не указан телефон" }, 400);
+        phoneId = account.device_phone_id;
+      }
+      const id = Number(phoneId);
+
+      if (action === "install_app") {
+        const appVersionId = String(body.app_version_id ?? "");
+        if (!appVersionId) return json({ error: "Не указана версия приложения" }, 400);
+        await phonegridCall(cfg, "/cloudphone/app/install", { id, appVersionId });
+        return json({ ok: true });
+      }
+
+      const installed = await phonegridCall<Record<string, unknown>[]>(cfg, "/cloudphone/app/installedList", { id });
+      // Каталог сужаем до площадок, с которыми работает платформа: остальное на телефоне не нужно.
+      const wanted = Object.values(WARMUP_TEMPLATES).map((t) => t.packageName);
+      const catalog = await phonegridCall<{ dataList?: Record<string, unknown>[] }>(
+        cfg, "/cloudphone/app/page", { pageNo: 1, pageSize: 50, appName: "" },
+      );
+      const apps = (catalog.dataList ?? [])
+        .filter((a) => wanted.includes(String(a.packageName)))
+        .map((a) => {
+          const pkg = String(a.packageName);
+          // Версия под сценарий прогрева: ставим сразу её, иначе позже придётся
+          // переустанавливать приложение и вход в аккаунт слетит.
+          const tpl = Object.values(WARMUP_TEMPLATES).find((t) => t.packageName === pkg);
+          return {
+            appName: String(a.appName ?? ""),
+            packageName: pkg,
+            warmupVersion: tpl?.requiredVersion ?? null,
+            warmupVersionId: tpl?.appVersionId ?? null,
+            versions: ((a.appVersionList as Record<string, unknown>[]) ?? []).slice(0, 8).map((v) => ({
+              id: String(v.id ?? ""),
+              version: String(v.versionName ?? ""),
+            })),
+          };
+        });
+      return json({
+        ok: true,
+        installed: (installed ?? []).map((a) => ({
+          appName: String(a.appName ?? ""),
+          packageName: String(a.packageName ?? ""),
+          version: String(a.versionName ?? ""),
+        })),
+        catalog: apps,
+      });
     }
 
     if (action === "attach" || action === "detach") {

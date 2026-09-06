@@ -154,6 +154,28 @@ export async function deviceStatus(projectId: string, accountId: string): Promis
   return await call<DeviceStatus>("warmup_status", projectId, { account_id: accountId });
 }
 
+export interface PhoneApps {
+  installed: { appName: string; packageName: string; version: string }[];
+  catalog: {
+    appName: string;
+    packageName: string;
+    /** Версия, которую требует сценарий прогрева — ставим сразу её. */
+    warmupVersion: string | null;
+    warmupVersionId: string | null;
+    versions: { id: string; version: string }[];
+  }[];
+}
+
+/** Что стоит на телефоне и что можно поставить. */
+export async function phoneApps(projectId: string, phoneId: string): Promise<PhoneApps> {
+  return await call<PhoneApps>("apps", projectId, { phone_id: phoneId });
+}
+
+/** Установка занимает до минуты; телефон при этом должен быть включён. */
+export async function installApp(projectId: string, phoneId: string, appVersionId: string): Promise<void> {
+  await call("install_app", projectId, { phone_id: phoneId, app_version_id: appVersionId });
+}
+
 /** Снимок экрана телефона: ссылка на картинку в хранилище PhoneGrid (кадр готовится ~5 секунд). */
 export async function phoneScreen(projectId: string, phoneId: string): Promise<string> {
   const r = await call<{ url: string }>("screen", projectId, { phone_id: phoneId });

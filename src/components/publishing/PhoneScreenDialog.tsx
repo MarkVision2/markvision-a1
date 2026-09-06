@@ -19,7 +19,10 @@ import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Circle, Globe, Loader2, RefreshCw, Square } from "lucide-react";
 import { toast } from "sonner";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
-import { phoneInput, phoneOpenUrl, phoneScreen, type DevicePhone, type PhoneKey } from "@/lib/accountDevices";
+import {
+  installApp, listPhones, phoneApps, phoneInput, phoneOpenUrl, phoneScreen, setPhonePower,
+  type DevicePhone, type PhoneApps, type PhoneKey,
+} from "@/lib/accountDevices";
 
 /** Экран устройства в пикселях — по нему пересчитываем клик в координаты тапа. */
 const SCREEN = { width: 1080, height: 2400 };
@@ -37,6 +40,11 @@ export function PhoneScreenDialog({
   const [error, setError] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
+  const [apps, setApps] = useState<PhoneApps | null>(null);
+  // Статус живёт своей жизнью: телефон включается около минуты, и окно должно
+  // это показывать, а не замирать на «выключен».
+  const [status, setStatus] = useState(phone.status);
+  const [statusText, setStatusText] = useState(phone.statusText);
   const imgRef = useRef<HTMLImageElement>(null);
 
   const refresh = useCallback(async () => {
@@ -52,9 +60,43 @@ export function PhoneScreenDialog({
     }
   }, [projectId, phone.id]);
 
+  const syncStatus = useCallback(async () => {
+    if (!projectId) return phone.status;
+    try {
+      const fresh = (await listPhones(projectId)).find((p) => p.id === phone.id);
+      if (fresh) {
+        setStatus(fresh.status);
+        setStatusText(fresh.statusText);
+        return fresh.status;
+      }
+    } catch {
+      /* статус не обновился — покажем прежний */
+    }
+    return phone.status;
+  }, [projectId, phone.id, phone.status]);
+
+  const loadApps = useCallback(async () => {
+    if (!projectId) return;
+    try {
+      setApps(await phoneApps(projectId, phone.id));
+    } catch {
+      /* каталог не критичен: экран и ввод работают без него */
+    }
+  }, [projectId, phone.id]);
+
   useEffect(() => {
-    if (open && phone.status === 4) void refresh();
-  }, [open, phone.status, refresh]);
+    if (!open) return;
+    if (status === 4) {
+      void refresh();
+      void loadApps();
+      return;
+    }
+    // Пока телефон загружается — опрашиваем статус, чтобы экран появился сам.
+    if (status === 3) {
+      const t = setInterval(() => void syncStatus(), 10_000);
+      return () => clearInterval(t);
+    }
+  }, [open, status, refresh, loadApps, syncStatus]);
 
   /** Действие на телефоне и сразу свежий кадр — иначе не видно, что получилось. */
   const send = async (fn: () => Promise<unknown>) => {
@@ -83,7 +125,23 @@ export function PhoneScreenDialog({
 
   const key = (k: PhoneKey) => void send(() => phoneInput(projectId!, phone.id, { kind: "key", key: k }));
 
-  const off = phone.status !== 4;
+  const off = status !== 4;
+  const booting = status === 3;
+
+  /** Включение прямо из окна: искать кнопку в списке — лишний шаг. */
+  const powerOn = async () => {
+    if (!projectId) return;
+    setLoading(true);
+    try {
+      await setPhonePower(projectId, phone.id, true);
+      toast.success("Включаем — телефон поднимется примерно за минуту");
+      await syncStatus();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -91,7 +149,7 @@ export function PhoneScreenDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {phone.name}
-            <Badge variant={off ? "secondary" : "default"}>{phone.statusText}</Badge>
+            <Badge variant={off ? "secondary" : "default"}>{statusText}</Badge>
             {phone.proxyIp && <Badge variant="outline">{phone.proxyIp}</Badge>}
           </DialogTitle>
           <DialogDescription>
@@ -101,9 +159,26 @@ export function PhoneScreenDialog({
         </DialogHeader>
 
         {off ? (
-          <p className="py-10 text-center text-sm text-muted-foreground">
-            Телефон выключен — включите его в списке устройств, и экран появится здесь.
-          </p>
+          <div className="space-y-3 py-10 text-center">
+            {booting ? (
+              <>
+                <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />
+                <p className="text-sm text-muted-foreground">
+                  Телефон загружается — обычно около минуты. Экран появится сам.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Телефон выключен. Включите его — и увидите экран прямо здесь.
+                </p>
+                <Button size="sm" disabled={loading} onClick={() => void powerOn()}>
+                  {loading && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+                  Включить телефон
+                </Button>
+              </>
+            )}
+          </div>
         ) : (
           <div className="flex gap-4">
             <div className="relative w-[280px] shrink-0 overflow-hidden rounded-xl border bg-muted">
@@ -165,6 +240,43 @@ export function PhoneScreenDialog({
                   Пароли и коды вводите здесь же — они остаются внутри телефона, платформа их не хранит.
                 </p>
               </div>
+
+              {apps && (
+                <div className="space-y-1.5 border-t pt-3">
+                  <label className="text-sm font-medium">Приложения</label>
+                  {apps.installed.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {apps.installed.map((a) => (
+                        <Badge key={a.packageName} variant="outline">{a.appName} {a.version}</Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">Пока ничего не установлено.</p>
+                  )}
+                  <div className="flex flex-wrap gap-1.5">
+                    {apps.catalog.filter((c) => !apps.installed.some((i) => i.packageName === c.packageName)).map((c) => (
+                      <Button
+                        key={c.packageName} size="sm" variant="outline"
+                        disabled={loading || !c.warmupVersionId}
+                        title={c.warmupVersion
+                          ? `Поставим версию ${c.warmupVersion} — её требует сценарий прогрева`
+                          : "Для этой площадки версия под прогрев ещё не выяснена"}
+                        onClick={() => void send(async () => {
+                          await installApp(projectId!, phone.id, c.warmupVersionId!);
+                          toast.success(`${c.appName} ставится — займёт до минуты`);
+                          setTimeout(() => void loadApps(), 30_000);
+                        })}
+                      >
+                        Поставить {c.appName}
+                      </Button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Ставим сразу версию под прогрев — иначе позже придётся переустанавливать
+                    приложение, и вход в аккаунт слетит.
+                  </p>
+                </div>
+              )}
 
               <div className="space-y-1.5 border-t pt-3">
                 <label className="text-sm font-medium">Открыть ссылку в браузере телефона</label>
