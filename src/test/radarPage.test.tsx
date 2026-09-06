@@ -164,10 +164,20 @@ describe("Radar page", () => {
     fireEvent.click(screen.getByTestId("funnel-used"));
     await waitFor(() => expect(screen.getByRole("tab", { name: /Идеи/ })).toHaveAttribute("aria-selected", "true"));
     // Фильтр «В плане» включён: единственная идея — «Новая», список пуст.
-    expect(screen.getByText(/Идей пока нет/)).toBeTruthy();
+    expect(screen.getByText("Идей со статусом «В плане» пока нет.")).toBeTruthy();
   });
 
   const openIdeas = () => fireEvent.mouseDown(screen.getByRole("tab", { name: /Идеи/ }), { button: 0 });
+
+  it("идеи: поиск сужает список, пустой результат предлагает сбросить фильтры", async () => {
+    renderPage();
+    openIdeas();
+    expect(await screen.findByText("Три ошибки при отбеливании")).toBeTruthy();
+    fireEvent.change(screen.getByRole("textbox", { name: "Поиск по идеям" }), { target: { value: "нет такого" } });
+    expect(screen.getByText("Под эти фильтры идей нет.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Сбросить нишу и поиск" }));
+    expect(screen.getByText("Три ошибки при отбеливании")).toBeTruthy();
+  });
 
   it("карточка идеи показывает оценку и хук", () => {
     renderPage();

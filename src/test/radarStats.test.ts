@@ -3,7 +3,7 @@
  * (src/lib/radarStats.ts) — X-фактор, норма просмотров, фильтры, сортировки.
  */
 import { describe, expect, it } from "vitest";
-import type { RadarPost, RadarSource } from "@/lib/radarClient";
+import type { Idea, RadarPost, RadarSource } from "@/lib/radarClient";
 import {
   authorStats,
   DEFAULT_TREND_FILTER,
@@ -17,7 +17,7 @@ import {
   normViews,
   primaryMetric,
   usualMetric,
-  xTone, mediaTypeLabel, radarFunnel, bestPost, nicheCount, xFactorBuckets, nextSteps } from "@/lib/radarStats";
+  xTone, mediaTypeLabel, radarFunnel, bestPost, nicheCount, xFactorBuckets, nextSteps, filterIdeas, ideaNiches } from "@/lib/radarStats";
 
 const NOW = Date.parse("2026-09-05T12:00:00.000Z");
 
@@ -230,5 +230,31 @@ describe("сводка: распределение X-фактора и «что 
     expect(nextSteps(null, 0)[0]).toMatchObject({ key: "sources", target: { tab: "add-source" } });
     const calm = { sources: 1, posts_total: 12, posts_unanalyzed: 0, ideas_new: 0, ideas_approved: 0, posts_viral: 0 } as unknown as Parameters<typeof nextSteps>[0];
     expect(nextSteps(calm, 1)).toEqual([expect.objectContaining({ key: "done", target: { tab: "runs" } })]);
+  });
+});
+
+describe("идеи: фильтр и ниши", () => {
+  const mk = (id: string, over: Partial<Idea>): Idea => ({
+    id, title: `Идея ${id}`, hook: null, angle: null, niche: null, script_draft: null, structure: null, source_post_ids: [],
+    score: 60, status: "new", target_group_id: null, content_item_id: null, outcome_score: null, created_at: "", ...over,
+  });
+  const ideas = [
+    mk("a", { niche: "отели", score: 70, hook: "Вы переплачиваете за номер" }),
+    mk("b", { niche: "отели", score: 90, status: "approved" }),
+    mk("c", { niche: "стоматология", score: 55, status: "used", angle: "домашнее отбеливание" }),
+    mk("d", { niche: " ", score: 40, status: "rejected" }),
+  ];
+
+  it("ideaNiches: по убыванию частоты, пустые ниши не считаются", () => {
+    expect(ideaNiches(ideas)).toEqual([{ niche: "отели", count: 2 }, { niche: "стоматология", count: 1 }]);
+  });
+
+  it("filterIdeas: статус, ниша, поиск по названию/хуку/углу; сортировка по оценке", () => {
+    expect(filterIdeas(ideas, { status: "all", niche: null, query: "" }).map((i) => i.id)).toEqual(["b", "a", "c", "d"]);
+    expect(filterIdeas(ideas, { status: "approved", niche: null, query: "" }).map((i) => i.id)).toEqual(["b"]);
+    expect(filterIdeas(ideas, { status: "all", niche: "отели", query: "" }).map((i) => i.id)).toEqual(["b", "a"]);
+    expect(filterIdeas(ideas, { status: "all", niche: null, query: "переплач" }).map((i) => i.id)).toEqual(["a"]);
+    expect(filterIdeas(ideas, { status: "all", niche: null, query: "ОТБЕЛИВ" }).map((i) => i.id)).toEqual(["c"]);
+    expect(filterIdeas(ideas, { status: "used", niche: "отели", query: "" })).toEqual([]);
   });
 });
