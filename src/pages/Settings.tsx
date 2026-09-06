@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
-import { Camera, CheckCircle2, Edit2, Eye, Globe, GitBranch, KeyRound, Loader2, MessageCircle, Music2, Phone, Plus, RefreshCw, Search, TableProperties, Trash2, UserCircle2, Users2, XCircle } from "lucide-react";
+import { Camera, CheckCircle2, Clapperboard, Edit2, Eye, Globe, GitBranch, KeyRound, Loader2, MessageCircle, Music2, Phone, Plus, RefreshCw, Search, TableProperties, Trash2, UserCircle2, Users2, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +25,7 @@ import { LossReasonsSettings } from "@/components/settings/LossReasonsSettings";
 import { MetricLabelsSettings } from "@/components/settings/MetricLabelsSettings";
 import { ClientDashTokensSettings } from "@/components/settings/ClientDashTokensSettings";
 import { ApiKeysSettings } from "@/components/settings/ApiKeysSettings";
+import { ContentPipelineSettings } from "@/components/settings/ContentPipelineSettings";
 import { InstagramOrganicSettings } from "@/components/settings/InstagramOrganicSettings";
 import { MetaTokensSettings } from "@/components/settings/MetaTokensSettings";
 import { FacebookConnect } from "@/components/settings/FacebookConnect";
@@ -55,7 +56,7 @@ const ROLE_COLOR: Record<string, string> = {
 };
 
 const SETTINGS_TABS = [
-  "team", "profile", "pipelines", "loss", "metrics-labels", "api",
+  "team", "profile", "pipelines", "loss", "metrics-labels", "api", "content-pipeline",
   "telephony", "whatsapp", "site", "inbound", "ig-organic", "meta-tokens", "google-ads", "tiktok", "clientview",
 ] as const;
 
@@ -69,6 +70,7 @@ const PROJECT_NAV: Array<{ tab: SettingsTab; title: string; icon: LucideIcon }> 
   { tab: "loss", title: "Причины отказа", icon: XCircle },
   { tab: "metrics-labels", title: "Показатели", icon: TableProperties },
   { tab: "api", title: "API и MCP", icon: KeyRound },
+  { tab: "content-pipeline", title: "Контент-конвейер", icon: Clapperboard },
 ];
 
 const CONNECTION_NAV: Array<{
@@ -166,7 +168,7 @@ export default function Settings() {
     profile: "disconnected",
     pipelines: "disconnected",
     loss: "disconnected",
-    "metrics-labels": "disconnected", api: "disconnected",
+    "metrics-labels": "disconnected", api: "disconnected", "content-pipeline": "disconnected",
     telephony: "checking",
     whatsapp: "checking",
     site: "checking",
@@ -564,6 +566,8 @@ export default function Settings() {
           {activeTab === "metrics-labels" && <MetricLabelsSettings />}
 
           {activeTab === "api" && <ApiKeysSettings />}
+
+          {activeTab === "content-pipeline" && <ContentPipelineSettings />}
 
           {activeTab === "telephony" && (
             <div className="space-y-4">
