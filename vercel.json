@@ -26,5 +26,5 @@
       "destination": "/index.html"
     }
   ],
-  "ignoreCommand": "git log -1 --pretty=%B | grep -q '\\[vercel-deploy\\]' && exit 1 || exit 0"
+  "ignoreCommand": "[ \"$VERCEL_GIT_COMMIT_REF\" = \"main\" ] && git log -1 --pretty=%B | grep -q '\\[vercel-deploy\\]' && exit 1 || exit 0"
 }
