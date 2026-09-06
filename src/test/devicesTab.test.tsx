@@ -5,7 +5,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { DevicesTab } from "@/components/publishing/DevicesTab";
+import { DevicesTab, planReassign } from "@/components/publishing/DevicesTab";
 import type { DevicePhone } from "@/lib/accountDevices";
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -14,6 +14,7 @@ vi.mock("@/hooks/useProjectsStore", () => ({ useProjectsStore: () => ({ activeId
 const listPhones = vi.fn();
 const listFreeAccounts = vi.fn();
 const attachPhone = vi.fn();
+const detachPhone = vi.fn();
 const setPhonePower = vi.fn();
 const runWarmup = vi.fn();
 const deviceOptions = vi.fn();
@@ -24,7 +25,7 @@ vi.mock("@/lib/accountDevices", () => ({
   listPhones: (...a: unknown[]) => listPhones(...a),
   listFreeAccounts: (...a: unknown[]) => listFreeAccounts(...a),
   attachPhone: (...a: unknown[]) => attachPhone(...a),
-  detachPhone: vi.fn(),
+  detachPhone: (...a: unknown[]) => detachPhone(...a),
   setPhonePower: (...a: unknown[]) => setPhonePower(...a),
   runWarmup: (...a: unknown[]) => runWarmup(...a),
   deviceOptions: (...a: unknown[]) => deviceOptions(...a),
@@ -43,6 +44,13 @@ const withAccount: DevicePhone = {
   account: { id: "acc1", account_name: "Клиника Айва", handle: "aiva", platform: "instagram" },
   warmup: { day: 6, ready: false, startedAt: "2026-09-01T00:00:00Z", lastRunAt: null, lastState: "запущен день 6" },
 };
+/** Прогрев ставится на выключенный телефон: RPA включает его сам. */
+const offWithAccount: DevicePhone = {
+  id: "1004", name: "CP-4", status: 2, statusText: "выключен", remark: "",
+  proxyId: "p2", proxyIp: "5.5.5.5", country: "KZ",
+  account: { id: "acc4", account_name: "Четвёртый", handle: "chetvertyy", platform: "instagram", warmup_supported: true },
+  warmup: { day: 3, ready: false, startedAt: "2026-09-03T00:00:00Z", lastRunAt: null, lastState: null },
+};
 const freePhone: DevicePhone = {
   id: "1002", name: "CP-2", status: 2, statusText: "выключен", remark: "",
   proxyId: null, proxyIp: null, country: null, account: null, warmup: null,
@@ -52,6 +60,7 @@ beforeEach(() => {
   listPhones.mockReset().mockResolvedValue([withAccount, freePhone]);
   listFreeAccounts.mockReset().mockResolvedValue([{ id: "acc2", account_name: "Второй", handle: "vtoroy", platform: "instagram" }]);
   attachPhone.mockReset().mockResolvedValue(undefined);
+  detachPhone.mockReset().mockResolvedValue(undefined);
   setPhonePower.mockReset().mockResolvedValue(undefined);
   runWarmup.mockReset().mockResolvedValue({ plan: { day: 6 } });
   deviceOptions.mockReset().mockResolvedValue({
@@ -94,9 +103,10 @@ describe("раздел «Устройства»", () => {
     const powerButtons = screen.getAllByRole("button", { name: /Включить|Выключить/ });
     expect(powerButtons[0]).toBeEnabled();
     expect(powerButtons[1]).toBeEnabled();
-    // А прогревать нечего, пока аккаунт не привязан.
+    // А прогревать нечего: у CP-1 телефон включён (сценарий поднимает его сам),
+    // у CP-2 не привязан аккаунт.
     const warmButtons = screen.getAllByRole("button", { name: "Прогреть" });
-    expect(warmButtons[0]).toBeEnabled();
+    expect(warmButtons[0]).toBeDisabled();
     expect(warmButtons[1]).toBeDisabled();
   });
 
@@ -124,10 +134,33 @@ describe("раздел «Устройства»", () => {
   });
 
   it("прогрев зовётся по аккаунту, а не по телефону", async () => {
+    listPhones.mockResolvedValue([offWithAccount]);
+    render(<DevicesTab />);
+    await screen.findByText("CP-4");
+    fireEvent.click(screen.getByRole("button", { name: "Прогреть" }));
+    await waitFor(() => expect(runWarmup).toHaveBeenCalledWith("p1", "acc4"));
+  });
+
+  it("на включённом телефоне прогрев недоступен — сценарий поднимает его сам", async () => {
+    // Сервер отбивает такую задачу кодом 33309 уже после клика, а телефон к этому
+    // моменту работает и тарифицируется.
     render(<DevicesTab />);
     await screen.findByText("CP-1");
-    fireEvent.click(screen.getAllByRole("button", { name: "Прогреть" })[0]);
-    await waitFor(() => expect(runWarmup).toHaveBeenCalledWith("p1", "acc1"));
+    const btn = screen.getAllByRole("button", { name: "Прогреть" })[0];
+    expect(btn).toBeDisabled();
+    expect(btn).toHaveAttribute("title", expect.stringContaining("выключенном"));
+  });
+
+  it("площадка без сценария прогрева говорит об этом до клика", async () => {
+    listPhones.mockResolvedValue([{
+      ...offWithAccount,
+      account: { ...offWithAccount.account!, platform: "tiktok", warmup_supported: false },
+    }]);
+    render(<DevicesTab />);
+    await screen.findByText("CP-4");
+    const btn = screen.getByRole("button", { name: "Прогреть" });
+    expect(btn).toBeDisabled();
+    expect(btn).toHaveAttribute("title", expect.stringContaining("tiktok"));
   });
 
   it("поиск сужает список", async () => {
@@ -214,5 +247,26 @@ describe("общий IP у нескольких устройств", () => {
     render(<DevicesTab />);
     await screen.findByText("CP-1");
     expect(screen.queryByText(/на одном IP/)).not.toBeInTheDocument();
+  });
+});
+
+describe("перестановка телефона между аккаунтами", () => {
+  // Одно устройство — один аккаунт: уникальный индекс (device_provider, device_phone_id)
+  // отбивал привязку поверх занятого телефона, и перестановка была невозможна.
+  it("занятый телефон сначала освобождается, потом сажает новый аккаунт", () => {
+    expect(planReassign("acc1", "acc2")).toEqual({ kind: "attach", accountId: "acc2", freeFrom: "acc1" });
+  });
+
+  it("свободный телефон привязывается без освобождения", () => {
+    expect(planReassign(null, "acc2")).toEqual({ kind: "attach", accountId: "acc2", freeFrom: null });
+  });
+
+  it("«Свободен» отвязывает, а на свободном телефоне не делает ничего", () => {
+    expect(planReassign("acc1", "__none")).toEqual({ kind: "detach", accountId: "acc1" });
+    expect(planReassign(null, "__none")).toEqual({ kind: "noop" });
+  });
+
+  it("повторный выбор того же аккаунта — не действие", () => {
+    expect(planReassign("acc1", "acc1")).toEqual({ kind: "noop" });
   });
 });

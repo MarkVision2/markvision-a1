@@ -43,6 +43,37 @@ function WarmupBar({ day, ready }: { day: number; ready: boolean }) {
   );
 }
 
+/** Что делать при смене аккаунта у телефона: одно устройство — один аккаунт. */
+export type ReassignPlan =
+  | { kind: "noop" }
+  | { kind: "detach"; accountId: string }
+  | { kind: "attach"; accountId: string; freeFrom: string | null };
+
+/**
+ * Решение о перестановке телефона. Прямая привязка поверх занятого телефона упиралась
+ * в уникальный индекс (device_provider, device_phone_id) и отбивалась ошибкой, поэтому
+ * прежний аккаунт снимаем сами — но только с ведома человека, он теряет устройство.
+ */
+export function planReassign(currentAccountId: string | null, value: string): ReassignPlan {
+  if (value === NONE) return currentAccountId ? { kind: "detach", accountId: currentAccountId } : { kind: "noop" };
+  if (value === currentAccountId) return { kind: "noop" };
+  return { kind: "attach", accountId: value, freeFrom: currentAccountId };
+}
+
+/**
+ * Почему «Прогреть» сейчас нельзя/**
+ * Почему «Прогреть» сейчас нельзя — или null, если можно. Сервер проверяет то же самое,
+ * но узнавать об этом после клика поздно: телефон уже включён и тарифицируется.
+ */
+function warmupBlock(p: DevicePhone): string | null {
+  if (!p.account) return "Сначала привяжите аккаунт — прогревают именно его, а не телефон";
+  if (p.account.warmup_supported === false) {
+    return `Для площадки ${p.account.platform} сценарий прогрева ещё не настроен`;
+  }
+  if (p.status !== 2) return "Прогрев запускается на выключенном телефоне — он включит его сам";
+  return null;
+}
+
 export function DevicesTab() {
   const { activeId: projectId } = useProjectsStore();
   const [phones, setPhones] = useState<DevicePhone[] | null>(null);
@@ -79,6 +110,25 @@ export function DevicesTab() {
     } finally {
       setBusy(null);
     }
+  };
+
+  /** Смена аккаунта у телефона: план считает planReassign, спрашиваем только про перестановку. */
+  const reassign = async (phone: DevicePhone, value: string) => {
+    if (!projectId) return;
+    const plan = planReassign(phone.account?.id ?? null, value);
+    if (plan.kind === "noop") return;
+    if (plan.kind === "detach") {
+      await act(phone.id, "Телефон отвязан", () => detachPhone(projectId, plan.accountId));
+      return;
+    }
+    if (plan.freeFrom && !window.confirm(
+      `Телефон «${phone.name}» сейчас у аккаунта «${phone.account?.account_name}». Переставить на другой? ` +
+      "Прежний аккаунт останется без устройства.",
+    )) return;
+    await act(phone.id, "Телефон привязан", async () => {
+      if (plan.freeFrom) await detachPhone(projectId, plan.freeFrom);
+      await attachPhone(projectId, plan.accountId, phone.id);
+    });
   };
 
   const shown = useMemo(() => {
@@ -209,13 +259,7 @@ export function DevicesTab() {
                           <Select
                             value={p.account?.id ?? NONE}
                             disabled={rowBusy}
-                            onValueChange={(v) => void act(
-                              p.id,
-                              v === NONE ? "Телефон отвязан" : "Телефон привязан",
-                              () => (v === NONE
-                                ? detachPhone(projectId!, p.account!.id)
-                                : attachPhone(projectId!, v, p.id)),
-                            )}
+                            onValueChange={(v) => void reassign(p, v)}
                           >
                             <SelectTrigger className="h-8 w-[13rem]"><SelectValue placeholder="Свободен" /></SelectTrigger>
                             <SelectContent>
@@ -256,11 +300,13 @@ export function DevicesTab() {
                             >
                               {p.status === 4 ? "Выключить" : "Включить"}
                             </Button>
+                            {/* Прогрев ставится на выключенный телефон и только там, где
+                                есть готовый сценарий: иначе PhoneGrid отклонял задачу уже
+                                после нажатия, а кнопка выглядела рабочей. */}
                             <Button
-                              size="sm" disabled={rowBusy || !p.account}
-                              title={p.account
-                                ? "Запустить сценарий прогрева на сегодня"
-                                : "Сначала привяжите аккаунт — прогревают именно его, а не телефон"}
+                              size="sm"
+                              disabled={rowBusy || warmupBlock(p) !== null}
+                              title={warmupBlock(p) ?? "Запустить сценарий прогрева на сегодня"}
                               onClick={() => void act(p.id, "Прогрев запущен", () => runWarmup(projectId!, p.account!.id))}
                             >
                               Прогреть

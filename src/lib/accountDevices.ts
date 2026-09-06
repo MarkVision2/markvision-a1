@@ -15,6 +15,8 @@ export interface DeviceAccountRef {
   account_name: string;
   handle: string | null;
   platform: string;
+  /** Есть ли готовый сценарий прогрева под площадку (приходит в списке телефонов). */
+  warmup_supported?: boolean;
 }
 
 export interface DevicePhone {

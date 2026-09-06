@@ -56,6 +56,27 @@ const admin = createClient(
 );
 
 const PAGE = { pageNo: 1, pageSize: 100 };
+/** Сколько страниц готовы прочитать: PhoneGrid отдаёт по 100 записей за раз. */
+const MAX_PAGES = 10;
+
+/**
+ * Постраничное чтение списков PhoneGrid. Одна страница молча обрезала сеть на сотом
+ * телефоне: список выглядел полным, а телефоны за ним просто не существовали для платформы.
+ */
+async function phonegridPages<T = Record<string, unknown>>(
+  cfg: NonNullable<ReturnType<typeof phonegridConfig>>,
+  path: string,
+  extra: Record<string, unknown> = {},
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let pageNo = 1; pageNo <= MAX_PAGES; pageNo++) {
+    const data = await phonegridCall<{ dataList?: T[] }>(cfg, path, { ...extra, pageNo, pageSize: PAGE.pageSize });
+    const list = data.dataList ?? [];
+    out.push(...list);
+    if (list.length < PAGE.pageSize) break;
+  }
+  return out;
+}
 
 interface AccountRow {
   id: string;
@@ -109,8 +130,7 @@ Deno.serve(async (req) => {
 
   try {
     if (action === "phones") {
-      const data = await phonegridCall<{ dataList?: Record<string, unknown>[] }>(cfg, "/cloudphone/page", PAGE);
-      const phones = (data.dataList ?? []).map(summarizePhone);
+      const phones = (await phonegridPages(cfg, "/cloudphone/page")).map(summarizePhone);
       const { data: linked } = await admin.from("publish_accounts")
         .select("id, account_name, handle, platform, device_phone_id, warmup_started_at, warmup_last_run_at, warmup_last_state")
         .eq("project_id", projectId).not("device_phone_id", "is", null);
@@ -124,7 +144,15 @@ Deno.serve(async (req) => {
           return {
             ...p,
             account: a
-              ? { id: a.id, account_name: a.account_name, handle: a.handle, platform: a.platform }
+              ? {
+                id: a.id,
+                account_name: a.account_name,
+                handle: a.handle,
+                platform: a.platform,
+                // Есть ли готовый сценарий прогрева под площадку: без него кнопка
+                // «Прогреть» звала бы задачу, которую PhoneGrid отклонит.
+                warmup_supported: Boolean(WARMUP_TEMPLATES[String(a.platform)]?.requiredVersion),
+              }
               : null,
             warmup: a
               ? {
@@ -151,19 +179,19 @@ Deno.serve(async (req) => {
     if (action === "options") {
       // Всё, что нужно форме создания устройства: модели, свободные прокси и группы.
       const [proxies, groups] = await Promise.all([
-        phonegridCall<{ dataList?: Record<string, unknown>[] }>(cfg, "/proxyInfo/page", { ...PAGE, isCloudPhoneProxy: true }),
-        phonegridCall<{ dataList?: Record<string, unknown>[] }>(cfg, "/envgroup/page", PAGE),
+        phonegridPages(cfg, "/proxyInfo/page", { isCloudPhoneProxy: true }),
+        phonegridPages(cfg, "/envgroup/page"),
       ]);
       return json({
         ok: true,
         models: PHONE_MODELS,
-        proxies: (proxies.dataList ?? []).map((p) => ({
+        proxies: proxies.map((p) => ({
           id: String(p.id ?? ""),
           name: String(p.proxyName ?? ""),
           ip: String(p.proxyIp ?? ""),
           country: (p.countryCode as string) ?? null,
         })),
-        groups: (groups.dataList ?? []).map((g) => ({ id: String(g.id ?? ""), name: String(g.groupName ?? "") })),
+        groups: groups.map((g) => ({ id: String(g.id ?? ""), name: String(g.groupName ?? "") })),
       });
     }
 
@@ -378,11 +406,14 @@ Deno.serve(async (req) => {
       if (action === "warmup_status") {
         let history: unknown[] = [];
         if (account.device_phone_id) {
-          const data = await phonegridCall<{ dataList?: Record<string, unknown>[] }>(
-            cfg, "/cloudphone/rpa/subTask/page", { pageNo: 1, pageSize: 10 },
-          );
-          history = (data.dataList ?? [])
+          // Список RPA-прогонов общий на кабинет и фильтра по телефону не имеет: десяти
+          // последних записей хватало ровно до второго устройства — дальше история
+          // этого телефона оказывалась пустой, хотя прогревы шли. Читаем шире и
+          // отбираем свои, оставляя последние десять.
+          const runs = await phonegridPages<Record<string, unknown>>(cfg, "/cloudphone/rpa/subTask/page");
+          history = runs
             .filter((s) => String(s.cloudPhoneId ?? "") === account.device_phone_id)
+            .slice(0, 10)
             .map((s) => ({
               startedAt: s.triggerTime,
               finishedAt: s.endTime,
