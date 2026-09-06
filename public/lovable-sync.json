@@ -1,7 +1,7 @@
 {
-  "git_sha": "827fcda",
-  "git_sha_full": "827fcdac670a07d625e7d27b211817833b49ac2e",
-  "updated_at": "2026-09-06T10:06:24+04:00",
-  "label": "fix(publish-monitor): показывать причину неудачного автопродления TikTok/YouTube",
+  "git_sha": "eddc24a",
+  "git_sha_full": "eddc24a78b846ac752a8f628fa7e13aaf69f0284",
+  "updated_at": "2026-09-06T10:12:07+04:00",
+  "label": "fix(publish): обрезать пробелы в ключах приложения при автопродлении токена",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
