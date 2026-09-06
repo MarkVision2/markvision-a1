@@ -41,11 +41,15 @@ export async function ensureFreshToken(
   const margin = account.platform === "threads" ? 10 * 86_400 : 600;
   if (!tokenNeedsRefresh(account.token_expires_at, Date.now(), margin)) return { token };
   const env = (globalThis as { Deno?: { env: { get(k: string): string | undefined } } }).Deno?.env;
+  // trim обязателен: в Supabase Secrets значение почти всегда приезжает с переводом
+  // строки, и площадка отвечает invalid_client — подключение (publish-oauth) секрет
+  // обрезает, а продление без trim ломалось на том же ключе.
+  const secret = (k: string) => env?.get(k)?.trim() ?? "";
   const creds = account.platform === "tiktok"
-    ? { clientId: env?.get("TIKTOK_CLIENT_KEY") ?? "", clientSecret: env?.get("TIKTOK_CLIENT_SECRET") ?? "" }
+    ? { clientId: secret("TIKTOK_CLIENT_KEY"), clientSecret: secret("TIKTOK_CLIENT_SECRET") }
     : account.platform === "youtube"
-    ? { clientId: env?.get("GOOGLE_OAUTH_CLIENT_ID") ?? "", clientSecret: env?.get("GOOGLE_OAUTH_CLIENT_SECRET") ?? "" }
-    : { clientId: env?.get("THREADS_APP_ID") ?? "", clientSecret: env?.get("THREADS_APP_SECRET") ?? "" };
+    ? { clientId: secret("GOOGLE_OAUTH_CLIENT_ID"), clientSecret: secret("GOOGLE_OAUTH_CLIENT_SECRET") }
+    : { clientId: secret("THREADS_APP_ID"), clientSecret: secret("THREADS_APP_SECRET") };
   let refreshToken: string | null = account.platform === "threads" ? token : null;
   if (account.platform !== "threads") {
     try { refreshToken = await decryptSecret(account.refresh_token_encrypted); } catch { refreshToken = null; }
