@@ -190,10 +190,29 @@ async function feedOwnPost(admin: SupabaseClient, d: Due, m: Metrics, ctx: Accou
   return true;
 }
 
-async function collect(admin: SupabaseClient, limit: number) {
-  const { data, error } = await admin.rpc("post_metrics_due", { p_limit: limit });
-  if (error) return { due: 0, collected: 0, failed: 0, error: error.message };
-  const due = (data ?? []) as Due[];
+/**
+ * Явный список заданий (Routine Engine, publish-tasks): точка r<N>m от публикации.
+ * Только published-задания с id поста; чужие/неопубликованные пропускаются.
+ */
+async function dueForJobs(admin: SupabaseClient, jobIds: string[], checkpoint: string): Promise<Due[]> {
+  if (!/^(h1|h6|d1|d3|d7|manual|r\d{1,6}m)$/.test(checkpoint)) return [];
+  const { data } = await admin.from("publish_jobs")
+    .select("id, project_id, account_id, platform, external_post_id, status, metrics_unavailable_reason")
+    .in("id", jobIds.slice(0, 100)).eq("status", "published").not("external_post_id", "is", null);
+  return ((data ?? []) as { id: string; project_id: string; account_id: string; platform: string; external_post_id: string; metrics_unavailable_reason: string | null }[])
+    .filter((j) => !j.metrics_unavailable_reason)
+    .map((j) => ({ job_id: j.id, project_id: j.project_id, account_id: j.account_id, platform: j.platform, external_post_id: j.external_post_id, checkpoint }));
+}
+
+async function collect(admin: SupabaseClient, limit: number, explicit?: { jobIds: string[]; checkpoint: string }) {
+  let due: Due[];
+  if (explicit) {
+    due = await dueForJobs(admin, explicit.jobIds, explicit.checkpoint);
+  } else {
+    const { data, error } = await admin.rpc("post_metrics_due", { p_limit: limit });
+    if (error) return { due: 0, collected: 0, failed: 0, error: error.message };
+    due = (data ?? []) as Due[];
+  }
   const deadline = Date.now() + WALL_CLOCK_BUDGET_MS;
   const cache = new Map<string, AccountCtx>();
   const projects = new Set<string>();
@@ -271,8 +290,10 @@ Deno.serve(async (req) => {
 
   const body = await req.json().catch(() => ({}));
   const limit = Math.min(Math.max(Number(body?.limit ?? 200), 1), 500);
+  const jobIds = Array.isArray(body?.job_ids) ? body.job_ids.map(String).filter(Boolean) : [];
+  const explicit = jobIds.length ? { jobIds, checkpoint: String(body?.checkpoint ?? "manual") } : undefined;
   try {
-    return json({ ok: true, ...(await collect(admin, limit)) });
+    return json({ ok: true, ...(await collect(admin, limit, explicit)) });
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : String(e) }, 500);
   }

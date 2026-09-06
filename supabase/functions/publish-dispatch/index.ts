@@ -66,7 +66,8 @@ Deno.serve(async (req) => {
     if (job.status === "processing" && job.locked_at && Date.now() - Date.parse(job.locked_at) < 10 * 60_000) {
       return json({ success: false, status: "processing", error: "задание сейчас выполняет воркер очереди" }, 409);
     }
-    if (job.status === "published" || job.status === "cancelled") {
+    if (job.status === "published" || job.status === "cancelled" || job.status === "verifying") {
+      // verifying — площадка уже приняла пост, ждём подтверждения чтением; повтор дал бы дубль.
       return json({ success: false, status: job.status, error: `задание уже в статусе ${job.status}` }, 409);
     }
     await admin.from("publish_jobs").update({ status: "processing", locked_at: new Date().toISOString(), attempts: job.attempts + 1 }).eq("id", job.id);
@@ -74,7 +75,7 @@ Deno.serve(async (req) => {
 
     const result = await runPublishJob(admin, job, { budgetMs: 25_000 });
     return json({
-      success: result.status === "published",
+      success: result.status === "published" || result.status === "verifying",
       status: result.status,
       external_post_id: result.externalPostId ?? null,
       external_post_url: result.externalPostUrl ?? null,

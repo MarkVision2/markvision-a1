@@ -29,7 +29,35 @@ export type ApiRoute =
   | { name: "publication_get"; id: string }
   | { name: "publication_jobs_create"; id: string }
   | { name: "job_cancel"; id: string }
-  | { name: "job_retry"; id: string };
+  | { name: "job_retry"; id: string }
+  | { name: "job_get"; id: string }
+  | { name: "analytics_content" }
+  | { name: "analytics_content_item"; id: string }
+  | { name: "analytics_account"; id: string }
+  | { name: "notifications_list" }
+  | { name: "notification_read"; id: string }
+  | { name: "campaigns_list" }
+  | { name: "campaign_create" }
+  | { name: "campaign_get"; id: string }
+  | { name: "campaign_update"; id: string }
+  | { name: "campaign_items_add"; id: string }
+  | { name: "campaign_items_remove"; id: string }
+  | { name: "campaign_status"; id: string; status: string }
+  | { name: "campaign_plan"; id: string }
+  | { name: "webhooks_list" }
+  | { name: "webhook_create" }
+  | { name: "webhook_update"; id: string }
+  | { name: "webhook_delete"; id: string }
+  | { name: "webhook_deliveries"; id: string }
+  | { name: "report_daily" }
+  | { name: "members_list" }
+  | { name: "member_role_set"; id: string }
+  | { name: "routines_list" }
+  | { name: "routine_create" }
+  | { name: "routine_update"; id: string }
+  | { name: "routine_delete"; id: string }
+  | { name: "routine_assign"; id: string }
+  | { name: "tasks_list" };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -92,10 +120,84 @@ export function matchRoute(method: string, pathname: string): ApiRoute | null {
     return null;
   }
 
-  if (a === "jobs" && m === "POST" && seg.length === 3 && UUID.test(b ?? "")) {
-    if (c === "cancel") return { name: "job_cancel", id: b };
-    if (c === "retry") return { name: "job_retry", id: b };
+  if (a === "jobs" && UUID.test(b ?? "")) {
+    if (m === "GET" && seg.length === 2) return { name: "job_get", id: b };
+    if (m === "POST" && seg.length === 3 && c === "cancel") return { name: "job_cancel", id: b };
+    if (m === "POST" && seg.length === 3 && c === "retry") return { name: "job_retry", id: b };
+    return null;
   }
+
+  if (a === "analytics" && m === "GET") {
+    if (seg.length === 2 && b === "content") return { name: "analytics_content" };
+    if (seg.length === 3 && b === "content" && UUID.test(c ?? "")) return { name: "analytics_content_item", id: c };
+    if (seg.length === 3 && b === "accounts" && UUID.test(c ?? "")) return { name: "analytics_account", id: c };
+    return null;
+  }
+
+  if (a === "notifications") {
+    if (m === "GET" && seg.length === 1) return { name: "notifications_list" };
+    if (m === "POST" && seg.length === 3 && UUID.test(b ?? "") && c === "read") return { name: "notification_read", id: b };
+    return null;
+  }
+
+  if (a === "campaigns") {
+    if (seg.length === 1) {
+      if (m === "GET") return { name: "campaigns_list" };
+      if (m === "POST") return { name: "campaign_create" };
+      return null;
+    }
+    if (!UUID.test(b ?? "")) return null;
+    if (seg.length === 2) {
+      if (m === "GET") return { name: "campaign_get", id: b };
+      if (m === "POST") return { name: "campaign_update", id: b };
+      return null;
+    }
+    if (m !== "POST" || seg.length !== 3) return null;
+    if (c === "items") return { name: "campaign_items_add", id: b };
+    if (c === "items-remove") return { name: "campaign_items_remove", id: b };
+    if (c === "plan") return { name: "campaign_plan", id: b };
+    if (["start", "pause", "complete", "archive"].includes(c ?? "")) {
+      const status = c === "start" ? "active" : c === "pause" ? "paused" : c === "complete" ? "completed" : "archived";
+      return { name: "campaign_status", id: b, status };
+    }
+    return null;
+  }
+
+  if (a === "webhooks") {
+    if (seg.length === 1) {
+      if (m === "GET") return { name: "webhooks_list" };
+      if (m === "POST") return { name: "webhook_create" };
+      return null;
+    }
+    if (!UUID.test(b ?? "")) return null;
+    if (m === "POST" && seg.length === 2) return { name: "webhook_update", id: b };
+    if (m === "POST" && seg.length === 3 && c === "delete") return { name: "webhook_delete", id: b };
+    if (m === "GET" && seg.length === 3 && c === "deliveries") return { name: "webhook_deliveries", id: b };
+    return null;
+  }
+
+  if (a === "reports" && m === "GET" && seg.length === 2 && b === "daily") return { name: "report_daily" };
+
+  if (a === "members") {
+    if (m === "GET" && seg.length === 1) return { name: "members_list" };
+    if (m === "POST" && seg.length === 3 && UUID.test(b ?? "") && c === "role") return { name: "member_role_set", id: b };
+    return null;
+  }
+
+  if (a === "routines") {
+    if (seg.length === 1) {
+      if (m === "GET") return { name: "routines_list" };
+      if (m === "POST") return { name: "routine_create" };
+      return null;
+    }
+    if (m !== "POST" || !UUID.test(b ?? "")) return null;
+    if (seg.length === 2) return { name: "routine_update", id: b };
+    if (seg.length === 3 && c === "delete") return { name: "routine_delete", id: b };
+    if (seg.length === 3 && c === "assign") return { name: "routine_assign", id: b };
+    return null;
+  }
+
+  if (a === "tasks" && m === "GET" && seg.length === 1) return { name: "tasks_list" };
   return null;
 }
 
@@ -113,7 +215,31 @@ export function requiredScope(route: ApiRoute): ApiScope {
     case "metrics":
     case "publications_list":
     case "publication_get":
+    case "job_get":
+    case "analytics_content":
+    case "analytics_content_item":
+    case "analytics_account":
+    case "notifications_list":
+    case "notification_read":
+    case "campaigns_list":
+    case "campaign_get":
+    case "webhooks_list":
+    case "webhook_deliveries":
+    case "report_daily":
+    case "members_list":
+    case "routines_list":
+    case "tasks_list":
       return "read";
+    case "member_role_set":
+    case "routine_create":
+    case "routine_update":
+    case "routine_delete":
+    case "routine_assign":
+      return "manage";
+    case "webhook_create":
+    case "webhook_update":
+    case "webhook_delete":
+      return "manage";
     case "account_update":
     case "accounts_health_check":
     case "group_create":
@@ -144,6 +270,8 @@ export interface PublicationInput {
   hashtags: string[];
   duration_sec: number | null;
   target: PublicationTarget | null;
+  /** Ключ идемпотентности клиента: тот же client_ref → то же видео, без второго набора заданий. */
+  client_ref: string | null;
 }
 
 const MODES = ["now", "drip", "daily"] as const;
@@ -264,6 +392,7 @@ export function parsePublicationInput(body: unknown): { ok: true; input: Publica
       hashtags,
       duration_sec: duration,
       target,
+      client_ref: b.client_ref != null && String(b.client_ref).trim() ? String(b.client_ref).trim().slice(0, 200) : null,
     },
   };
 }

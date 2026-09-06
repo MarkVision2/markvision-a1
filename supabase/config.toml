@@ -216,6 +216,14 @@ verify_jwt = false
 [functions.publish-accounts]
 verify_jwt = false
 
+# publish-tasks: задачи рутин (health/metrics вокруг публикации); зовёт pg_cron с x-automation-key.
+[functions.publish-tasks]
+verify_jwt = false
+
+# publish-webhooks: доставка исходящих вебхуков; зовёт pg_cron с x-automation-key.
+[functions.publish-webhooks]
+verify_jwt = false
+
 [functions.publish-worker]
 verify_jwt = false
 

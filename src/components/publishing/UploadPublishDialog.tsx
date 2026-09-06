@@ -48,6 +48,11 @@ function errMsg(e: unknown, fallback = "Ошибка"): string {
   return e instanceof Error ? e.message : fallback;
 }
 
+/** Варианты подписи: непустые строки, без дублей. */
+export function splitLines(s: string): string[] {
+  return Array.from(new Set(s.split(/\r?\n/).map((x) => x.trim()).filter(Boolean)));
+}
+
 function splitCsv(s: string): string[] {
   return s.split(",").map((x) => x.trim()).filter(Boolean);
 }
@@ -75,6 +80,9 @@ export function UploadPublishDialog({ open, onClose, pub, video = null }: { open
   const [groupId, setGroupId] = useState<string>(NO_GROUP);
   const [title, setTitle] = useState("");
   const [caption, setCaption] = useState("");
+  // Варианты подписи, по одному на строку: планировщик раздаёт их аккаунтам по кругу.
+  const [variants, setVariants] = useState("");
+  const [variantsOpen, setVariantsOpen] = useState(false);
   const [hashtags, setHashtags] = useState("");
   const [mode, setMode] = useState<PublishMode>("drip");
   // Пусто — «с этой минуты»; иначе время Алматы из <input type=datetime-local>
@@ -102,6 +110,8 @@ export function UploadPublishDialog({ open, onClose, pub, video = null }: { open
     setGroupId(NO_GROUP);
     setTitle(video?.title ?? "");
     setCaption(video?.base_caption ?? "");
+    setVariants("");
+    setVariantsOpen(false);
     setHashtags((video?.hashtags ?? []).join(", "));
     setMode("drip");
     setStartAt("");
@@ -260,16 +270,23 @@ export function UploadPublishDialog({ open, onClose, pub, video = null }: { open
     try {
       const r = await pub.publishVideo({
         ...(video ? { video_id: video.id, repost: true } : { file_url: url }),
-        title: title.trim() || undefined,
-        caption: caption.trim() || undefined,
+        // Повтор: пустая строка тоже уходит — так оператор может стереть текст карточки
+        // (сервер пишет "" как null); при новой заливке пустое поле просто не шлём.
+        title: repost ? title.trim() : title.trim() || undefined,
+        caption: repost ? caption.trim() : caption.trim() || undefined,
         hashtags: splitCsv(hashtags).map((h) => h.replace(/^#/, "")),
+        // Варианты шлём только когда они заданы: при повторе пустой список стёр бы старые.
+        ...(splitLines(variants).length ? { caption_variants: splitLines(variants) } : {}),
         mode,
         account_ids: preview.eligible.map((a) => a.id),
         ...(group ? { group_id: group.id } : {}),
         ...(startIso ? { start_at: startIso } : {}),
       });
       if (!r.created) {
-        const m = `Заданий не создано${r.reason ? `: ${r.reason}` : ""}`;
+        // Повтор: created = 0 без причины значит, что во всех аккаунтах ролик уже стоит в очереди.
+        const m = repost && r.skipped && !r.reason
+          ? `Новых заданий нет — во всех ${r.skipped} аккаунтах этот ролик уже стоит в очереди`
+          : `Заданий не создано${r.reason ? `: ${r.reason}` : ""}`;
         setErr(m);
         toast.error(m);
         return;
@@ -328,6 +345,29 @@ export function UploadPublishDialog({ open, onClose, pub, video = null }: { open
                   <span className="tabular-nums">{caption.length} симв.</span>
                 </div>
                 </div>
+                {/* Один текст в десятки аккаунтов площадки метят как спам — варианты по кругу. */}
+                {variantsOpen ? (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium text-muted-foreground">Варианты подписи — по одному на строку</Label>
+                    <Textarea
+                      rows={4}
+                      className="min-h-24 resize-none bg-background/60"
+                      value={variants}
+                      placeholder={"Первый вариант текста\nВторой вариант текста"}
+                      aria-label="Варианты подписи"
+                      onChange={(e) => setVariants(e.target.value)}
+                    />
+                    <div className="text-xs text-muted-foreground">
+                      {splitLines(variants).length
+                        ? `${splitLines(variants).length} вариант(а) — аккаунты получат их по кругу, основной текст не используется`
+                        : "Пусто — все аккаунты получат основной текст"}
+                    </div>
+                  </div>
+                ) : (
+                  <Button type="button" variant="link" className="h-auto p-0 text-xs" onClick={() => setVariantsOpen(true)}>
+                    Разные подписи для разных аккаунтов…
+                  </Button>
+                )}
               </section>
 
               {/* Видео */}

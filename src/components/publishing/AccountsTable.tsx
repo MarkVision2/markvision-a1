@@ -679,7 +679,9 @@ function AccountRow({
 
   const commitLimit = () => {
     const n = Number(limit);
-    if (!Number.isInteger(n) || n < 0) {
+    // Сервер хранит 1..200; ноль он поднял бы до 1 молча — для «не публиковать» есть выключатель.
+    if (!Number.isInteger(n) || n < 1) {
+      if (limit !== "" && n < 1) toast.error("Лимит — от 1 в день; чтобы не публиковать, выключите аккаунт переключателем");
       setLimit(String(a.daily_limit));
       return;
     }
@@ -795,14 +797,17 @@ function AccountRow({
             <div className="px-2 pb-1.5">
               <Input
                 type="number"
-                min={0}
+                min={1}
+                max={200}
                 aria-label={`Лимит в день для ${a.account_name}`}
                 className="h-8"
                 value={limit}
                 disabled={disabled}
                 onChange={(e) => setLimit(e.target.value)}
                 onBlur={commitLimit}
-                onKeyDown={(e) => e.key === "Enter" && commitLimit()}
+                // Меню Radix перехватывает стрелки и Home/End для навигации по пунктам —
+                // внутри поля они должны менять число.
+                onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") commitLimit(); }}
               />
             </div>
 

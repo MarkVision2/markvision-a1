@@ -8,7 +8,7 @@
  * (сервер отдаёт до 500). Ошибка живёт в подсказке, а не третьей строкой в ячейке.
  */
 import { useMemo, useState } from "react";
-import { ExternalLink, Loader2, RotateCcw, Search, X, XCircle } from "lucide-react";
+import { ExternalLink, ListTree, Loader2, RotateCcw, Search, X, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -19,12 +19,13 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { initials } from "@/components/publishing/PostPreview";
 import { videoLabel } from "@/components/publishing/VideosTab";
 import type { UsePublishing } from "@/hooks/usePublishing";
-import { jobActions, jobErrorHint, JOB_STATUS_META, PLATFORM_META, type PublishJob, type PublishJobStatus } from "@/lib/publishingClient";
+import { JobDetailDialog } from "@/components/publishing/JobDetailDialog";
+import { jobActions, jobErrorHint, JOB_STATUS_META, PLATFORM_META, VERIFICATION_META, type PublishJob, type PublishJobStatus } from "@/lib/publishingClient";
 import { fmtExact, fmtRelative } from "@/lib/publishingFormat";
 import { cn } from "@/lib/utils";
 
 /** Статусы в порядке разбора очереди: сначала то, что требует внимания. */
-const ORDER: PublishJobStatus[] = ["failed", "manual_review", "retry", "processing", "pending", "published", "cancelled"];
+const ORDER: PublishJobStatus[] = ["failed", "manual_review", "retry", "processing", "verifying", "pending", "published", "cancelled"];
 
 /** Подстрока без учёта регистра по аккаунту, нику, площадке, видео и ошибке. */
 export function jobMatches(j: PublishJob, q: string): boolean {
@@ -62,6 +63,7 @@ function JobOutcome({ job }: { job: PublishJob }) {
   if (!raw && !hint) {
     const idle: Partial<Record<PublishJobStatus, string>> = {
       pending: "Ждёт своего слота — воркер заберёт задание, когда время подойдёт.",
+      verifying: "Пост ушёл, идёт проверка: видим ли мы его у площадки.",
       retry: "Повторная попытка запланирована.",
       processing: stale ? "Воркер не отвечает больше 10 минут — задание можно повторить." : "Воркер публикует прямо сейчас.",
       manual_review: "Площадка не приняла публикацию автоматически — нужен ручной разбор.",
@@ -83,7 +85,11 @@ function JobOutcome({ job }: { job: PublishJob }) {
         <div className="space-y-1 text-xs">
           {hint && <div className="font-medium">{hint.title}</div>}
           {raw && <div className="break-words text-muted-foreground">Ответ площадки: {raw}</div>}
-          {job.error_code && <div className="text-muted-foreground">Код: {job.error_code}</div>}
+          {(job.error_code || job.error_class) && (
+            <div className="text-muted-foreground">
+              Код: {[job.error_class, job.error_code].filter(Boolean).join(" / ")}
+            </div>
+          )}
           {hint && <div>{hint.action}</div>}
           {job.attempts > 0 && <div className="text-muted-foreground">Попыток: {job.attempts}</div>}
         </div>
@@ -94,6 +100,7 @@ function JobOutcome({ job }: { job: PublishJob }) {
 
 export function JobsTab({ pub }: { pub: UsePublishing }) {
   const busy = pub.busy != null;
+  const [openJob, setOpenJob] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const act = async (label: string, fn: () => Promise<unknown>) => {
     try {
@@ -224,8 +231,9 @@ export function JobsTab({ pub }: { pub: UsePublishing }) {
                   <TableHead className="h-9 w-[120px] whitespace-nowrap">Когда</TableHead>
                   <TableHead className="h-9 w-[100px]">Пост</TableHead>
                   {/* Действия липнут к правому краю: на узком экране «Повторить»
-                      уезжало за границу прокрутки, и строку было нечем чинить. */}
-                  <TableHead className="sticky right-0 z-10 h-9 w-[280px] bg-card shadow-[inset_1px_0_0_hsl(var(--border))]" />
+                      уезжало за границу прокрутки, и строку было нечем чинить.
+                      Попытки переехали в подсказку «Что происходит». */}
+                  <TableHead className="sticky right-0 z-10 h-9 w-[320px] bg-card shadow-[inset_1px_0_0_hsl(var(--border))]" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -235,7 +243,23 @@ export function JobsTab({ pub }: { pub: UsePublishing }) {
                   return (
                     <TableRow key={j.id}>
                       <TableCell className="py-2">
-                        <Badge variant="outline" className={cn("whitespace-nowrap border-transparent font-medium", st.cls)}>{st.label}</Badge>
+                        {/* Отказ разобран в колонке «Что происходит», здесь —
+                            только статус и отметка проверки поста у площадки. */}
+                        <div className="flex items-center gap-1">
+                          <Badge variant="outline" className={cn("whitespace-nowrap border-transparent font-medium", st.cls)}>{st.label}</Badge>
+                          {j.status === "published" && j.verification_status && j.verification_status !== "verified" && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span tabIndex={0} className={cn("cursor-help text-xs", VERIFICATION_META[j.verification_status].cls)}>
+                                  {j.verification_status === "unverified" ? "⚠" : "·"}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                {VERIFICATION_META[j.verification_status].label}: {VERIFICATION_META[j.verification_status].hint}
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="py-2">
                         <div className="flex items-center gap-2.5">
@@ -310,6 +334,18 @@ export function JobsTab({ pub }: { pub: UsePublishing }) {
                         )}
                       </TableCell>
                       <TableCell className="sticky right-0 z-10 whitespace-nowrap bg-card py-2 text-right shadow-[inset_1px_0_0_hsl(var(--border))]">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="sm" variant="ghost" className="h-7 px-2 text-muted-foreground"
+                              aria-label={`Трасса ${acc?.account_name ?? ""}`}
+                              onClick={() => setOpenJob(j.id)}
+                            >
+                              <ListTree className="h-3.5 w-3.5" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Шаги задания: что делал воркер и что ответила площадка</TooltipContent>
+                        </Tooltip>
                         {jobActions(j).retry && (
                           <Button
                             size="sm" variant="ghost" className="h-7 px-2" disabled={busy}
@@ -344,6 +380,7 @@ export function JobsTab({ pub }: { pub: UsePublishing }) {
             </Button>
           </div>
         )}
+        <JobDetailDialog projectId={pub.projectId} jobId={openJob} onClose={() => setOpenJob(null)} />
       </div>
     </TooltipProvider>
   );

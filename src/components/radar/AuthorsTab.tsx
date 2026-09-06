@@ -23,9 +23,9 @@ interface AuthorsTabProps {
 
 function Stat({ label, value, strong = false }: { label: string; value: React.ReactNode; strong?: boolean }) {
   return (
-    <div>
-      <div className="text-[11px] text-muted-foreground">{label}</div>
-      <div className={cn("text-base font-semibold tabular-nums", strong && "text-success")}>{value}</div>
+    <div className="min-w-0">
+      <div className="text-[11px] leading-tight text-muted-foreground">{label}</div>
+      <div className={cn("truncate text-base font-semibold tabular-nums", strong && "text-success")}>{value}</div>
     </div>
   );
 }
@@ -69,12 +69,12 @@ export function AuthorsTab({ posts, sources, busy, onCrawl, onAddSource, onOpenP
           const src = a.source;
           const crawlBusy = src ? busy === `crawl:${src.id}` : false;
           return (
-            <div key={a.key} className="grid gap-3 rounded-2xl border border-border/60 bg-card p-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,2fr)_auto] lg:items-center">
-              <div className="flex items-start gap-3">
+            <div key={a.key} className="grid min-w-0 gap-3 rounded-2xl border border-border/60 bg-card p-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,2fr)_auto] lg:items-center">
+              <div className="flex min-w-0 items-start gap-3">
                 <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-muted text-xs font-bold tabular-nums">{i + 1}</span>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="truncate font-semibold">@{a.handle}</span>
+                    <span className="min-w-0 max-w-full truncate font-semibold" title={`@${a.handle}`}>@{a.handle}</span>
                     <PlatformChip platform={a.platform} short />
                     {src && <Chip label={SOURCE_KIND_META[src.kind]?.label ?? src.kind} cls={SOURCE_KIND_META[src.kind]?.cls ?? ""} />}
                   </div>
@@ -84,7 +84,7 @@ export function AuthorsTab({ posts, sources, busy, onCrawl, onAddSource, onOpenP
                   </div>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
+              <div className="grid min-w-0 grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
                 <Stat label="Залетевших постов" value={a.viral} strong={a.viral > 0} />
                 <Stat label="Просмотров сверх нормы" value={a.aboveNorm > 0 ? formatCompact(a.aboveNorm) : "—"} />
                 <Stat label="Сила автора" value={a.strength ? formatX(a.strength) : "—"} />

@@ -18,19 +18,29 @@
    `docs/brandbook.md`; безопасные поля 9:16 (верх 220 px, низ 320 px под интерфейс площадки).
 6. Композиция всегда 1080×1920.
 
-## Формат `scenes/<id>.json`
+## Формат `scenes/<id>.json` = пропсы композиции `ReelsAvatar`
 ```json
-{"id":"…","account_id":"…","theme":{"bg":"#…","accent":"#…","text":"#…"},
- "avatar":"avatar/<id>.mp4","words":"avatar/<id>.words.json",
+{"avatar":"avatar/<id>.mp4","fps":30,"totalDurationInFrames":1020,"captions":true,
+ "handle":"@…","audioTrack":null,"music":null,
+ "theme":{"bg":"#…","accent":"#…","text":"#…"},
+ "words":[{"text":"…","from_ms":300,"to_ms":700,"accent":true}],
  "scenes":[{"from_ms":0,"to_ms":4200,"layout":"avatar_full","title":"…"},
-           {"from_ms":4200,"to_ms":14000,"layout":"avatar_bottom","title":"…","bullets":["…"],"visual":"stat|list|quote|compare"}]}
+           {"from_ms":4200,"to_ms":14000,"layout":"avatar_bottom","visual":"stat","value":"92 %","label":"…","title":"…"},
+           {"from_ms":14000,"to_ms":21000,"layout":"avatar_bottom","visual":"list","bullets":["…"]},
+           {"from_ms":21000,"to_ms":27000,"layout":"avatar_circle","visual":"compare","left":"…","right":"…"},
+           {"from_ms":27000,"to_ms":31000,"layout":"content_full","visual":"quote","title":"…","label":"…"}]}
 ```
+`words` вставляются в пропсы содержимым (не путём к файлу), тайминги — в миллисекундах.
+Визуалы: `stat` (крупная цифра + подпись), `list` (до 4 пунктов), `quote` (цитата),
+`compare` (было/стало); без `visual` рисуется заголовок. Образец —
+`remotion/props/reels-avatar.example.json`, превью — `npx remotion studio`, композиция `ReelsAvatar`.
 
 ## Критик сцен (отдельный субагент, `critic.md`)
-Проверяет по каждому ролику: (1) все тезисы из `scripts/<id>.md` имеют сцену — `missing_scene`;
-(2) все цвета из темы аккаунта — `theme_color`; (3) размеры и поля — `size`; (4) круглый
-аватар не под непрозрачным фоном — `overlap`; (5) сумма сцен = длительность аватара ± 100 мс —
-`duration_mismatch`; (6) раскладки только из четырёх. Чинит сам, пишет в `critic.log`.
+Механические проверки — функцией `validateScenes` из `remotion/src/avatarLayout.ts`
+(дыры, перекрытия, чужая раскладка, пустая сцена, расхождение с длительностью аватара,
+размер круга). Смысловые — глазами критика: (1) все тезисы из `scripts/<id>.md` имеют сцену —
+`missing_scene`; (2) все цвета из темы аккаунта — `theme_color`; (3) первая сцена хук,
+последняя CTA; (4) текст на экране не дублирует озвучку дословно. Чинит сам, пишет в `critic.log`.
 
 ## Чек-лист
 - [ ] `scenes/<id>.json` на каждый ролик, валиден против формата.

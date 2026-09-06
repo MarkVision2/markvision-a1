@@ -315,3 +315,64 @@ Deno.test("задание: чужое — 404, своё — отмена чер�
   assertEquals((await handle(req("POST", "/jobs/88888888-8888-4888-8888-888888888888/cancel"), deps)).status, 200);
   assertEquals(calls[0].body, { action: "job_cancel", project_id: PROJECT, job_id: "88888888-8888-4888-8888-888888888888" });
 });
+
+/* ───────────── ядро Phase 1: трасса, аналитика, уведомления, аудит ───────────── */
+
+Deno.test("GET /jobs/:id — чужое задание 404, своё уходит в publish-accounts job_get", async () => {
+  const JOB = "77777777-7777-4777-8777-777777777777";
+  const ALIEN_JOB = "88888888-8888-4888-8888-888888888888";
+  const { deps, calls } = await setup({
+    publish_jobs: [
+      { id: JOB, video_id: VIDEO, project_id: PROJECT, status: "published" },
+      { id: ALIEN_JOB, video_id: VIDEO, project_id: OTHER, status: "published" },
+    ],
+  });
+  assertEquals((await handle(req("GET", `/jobs/${ALIEN_JOB}`, { key: READ_KEY }), deps)).status, 404);
+  assertEquals(calls.length, 0);
+  const ok = await handle(req("GET", `/jobs/${JOB}`, { key: READ_KEY }), deps);
+  assertEquals(ok.status, 200);
+  assertEquals(calls.length, 1);
+  assertMatch(calls[0].url, /publish-accounts$/);
+  assertEquals(calls[0].body.action, "job_get");
+  assertEquals(calls[0].body.job_id, JOB);
+  assertEquals(calls[0].body.project_id, PROJECT);
+});
+
+Deno.test("GET /analytics/content читает витрину только своего проекта; POST — 404 маршрута", async () => {
+  const { deps } = await setup({
+    publish_content_metrics: [
+      { content_id: VIDEO, project_id: PROJECT, title: "Ролик", score: 74, is_winner: true },
+      { content_id: "x", project_id: OTHER, title: "Чужой", score: 99, is_winner: true },
+    ],
+  });
+  const res = await handle(req("GET", "/analytics/content?winners=1", { key: READ_KEY }), deps);
+  assertEquals(res.status, 200);
+  const rows = (await json(res)).content as Row[];
+  assertEquals(rows.length, 1);
+  assertEquals(rows[0].title, "Ролик");
+  assertEquals((await handle(req("POST", "/analytics/content", { key: KEY, body: {} }), deps)).status, 404);
+});
+
+Deno.test("каждый вызов оставляет запись аудита api_request_logs без содержимого параметров", async () => {
+  const { deps, writes } = await setup();
+  const res = await handle(req("GET", "/me?x=1", { key: READ_KEY }), deps);
+  assertEquals(res.status, 200);
+  await new Promise((r) => setTimeout(r, 20)); // аудит пишется без ожидания — даём ему тик
+  const audit = writes.find((w) => w.table === "api_request_logs" && w.op === "insert");
+  assertEquals(Boolean(audit), true);
+  const row = audit!.payload as Row;
+  assertEquals(row.route, "me");
+  assertEquals(row.project_id, PROJECT);
+  assertEquals(row.status, 200);
+  assertMatch(String(row.params_hash), /^[0-9a-f]{64}$/);
+  assertEquals(JSON.stringify(row).includes("x=1"), false);
+});
+
+Deno.test("POST /publications передаёт client_ref в publish-intake", async () => {
+  const { deps, calls } = await setup();
+  const res = await handle(req("POST", "/publications", { body: { file_url: "https://v/x.mp4", client_ref: "order-42" } }), deps);
+  assertEquals(res.status, 200);
+  const intake = calls.find((c) => /publish-intake$/.test(c.url));
+  assertEquals(intake?.body.client_ref, "order-42");
+  assertEquals(intake?.body.project_id, PROJECT);
+});

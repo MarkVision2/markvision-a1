@@ -82,6 +82,57 @@ export function normalizeIngestItem(platform: string, item: Record<string, unkno
   };
 }
 
+/* ───────────────────────────── превью ───────────────────────────── */
+
+/** Bucket Supabase Storage с копиями превью постов (миграция 20260909100000_radar_thumbnails.sql). */
+export const RADAR_THUMBS_BUCKET = "radar-thumbs";
+/** Крупнее — не картинка-превью, а что-то не то; не тащим. */
+export const THUMB_MAX_BYTES = 5 * 1024 * 1024;
+
+const THUMB_EXT_BY_MIME: Record<string, string> = {
+  "image/jpeg": "jpg", "image/jpg": "jpg", "image/pjpeg": "jpg",
+  "image/png": "png", "image/webp": "webp", "image/gif": "gif", "image/avif": "avif",
+};
+
+/** Content-Type ответа CDN → { mime, ext } для загрузки в Storage; null — это не картинка. */
+export function thumbnailMime(contentType: string | null | undefined): { mime: string; ext: string } | null {
+  const mime = String(contentType ?? "").split(";")[0].trim().toLowerCase();
+  const ext = THUMB_EXT_BY_MIME[mime];
+  if (!ext) return null;
+  return { mime: mime === "image/jpg" || mime === "image/pjpeg" ? "image/jpeg" : mime, ext };
+}
+
+/** Путь объекта в bucket: `<project>/<post>.<ext>` — один пост, одно превью, перезапись при пересборе. */
+export function thumbnailObjectPath(projectId: string, postId: string, ext: string): string {
+  return `${projectId}/${postId}.${ext}`;
+}
+
+/**
+ * Ссылка уже ведёт в наш Storage (кэш) — такую не перекачиваем и не
+ * перетираем свежей ссылкой CDN при повторном сборе того же поста.
+ */
+export function isStoredThumbnail(url: string | null | undefined, supabaseUrl: string): boolean {
+  if (!url || !supabaseUrl) return false;
+  let host = "";
+  try {
+    host = new URL(supabaseUrl).host.toLowerCase();
+  } catch {
+    return false;
+  }
+  try {
+    const u = new URL(url);
+    return u.host.toLowerCase() === host && u.pathname.includes(`/storage/v1/object/public/${RADAR_THUMBS_BUCKET}/`);
+  } catch {
+    return false;
+  }
+}
+
+/** Внешняя картинка, которую стоит скопировать: https и не наш Storage. */
+export function needsThumbnailCache(url: string | null | undefined, supabaseUrl: string): boolean {
+  if (!url || !/^https:\/\//i.test(url)) return false;
+  return !isStoredThumbnail(url, supabaseUrl);
+}
+
 /* ───────────────────────────── разбор ───────────────────────────── */
 
 export interface RadarAnalysis {

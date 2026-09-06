@@ -1,5 +1,8 @@
 -- Витрина publish_metrics: просроченные задания и честный счётчик токенов.
 --
+-- Пересоздаётся поверх версии из 20260909150000_content_factory_core.sql
+-- (там verifying добавили в jobs_processing — здесь это сохранено).
+--
 -- 1. jobs_overdue — задания, чей слот прошёл больше 15 минут назад, а они всё
 --    ещё ждут. Крон publish-worker ходит раз в минуту, поэтому живая очередь
 --    даёт здесь ноль; ненулевое значение означает, что разбор встал (умер крон,
@@ -36,7 +39,8 @@ SELECT
       AND j.status IN ('pending', 'retry')
       AND j.scheduled_at < now() - interval '15 minutes'
       AND j.next_attempt_at < now() - interval '15 minutes') AS jobs_overdue,
-  (SELECT count(*) FROM public.publish_jobs j WHERE j.project_id = p.id AND j.status = 'processing') AS jobs_processing,
+  -- verifying — тоже «в работе» (миграция 20260909150000): пост ушёл, идёт проверка.
+  (SELECT count(*) FROM public.publish_jobs j WHERE j.project_id = p.id AND j.status IN ('processing', 'verifying')) AS jobs_processing,
   (SELECT count(*) FROM public.publish_jobs j WHERE j.project_id = p.id AND j.status = 'published' AND j.published_at >= now() - interval '24 hours') AS published_24h,
   (SELECT count(*) FROM public.publish_jobs j WHERE j.project_id = p.id AND j.status = 'failed' AND j.updated_at >= now() - interval '24 hours') AS failed_24h,
   (SELECT count(*) FROM public.publish_jobs j WHERE j.project_id = p.id AND j.status = 'manual_review') AS manual_review,

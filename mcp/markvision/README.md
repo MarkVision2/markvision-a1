@@ -54,6 +54,17 @@ Claude Desktop — тот же блок в `claude_desktop_config.json`.
 | `markvision_create_group`, `markvision_update_group`, `markvision_delete_group` | группы аккаунтов |
 | `markvision_get_settings`, `markvision_update_settings` | пауза проекта, уведомления, бюджеты |
 | `markvision_metrics` | витрины публикаций, радара, аккаунтов |
+| `markvision_get_job` | одно задание: статус, верификация, класс ошибки, трасса шагов воркера, журнал площадки, метрики |
+| `markvision_content_analytics` | аналитика по видео во всех аккаунтах: score 0–100, победители (`winners: true`) |
+| `markvision_content_analytics_item` | одно видео и его публикации по аккаунтам |
+| `markvision_account_analytics` | витрина аккаунта и последние публикации с метриками |
+| `markvision_notifications`, `markvision_notification_read` | центр уведомлений проекта |
+| `markvision_list_campaigns`, `markvision_get_campaign`, `markvision_create_campaign`, `markvision_update_campaign` | кампании: период × аккаунты × правило публикации × очередь контента |
+| `markvision_campaign_add_content`, `markvision_campaign_remove_content`, `markvision_campaign_action` | очередь кампании; start / pause / complete / archive / plan |
+| `markvision_list_webhooks`, `markvision_create_webhook`, `markvision_webhook_deliveries` | подписки на события и их доставки |
+| `markvision_daily_report` | отчёт за сутки |
+| `markvision_list_routines`, `markvision_create_routine`, `markvision_update_routine`, `markvision_assign_routine`, `markvision_list_tasks` | рутины (проверка до публикации, метрики после) и их задачи |
+| `markvision_list_members` | участники проекта и роли |
 
 Типичный диалог: «загрузи `~/Movies/clip.mp4` в MarkVision и опубликуй в группу «Стоматологии» по капле с завтрашнего утра».
 

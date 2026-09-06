@@ -25,7 +25,7 @@ if (!apiUrl) {
 }
 
 const client = new MarkVisionClient({ apiKey, baseUrl: apiUrl });
-const server = new McpServer({ name: "markvision", version: "0.1.0" });
+const server = new McpServer({ name: "markvision", version: "0.4.0" });
 
 type ToolResult = { content: { type: "text"; text: string }[]; isError?: boolean };
 
@@ -244,6 +244,170 @@ server.registerTool("markvision_metrics", {
   description: "Витрины проекта: публикации, радар идей, видео, группы и аккаунты (охваты, просмотры, здоровье).",
   inputSchema: {},
 }, () => run(() => client.metrics()));
+
+server.registerTool("markvision_get_job", {
+  title: "Трасса задания",
+  description:
+    "Одно задание публикации целиком: статус, верификация (verified / unverified / skipped), класс ошибки, " +
+    "шаги воркера по времени (JOB_CLAIMED → AUTH_OK → MEDIA_CREATED → VERIFIED → SUCCESS), сырые записи журнала и снятые метрики.",
+  inputSchema: { job_id: uuid },
+}, ({ job_id }) => run(() => client.job(job_id)));
+
+server.registerTool("markvision_content_analytics", {
+  title: "Аналитика контента",
+  description:
+    "Каждое видео во всех аккаунтах: публикаций, сумма и среднее просмотров, реакции, лучший аккаунт, Performance Score 0–100 " +
+    "и is_winner (верхние 10 % проекта). winners=true — только победители. Основа для решений «что масштабировать».",
+  inputSchema: { limit: z.number().int().min(1).max(200).optional(), winners: z.boolean().optional() },
+}, ({ limit, winners }) => run(() => client.contentAnalytics({ limit, winners })));
+
+server.registerTool("markvision_content_analytics_item", {
+  title: "Аналитика одного видео",
+  description: "Сводка по видео и все его публикации по аккаунтам с последней контрольной точкой метрик и score.",
+  inputSchema: { publication_id: uuid.describe("id видео (publication id из markvision_list_publications)") },
+}, ({ publication_id }) => run(() => client.contentAnalyticsItem(publication_id)));
+
+server.registerTool("markvision_account_analytics", {
+  title: "Аналитика аккаунта",
+  description: "Витрина аккаунта: посты, охват, ER, подписчики, здоровье с причинами — и последние публикации с метриками.",
+  inputSchema: { account_id: uuid },
+}, ({ account_id }) => run(() => client.accountAnalytics(account_id)));
+
+server.registerTool("markvision_notifications", {
+  title: "Уведомления проекта",
+  description: "Центр уведомлений: reconnect аккаунтов, упавшие и неподтверждённые публикации, ручной разбор. unread=true — только непрочитанные.",
+  inputSchema: { limit: z.number().int().min(1).max(200).optional(), unread: z.boolean().optional() },
+}, ({ limit, unread }) => run(() => client.notifications({ limit, unread })));
+
+server.registerTool("markvision_notification_read", {
+  title: "Отметить уведомление прочитанным",
+  description: "Снимает уведомление из непрочитанных.",
+  inputSchema: { notification_id: uuid },
+}, ({ notification_id }) => run(() => client.readNotification(notification_id)));
+
+server.registerTool("markvision_list_campaigns", {
+  title: "Кампании",
+  description: "Кампании проекта с метриками: статус, период, постов в день, очередь контента, заданий/опубликовано/ошибок, просмотры.",
+  inputSchema: {},
+}, () => run(() => client.campaigns()));
+
+server.registerTool("markvision_get_campaign", {
+  title: "Кампания целиком",
+  description: "Кампания, её очередь контента (queued / planned / skipped) и задания по аккаунтам.",
+  inputSchema: { campaign_id: uuid },
+}, ({ campaign_id }) => run(() => client.campaign(campaign_id)));
+
+const campaignShape = {
+  name: z.string().min(1).max(120).optional(),
+  objective: z.string().max(1000).optional(),
+  start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe("YYYY-MM-DD, по умолчанию сегодня"),
+  end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  timezone: z.string().optional().describe("IANA, по умолчанию пояс группы / Asia/Almaty"),
+  group_id: uuid.nullable().optional().describe("Группа аккаунтов (из markvision_list_groups)."),
+  account_ids: z.array(uuid).optional().describe("Явный список аккаунтов (пересекается с группой, если задана)."),
+  posts_per_day: z.number().int().min(1).max(24).optional(),
+  slot_times: z.array(z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/)).optional().describe("Времена публикаций HH:MM; пусто — равномерно 10:00–19:00."),
+  weekdays: z.array(z.number().int().min(1).max(7)).optional().describe("Дни недели 1..7 (пн..вс)."),
+  mode: z.enum(["drip", "now"]).optional().describe("drip — разнести аккаунты по слотам планировщика (по умолчанию); now — все в момент слота."),
+  distribution: z.enum(["fanout", "spread"]).optional().describe("fanout — каждое видео во все аккаунты (по умолчанию); spread — каждое видео в один аккаунт по кругу."),
+};
+
+server.registerTool("markvision_create_campaign", {
+  title: "Создать кампанию",
+  description:
+    "Создаёт кампанию (черновик). Дальше: markvision_campaign_add_content → markvision_campaign_action start. " +
+    "Планировщик сам создаёт задания на сегодня и завтра каждый час по правилу (постов в день × времена × дни недели).",
+  inputSchema: { ...campaignShape, name: z.string().min(1).max(120) },
+}, (input) => run(() => client.createCampaign(input)));
+
+server.registerTool("markvision_update_campaign", {
+  title: "Изменить кампанию",
+  description: "Частичная правка правил кампании (период, аккаунты, постов в день, времена, режим).",
+  inputSchema: { campaign_id: uuid, ...campaignShape },
+}, ({ campaign_id, ...patch }) => run(() => client.updateCampaign(campaign_id, patch)));
+
+server.registerTool("markvision_campaign_add_content", {
+  title: "Добавить контент в кампанию",
+  description: "Ставит видео (publication id из markvision_list_publications / markvision_create_publication) в очередь кампании.",
+  inputSchema: { campaign_id: uuid, video_ids: z.array(uuid).min(1) },
+}, ({ campaign_id, video_ids }) => run(() => client.campaignAddItems(campaign_id, video_ids)));
+
+server.registerTool("markvision_campaign_remove_content", {
+  title: "Убрать контент из кампании",
+  description: "Снимает ещё не запланированные видео из очереди кампании.",
+  inputSchema: { campaign_id: uuid, video_ids: z.array(uuid).min(1) },
+}, ({ campaign_id, video_ids }) => run(() => client.campaignRemoveItems(campaign_id, video_ids)));
+
+server.registerTool("markvision_campaign_action", {
+  title: "Запустить / остановить кампанию",
+  description: "start — активировать и сразу спланировать сегодня и завтра; pause; complete; archive; plan — спланировать ближайшие дни сейчас.",
+  inputSchema: { campaign_id: uuid, action: z.enum(["start", "pause", "complete", "archive", "plan"]) },
+}, ({ campaign_id, action }) => run(() => client.campaignAction(campaign_id, action)));
+
+server.registerTool("markvision_list_webhooks", {
+  title: "Вебхуки проекта",
+  description: "Подписки на события (publication.published / failed / needs_human / unverified, account.reconnect_required, campaign.completed, report.daily).",
+  inputSchema: {},
+}, () => run(() => client.webhooks()));
+
+server.registerTool("markvision_create_webhook", {
+  title: "Создать вебхук",
+  description: "Подписка на события: https-адрес и список событий (или [\"*\"]). Секрет для проверки подписи HMAC возвращается один раз.",
+  inputSchema: { name: z.string().min(1).max(80), url: z.string().url(), events: z.array(z.string()).optional() },
+}, (input) => run(() => client.createWebhook(input)));
+
+server.registerTool("markvision_webhook_deliveries", {
+  title: "Доставки вебхука",
+  description: "Последние доставки: событие, статус (pending / retry / delivered / failed), код ответа, ошибка.",
+  inputSchema: { webhook_id: uuid },
+}, ({ webhook_id }) => run(() => client.webhookDeliveries(webhook_id)));
+
+server.registerTool("markvision_daily_report", {
+  title: "Отчёт за сутки",
+  description: "Сводка проекта за последние 24 часа: аккаунты, запланировано / опубликовано / ошибок, успешность, просмотры за 7 дней, лучший контент.",
+  inputSchema: {},
+}, () => run(() => client.dailyReport()));
+
+server.registerTool("markvision_list_members", {
+  title: "Участники проекта и роли",
+  description: "Кто имеет доступ к проекту и с какой ролью (owner / admin / manager / content_manager / operator / viewer). Роли меняются в интерфейсе владельцем или администратором.",
+  inputSchema: {},
+}, () => run(() => client.members()));
+
+const stepSchema = z.object({
+  action: z.enum(["ACCOUNT_HEALTH_CHECK", "TOKEN_CHECK", "METRICS_SYNC"]),
+  offset_minutes: z.number().int().describe("Минуты относительно публикации: отрицательные — до (проверки), положительные — после (метрики)."),
+});
+
+server.registerTool("markvision_list_routines", {
+  title: "Рутины",
+  description: "Рутины проекта (шаги вокруг публикации: проверка аккаунта до, метрики после) и кому они назначены (группы, аккаунты). is_default — для всех без своей рутины.",
+  inputSchema: {},
+}, () => run(() => client.routines()));
+
+server.registerTool("markvision_create_routine", {
+  title: "Создать рутину",
+  description: "Например IG_STANDARD: ACCOUNT_HEALTH_CHECK −15 мин, METRICS_SYNC +20 мин, +240 мин, +1440 мин. Затем markvision_assign_routine.",
+  inputSchema: { name: z.string().min(1).max(80), description: z.string().max(1000).optional(), steps: z.array(stepSchema).min(1).max(20), is_default: z.boolean().optional() },
+}, (input) => run(() => client.createRoutine(input)));
+
+server.registerTool("markvision_update_routine", {
+  title: "Изменить рутину",
+  description: "Частичная правка: имя, описание, шаги (список целиком), флаг по умолчанию.",
+  inputSchema: { routine_id: uuid, name: z.string().min(1).max(80).optional(), description: z.string().max(1000).optional(), steps: z.array(stepSchema).max(20).optional(), is_default: z.boolean().optional() },
+}, ({ routine_id, ...patch }) => run(() => client.updateRoutine(routine_id, patch)));
+
+server.registerTool("markvision_assign_routine", {
+  title: "Назначить рутину",
+  description: "Рутина → группам аккаунтов и/или отдельным аккаунтам проекта.",
+  inputSchema: { routine_id: uuid, group_ids: z.array(uuid).optional(), account_ids: z.array(uuid).optional() },
+}, ({ routine_id, ...target }) => run(() => client.assignRoutine(routine_id, target)));
+
+server.registerTool("markvision_list_tasks", {
+  title: "Задачи рутин",
+  description: "Очередь задач рутин: проверки аккаунтов до публикации и снятия метрик после — статус pending / running / done / failed / skipped.",
+  inputSchema: { status: z.enum(["pending", "running", "done", "failed", "skipped"]).optional(), limit: z.number().int().min(1).max(500).optional() },
+}, ({ status, limit }) => run(() => client.tasks(status, limit ?? 100)));
 
 const transport = new StdioServerTransport();
 await server.connect(transport);

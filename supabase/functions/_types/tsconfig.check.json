@@ -1,0 +1,49 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true,
+    "types": [],
+    "baseUrl": "../../..",
+    "paths": {
+      "https://esm.sh/@supabase/supabase-js@2.95.0": [
+        "node_modules/@supabase/supabase-js/dist/index.d.cts"
+      ],
+      "https://esm.sh/@supabase/supabase-js@2.49.4": [
+        "node_modules/@supabase/supabase-js/dist/index.d.cts"
+      ]
+    }
+  },
+  "files": [
+    "deno-shim.d.ts",
+    "../_lib/publishRunner.ts",
+    "../_lib/connectors/index.ts",
+    "../_lib/publishTrace.ts",
+    "../_lib/publishPolicy.ts",
+    "../_lib/publishCapabilities.ts",
+    "../_lib/rbac.ts",
+    "../_lib/auth.ts",
+    "../_lib/webhooks.ts",
+    "../publish-worker/index.ts",
+    "../publish-webhooks/index.ts",
+    "../publish-tasks/index.ts",
+    "../publish-monitor/index.ts",
+    "../publish-metrics/index.ts",
+    "../publish-accounts/index.ts",
+    "../publish-intake/index.ts",
+    "../publish-dispatch/index.ts",
+    "../publish-oauth/index.ts",
+    "../api/handler.ts",
+    "../api/index.ts",
+    "../_tests/api_test.ts"
+  ]
+}

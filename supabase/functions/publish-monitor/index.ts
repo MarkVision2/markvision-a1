@@ -33,7 +33,9 @@ import {
   type PublishAccount,
 } from "../_lib/publishing.ts";
 import { ensureFreshToken } from "../_lib/publishRunner.ts";
-import { identityRequest, parseIdentity, tokenNeedsRefresh } from "../_lib/publishOAuth.ts";
+import { identityRequest, isOAuthPlatform, parseIdentity, tokenNeedsRefresh } from "../_lib/publishOAuth.ts";
+import { resolveCapabilities, tokenKindOf } from "../_lib/publishCapabilities.ts";
+import { notifyCenter } from "../_lib/publishTrace.ts";
 import { requireProjectAccess } from "../_lib/auth.ts";
 import { computeHealth } from "../_lib/publishHealth.ts";
 
@@ -206,15 +208,43 @@ async function checkHealth(admin: SupabaseClient, projectId: string | null, acco
       failed30d: o.failed,
       published30d: o.published,
     });
+    // auth_status и возможности — для реестра аккаунтов (Account Registry, docs/ARCHITECTURE.md).
+    const authStatus = probe.alive === false
+      ? "reconnect_required"
+      : tokenNeedsRefresh(account.token_expires_at, Date.now(), 0) && !isOAuthPlatform(account.platform)
+      ? "expired"
+      : tokenNeedsRefresh(account.token_expires_at, Date.now(), TOKEN_WARN_DAYS * 86_400) && !isOAuthPlatform(account.platform)
+      ? "expiring"
+      : "connected";
+    let tokenKind: ReturnType<typeof tokenKindOf> = "unknown";
+    try { tokenKind = tokenKindOf(await decryptSecret(account.access_token_encrypted)); } catch { tokenKind = "unknown"; }
+    const capabilities = resolveCapabilities({
+      platform: account.platform, tokenKind, oauthScope: account.oauth_scope ?? null,
+      hasRefreshToken: Boolean(account.refresh_token_encrypted),
+    });
     await admin.from("publish_accounts").update({
       status: nextStatus,
       health_score: h.score,
       health_reasons: h.reasons,
+      auth_status: authStatus,
+      capabilities,
       // Не удалось достучаться до площадки — не считаем это проверкой.
       ...(probe.alive == null ? {} : { last_checked_at: now }),
       ...(probe.alive === false ? { last_error: probe.reason ?? "токен не проходит проверку — нужен reconnect" } : {}),
     }).eq("id", account.id);
     if (probe.alive === false && account.status !== "token_expired") dead.push(account);
+    if (probe.alive === false) {
+      await notifyCenter(admin, {
+        projectId: account.project_id, kind: "account.reconnect_required", severity: "error",
+        title: `Нужен reconnect: ${account.account_name} (${account.platform})`,
+        body: probe.reason ?? "токен не проходит проверку у площадки",
+        entityType: "publish_account", entityId: account.id, dedupeKey: `account:${account.id}:reconnect`,
+      });
+    } else if (probe.alive === true && account.status === "token_expired") {
+      // Аккаунт ожил — снимаем уведомление, чтобы следующий отказ завёл новое.
+      await admin.from("publish_notifications").update({ read_at: now })
+        .eq("project_id", account.project_id).eq("dedupe_key", `account:${account.id}:reconnect`).is("read_at", null);
+    }
     out.push({ id: account.id, account_name: account.account_name, platform: account.platform, alive: probe.alive, health_score: h.score, reasons: h.reasons });
   }
 
@@ -347,6 +377,76 @@ async function checkTokens(admin: SupabaseClient) {
   };
 }
 
+/** Метка в last_error: по ней монитор отличает свою автопаузу от ручного «ограничен». */
+const SHADOW_MARK = "возможный теневой бан";
+
+interface ShadowRow {
+  account_id: string;
+  project_id: string;
+  account_name: string;
+  platform: string;
+  status: string;
+  last_error: string | null;
+  baseline_views: number | null;
+  recent_views: number | null;
+  ratio: number | null;
+  suspect: boolean;
+}
+
+/**
+ * Теневой бан по просмотрам (publish_shadowban_scan, крон раз в сутки): последние
+ * посты аккаунта собирают в разы меньше его же медианы → status = limited, планировщик
+ * и claim аккаунт не берут, проект получает сообщение. Просмотры вернулись → снимаем
+ * паузу сами, но только со своей пометкой: «ограничен» руками оператора не трогаем.
+ */
+async function checkShadowban(admin: SupabaseClient) {
+  const { data, error } = await admin.rpc("publish_shadowban_scan", {});
+  if (error) return { scanned: 0, limited: 0, restored: 0, error: error.message };
+  const rows = (data ?? []) as ShadowRow[];
+  const limited: ShadowRow[] = [];
+  const restored: ShadowRow[] = [];
+  for (const r of rows) {
+    const pct = r.ratio != null ? Math.round(Number(r.ratio) * 100) : null;
+    if (r.suspect && r.status === "active") {
+      const { error: uErr } = await admin.from("publish_accounts").update({
+        status: "limited",
+        last_error: `просмотры последних постов упали до ${pct ?? "?"} % от обычных (${r.recent_views ?? "?"} против ${r.baseline_views ?? "?"}) — ${SHADOW_MARK}, публикации приостановлены`,
+      }).eq("id", r.account_id);
+      if (!uErr) limited.push(r);
+    } else if (!r.suspect && r.status === "limited" && (r.last_error ?? "").includes(SHADOW_MARK)) {
+      const { error: uErr } = await admin.from("publish_accounts").update({ status: "active", last_error: null }).eq("id", r.account_id);
+      if (!uErr) restored.push(r);
+    }
+  }
+
+  const byProject = new Map<string, { limited: ShadowRow[]; restored: ShadowRow[] }>();
+  for (const r of limited) { const p = byProject.get(r.project_id) ?? { limited: [], restored: [] }; p.limited.push(r); byProject.set(r.project_id, p); }
+  for (const r of restored) { const p = byProject.get(r.project_id) ?? { limited: [], restored: [] }; p.restored.push(r); byProject.set(r.project_id, p); }
+  for (const [projectId, p] of byProject) {
+    const lines: string[] = [];
+    if (p.limited.length) {
+      lines.push(`🕶 Возможный теневой бан — публикации приостановлены (${p.limited.length}):`);
+      for (const r of p.limited) lines.push(`• ${r.account_name} (${r.platform}) — ${r.recent_views ?? "?"} просмотров против обычных ${r.baseline_views ?? "?"}`);
+      lines.push("Проверьте аккаунт вручную; когда просмотры вернутся, пауза снимется сама.");
+    }
+    if (p.restored.length) {
+      lines.push(`✅ Просмотры вернулись, публикации возобновлены (${p.restored.length}): ${p.restored.map((r) => r.account_name).join(", ")}`);
+    }
+    await notifyProject(admin, projectId, lines.join("\n"));
+  }
+
+  return {
+    scanned: rows.length,
+    suspects: rows.filter((r) => r.suspect).length,
+    limited: limited.length,
+    restored: restored.length,
+    accounts: rows.filter((r) => r.suspect).map((r) => ({
+      id: r.account_id, account_name: r.account_name, platform: r.platform,
+      baseline_views: r.baseline_views, recent_views: r.recent_views, ratio: r.ratio,
+    })),
+  };
+}
+
 /** Часовой дайджест по проекту: что опубликовано, что упало, кому нужно внимание. */
 async function sendDigests(admin: SupabaseClient) {
   const since = new Date(Date.now() - 3_600_000).toISOString();
@@ -423,6 +523,120 @@ async function checkErrors(admin: SupabaseClient) {
   };
 }
 
+
+/* ───────────────────────── ежедневный отчёт ───────────────────────── */
+
+export interface DailyReport {
+  project_id: string;
+  project_name: string | null;
+  period_from: string;
+  period_to: string;
+  accounts: { total: number; healthy: number; need_attention: number };
+  jobs: { scheduled: number; published: number; failed: number; waiting: number; success_rate: number | null };
+  views_7d: number;
+  reach_7d: number;
+  top_content: { content_id: string; title: string | null; views_total: number; score: number | null }[];
+}
+
+function fmtInt(n: number): string {
+  return new Intl.NumberFormat("ru-RU").format(Math.round(n));
+}
+
+export function formatDailyReport(r: DailyReport): string {
+  const day = new Date(r.period_to).toLocaleDateString("ru-RU", { day: "2-digit", month: "long", year: "numeric", timeZone: "Asia/Almaty" });
+  const rate = r.jobs.success_rate == null ? "—" : `${r.jobs.success_rate.toFixed(1)}%`;
+  const top = r.top_content.length
+    ? r.top_content.map((c, i) => `${i + 1}. ${c.title ?? c.content_id.slice(0, 8)} — ${fmtInt(c.views_total)} просмотров${c.score != null ? ` · score ${c.score}` : ""}`).join("\n")
+    : "пока нет измеренных публикаций";
+  return [
+    `📊 Отчёт за сутки · ${r.project_name ?? "проект"} · ${day}`,
+    "",
+    `Аккаунты: ${r.accounts.total} · здоровы ${r.accounts.healthy} · внимание ${r.accounts.need_attention}`,
+    `Публикации: запланировано ${r.jobs.scheduled} · опубликовано ${r.jobs.published} · ошибок ${r.jobs.failed} · ждут ${r.jobs.waiting}`,
+    `Успешность: ${rate}`,
+    `Просмотры за 7 дней: ${fmtInt(r.views_7d)} · охват ${fmtInt(r.reach_7d)}`,
+    "",
+    "Лучший контент:",
+    top,
+  ].join("\n");
+}
+
+/**
+ * Отчёт по проекту за последние 24 часа + просмотры за 7 дней + топ контента.
+ * Считается из publish_jobs / publish_accounts / publish_content_metrics; ничего не пишет.
+ */
+async function buildDailyReport(admin: SupabaseClient, projectId: string): Promise<DailyReport> {
+  const to = new Date();
+  const from = new Date(to.getTime() - 86_400_000);
+  const week = new Date(to.getTime() - 7 * 86_400_000).toISOString();
+  const [{ data: project }, { data: accounts }, { data: jobs }, { data: content }, { data: pubs }] = await Promise.all([
+    admin.from("projects").select("name").eq("id", projectId).maybeSingle(),
+    admin.from("publish_accounts").select("status, health_score, publish_enabled").eq("project_id", projectId).neq("status", "disabled"),
+    admin.from("publish_jobs").select("status, scheduled_at, published_at, updated_at").eq("project_id", projectId).gte("updated_at", from.toISOString()),
+    admin.from("publish_content_metrics").select("content_id, title, views_total, score").eq("project_id", projectId)
+      .gt("publications_measured", 0).order("score", { ascending: false, nullsFirst: false }).limit(3),
+    admin.from("publish_publications").select("views, reach").eq("project_id", projectId).gte("published_at", week),
+  ]);
+  const accs = (accounts ?? []) as { status: string; health_score: number | null }[];
+  const rows = (jobs ?? []) as { status: string; scheduled_at: string | null; published_at: string | null }[];
+  const published = rows.filter((j) => j.status === "published" && j.published_at && j.published_at >= from.toISOString()).length;
+  const failed = rows.filter((j) => j.status === "failed").length;
+  const waiting = rows.filter((j) => ["pending", "retry", "processing", "verifying", "manual_review"].includes(j.status)).length;
+  const scheduled = rows.filter((j) => j.scheduled_at && j.scheduled_at >= from.toISOString() && j.scheduled_at < to.toISOString()).length;
+  const decided = published + failed;
+  const views = (pubs ?? []) as { views: number | null; reach: number | null }[];
+  return {
+    project_id: projectId,
+    project_name: (project as { name?: string } | null)?.name ?? null,
+    period_from: from.toISOString(),
+    period_to: to.toISOString(),
+    accounts: {
+      total: accs.length,
+      healthy: accs.filter((a) => a.status === "active" && (a.health_score ?? 0) >= 50).length,
+      need_attention: accs.filter((a) => a.status !== "active" || (a.health_score ?? 0) < 20).length,
+    },
+    jobs: { scheduled, published, failed, waiting, success_rate: decided ? Math.round((published / decided) * 1000) / 10 : null },
+    views_7d: views.reduce((s, v) => s + (v.views ?? 0), 0),
+    reach_7d: views.reduce((s, v) => s + (v.reach ?? 0), 0),
+    top_content: ((content ?? []) as DailyReport["top_content"]).map((c) => ({ ...c, views_total: Number(c.views_total ?? 0), score: c.score == null ? null : Number(c.score) })),
+  };
+}
+
+/**
+ * mode: "daily_report" — отчёт каждому проекту с подключёнными аккаунтами: Telegram
+ * (чат дайджеста или чат проекта), уведомление report.daily (через него — вебхуки).
+ * С project_id и dry_run — только вернуть JSON (публичный API GET /reports/daily).
+ */
+async function sendDailyReports(admin: SupabaseClient, projectId: string | null, dryRun: boolean) {
+  let projects: string[];
+  if (projectId) projects = [projectId];
+  else {
+    const { data } = await admin.from("publish_accounts").select("project_id");
+    projects = [...new Set(((data ?? []) as { project_id: string }[]).map((r) => r.project_id))];
+  }
+  const reports: DailyReport[] = [];
+  let sent = 0;
+  const day = new Date().toISOString().slice(0, 10);
+  for (const pid of projects) {
+    const report = await buildDailyReport(admin, pid);
+    reports.push(report);
+    if (dryRun) continue;
+    const text = formatDailyReport(report);
+    const { data: settings } = await admin.from("publish_project_settings").select("digest_chat_id, notify_mode").eq("project_id", pid).maybeSingle();
+    const st = settings as { digest_chat_id?: string | null; notify_mode?: string } | null;
+    if (st?.notify_mode !== "silent") {
+      await notifyProject(admin, pid, text, st?.digest_chat_id ?? null);
+      sent++;
+    }
+    await notifyCenter(admin, {
+      projectId: pid, kind: "report.daily", severity: "info",
+      title: `Отчёт за сутки: опубликовано ${report.jobs.published}, ошибок ${report.jobs.failed}`,
+      body: text, dedupeKey: `report:daily:${day}`,
+    });
+  }
+  return { projects: projects.length, sent, reports: projectId ? reports : undefined };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
 
@@ -441,7 +655,7 @@ Deno.serve(async (req) => {
     if (!auth.ok) return json({ error: "unauthorized" }, 401);
     // Проверка здоровья своего проекта — любому, у кого есть к нему доступ;
     // остальные режимы и вся сеть целиком — только admin/manager.
-    if (mode === "health" && projectId) {
+    if ((mode === "health" || mode === "daily_report") && projectId) {
       const access = await requireProjectAccess(auth.authHeader, projectId);
       if (!access.ok) return access.response;
     } else if (!(await userHasAnyRole(auth.userId, ["admin", "manager"]))) {
@@ -454,6 +668,8 @@ Deno.serve(async (req) => {
     if (mode === "tokens") return json({ ok: true, mode, ...(await checkTokens(admin)) });
     if (mode === "errors") return json({ ok: true, mode, ...(await checkErrors(admin)) });
     if (mode === "digest") return json({ ok: true, mode, ...(await sendDigests(admin)) });
+    if (mode === "daily_report") return json({ ok: true, mode, ...(await sendDailyReports(admin, projectId, body?.dry_run === true)) });
+    if (mode === "shadow") return json({ ok: true, mode, ...(await checkShadowban(admin)) });
     return json({ error: `неизвестный режим: ${mode}` }, 400);
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : String(e) }, 500);

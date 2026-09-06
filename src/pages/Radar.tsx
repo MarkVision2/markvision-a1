@@ -14,7 +14,8 @@ import { AddSourceDialog, type AddSourceInput } from "@/components/radar/AddSour
 import { AuthorsTab } from "@/components/radar/AuthorsTab";
 import { IdeaCard } from "@/components/radar/IdeaCard";
 import { PostXraySheet } from "@/components/radar/PostXraySheet";
-import { Empty, errMsg, fmtUsd, MetricTile } from "@/components/radar/RadarBits";
+import { Empty, errMsg } from "@/components/radar/RadarBits";
+import { MetricsRow } from "@/components/radar/MetricsRow";
 import { RadarHero } from "@/components/radar/RadarHero";
 import { RunsTab } from "@/components/radar/RunsTab";
 import { SourcesTab, sourceTitle } from "@/components/radar/SourcesTab";
@@ -117,10 +118,23 @@ export default function Radar() {
   };
 
   const deleteSource = async (s: RadarSource) => {
-    if (!window.confirm(`Удалить источник ${sourceTitle(s)}? Собранные посты останутся.`)) return;
+    // Сначала показываем, что именно исчезнет: посты уходят из «Трендов»,
+    // идеи из банка — тоже, кроме уже отправленных в контент-план.
+    let impact = { posts: 0, ideas: 0 };
     try {
-      await r.deleteSource(s.id);
-      toast.success("Источник удалён");
+      impact = await r.sourceImpact(s.id);
+    } catch {
+      /* не смогли посчитать — спросим без чисел */
+    }
+    const details = impact.posts || impact.ideas
+      ? `\n\nБудут удалены: постов — ${impact.posts}, идей — ${impact.ideas}. Идеи, ставшие темами контент-плана, останутся.`
+      : "";
+    if (!window.confirm(`Удалить источник ${sourceTitle(s)}?${details}`)) return;
+    try {
+      const res = await r.deleteSource(s.id);
+      toast.success("Источник удалён", {
+        description: res.posts || res.ideas ? `Удалено постов — ${res.posts}, идей — ${res.ideas}` : undefined,
+      });
     } catch (e) {
       toast.error(errMsg(e, "Не удалось удалить источник"));
     }
@@ -206,18 +220,11 @@ export default function Radar() {
         <RadarHero metrics={metrics} sourcesCount={sources.length} crawling={crawling} busy={busy === "analyze-url"} onAnalyzeUrl={analyzeUrl} />
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
-        <MetricTile label="Источников" value={metrics?.sources ?? sources.length} />
-        <MetricTile label="Постов за 7 дней" value={metrics?.posts_7d ?? 0} />
-        <MetricTile label="Залетевших" value={metrics?.posts_viral ?? 0} hint="Постов, обошедших «обычно» автора минимум вдвое" accent={(metrics?.posts_viral ?? 0) > 0} />
-        <MetricTile label="Не разобрано" value={metrics?.posts_unanalyzed ?? 0} hint="В очереди на разбор моделью" />
-        <MetricTile label="Новых идей" value={metrics?.ideas_new ?? 0} />
-        <MetricTile label="Использовано идей" value={metrics?.ideas_used ?? 0} hint="Идей, ставших темами контент-плана" />
-        <MetricTile label="Расход за месяц" value={fmtUsd(metrics?.spent_month_usd)} hint="Сборщик (Apify) за текущий месяц" />
-      </div>
+      <MetricsRow metrics={metrics} sourcesFallback={sources.length} />
 
       <Tabs defaultValue="trends" className="mt-6">
-        <TabsList>
+        {/* Пять вкладок со счётчиками не влезают в 390 px одной строкой — переносим. */}
+        <TabsList className="h-auto flex-wrap">
           <TabsTrigger value="trends">Тренды{posts.length ? ` (${posts.length})` : ""}</TabsTrigger>
           <TabsTrigger value="ideas">Идеи{ideas.length ? ` (${ideas.length})` : ""}</TabsTrigger>
           <TabsTrigger value="authors">Авторы</TabsTrigger>

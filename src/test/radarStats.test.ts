@@ -10,14 +10,14 @@ import {
   filterTrends,
   followerBracket,
   formatAge,
+  formatUsd,
   formatX,
   hotScore,
   nicheOptions,
   normViews,
   primaryMetric,
   usualMetric,
-  xTone,
-} from "@/lib/radarStats";
+  xTone, mediaTypeLabel } from "@/lib/radarStats";
 
 const NOW = Date.parse("2026-09-05T12:00:00.000Z");
 
@@ -52,6 +52,22 @@ describe("normViews / formatX / xTone", () => {
     expect(xTone(1.5)).toBe("above");
     expect(xTone(1)).toBe("normal");
     expect(xTone(null)).toBe("none");
+  });
+});
+
+describe("formatUsd", () => {
+  it("ниже цента показывает три знака — «$0.00» скрывал бы реальные траты", () => {
+    expect(formatUsd(0.0212)).toBe("$0.021");
+    expect(formatUsd(0.0446)).toBe("$0.045");
+    expect(formatUsd(0.009)).toBe("$0.009");
+    expect(formatUsd(0.066)).toBe("$0.066");
+    expect(formatUsd(0.0004)).toBe("<$0.001");
+  });
+  it("ровный ноль и обычные суммы", () => {
+    expect(formatUsd(0)).toBe("$0");
+    expect(formatUsd(null)).toBe("$0");
+    expect(formatUsd(1.5)).toBe("$1.50");
+    expect(formatUsd(12.345)).toBe("$12.35");
   });
 });
 
@@ -133,5 +149,21 @@ describe("authorStats", () => {
     expect(followerBracket(50_000)).toBe("m");
     expect(followerBracket(500_000)).toBe("l");
     expect(followerBracket(5_000_000)).toBe("xl");
+  });
+});
+
+describe("mediaTypeLabel", () => {
+  it("сырой тип сборщика → слово для интерфейса", () => {
+    expect(mediaTypeLabel("video")).toBe("видео");
+    expect(mediaTypeLabel("Video")).toBe("видео");
+    expect(mediaTypeLabel("clips")).toBe("reels");
+    expect(mediaTypeLabel("reel")).toBe("reels");
+    expect(mediaTypeLabel("shorts")).toBe("shorts");
+    expect(mediaTypeLabel("sidecar")).toBe("карусель");
+    expect(mediaTypeLabel("GraphImage")).toBe("фото");
+    expect(mediaTypeLabel("ad")).toBe("объявление");
+    expect(mediaTypeLabel(null)).toBe("пост");
+    expect(mediaTypeLabel("")).toBe("пост");
+    expect(mediaTypeLabel("something")).toBe("something");
   });
 });

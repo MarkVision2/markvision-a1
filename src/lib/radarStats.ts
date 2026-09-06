@@ -54,6 +54,18 @@ export function xTone(x: number | null | undefined): XTone {
   return "normal";
 }
 
+/**
+ * Деньги радара: суммы бывают в центах и долях цента, поэтому «$0.00» врёт —
+ * ниже цента показываем три знака, ровный ноль — как «$0».
+ */
+export function formatUsd(n: number | null | undefined): string {
+  const v = Number(n);
+  if (!Number.isFinite(v) || v === 0) return "$0";
+  if (v < 0.001) return "<$0.001";
+  if (v < 1) return `$${v.toFixed(3)}`;
+  return `$${v.toFixed(2)}`;
+}
+
 /** Компактное число: 16,1M · 809K · 1 200. */
 export function formatCompact(n: number | null | undefined): string {
   const v = Number(n);
@@ -77,6 +89,21 @@ export function formatAge(iso: string | null | undefined, now: number = Date.now
   const mo = Math.floor(d / 30);
   if (mo < 12) return `${mo} мес назад`;
   return `${Math.floor(mo / 12)} г назад`;
+}
+
+/** Тип медиа от сборщика (video / Sidecar / GraphImage / shorts / …) → слово для интерфейса. */
+export function mediaTypeLabel(mediaType: string | null | undefined): string {
+  const t = String(mediaType ?? "").trim().toLowerCase();
+  if (!t) return "пост";
+  if (/reel|clip/.test(t)) return "reels";
+  if (/short/.test(t)) return "shorts";
+  if (/video/.test(t)) return "видео";
+  if (/sidecar|carousel|album/.test(t)) return "карусель";
+  if (/image|photo|graphimage/.test(t)) return "фото";
+  if (/story|stories/.test(t)) return "сторис";
+  if (t === "ad") return "объявление";
+  if (t === "text") return "текст";
+  return t;
 }
 
 /** Главный показатель поста: просмотры, а если их нет (фото/карусель) — лайки. */

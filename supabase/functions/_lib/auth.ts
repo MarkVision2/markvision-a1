@@ -2,6 +2,7 @@
 // Verifies JWT, optional app roles, and tenant-scoped resource access via RLS.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+import { type ProjectRole, resolveProjectRole } from "./rbac.ts";
 
 export const AUTH_CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -99,6 +100,35 @@ export async function requireProjectAccess(
     return { ok: false, response: jsonError("Forbidden", 403) };
   }
   return { ok: true };
+}
+
+/**
+ * Роль пользователя в проекте (docs/ARCHITECTURE.md, RBAC): владелец → owner; явная роль
+ * project_members.role; иначе глобальная роль команды (profiles.display_role / user_roles).
+ * null — доступа нет. Читает сервисным ключом: RLS на project_members отдаёт пользователю
+ * только его строку, а нам нужна ещё и глобальная роль.
+ */
+export async function projectRoleOf(userId: string, projectId: string): Promise<ProjectRole | null> {
+  const admin = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  );
+  const [{ data: project }, { data: member }, { data: profile }, { data: roles }] = await Promise.all([
+    admin.from("projects").select("created_by").eq("id", projectId).maybeSingle(),
+    admin.from("project_members").select("role").eq("project_id", projectId).eq("user_id", userId).maybeSingle(),
+    admin.from("profiles").select("display_role").eq("id", userId).maybeSingle(),
+    admin.from("user_roles").select("role").eq("user_id", userId),
+  ]);
+  if (!project) return null;
+  const globalRoles = ((roles ?? []) as { role: string }[]).map((r) => r.role);
+  const globalRole = (profile as { display_role?: string | null } | null)?.display_role
+    ?? (globalRoles.includes("admin") ? "admin" : globalRoles[0] ?? null);
+  return resolveProjectRole({
+    isOwner: (project as { created_by?: string | null }).created_by === userId,
+    globalRole,
+    memberRole: (member as { role?: string } | null)?.role ?? null,
+    isMember: Boolean(member),
+  });
 }
 
 export async function requireCabinetAccess(

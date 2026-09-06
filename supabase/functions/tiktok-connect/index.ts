@@ -216,9 +216,14 @@ async function pushChunks(videoUrl: string, uploadUrl: string, plan: ReturnType<
       const buf = await r.arrayBuffer();
       if (r.status === 206 && buf.byteLength === range[1] - range[0] + 1) {
         chunk = buf;
-      } else {
+      } else if (r.status === 200 && buf.byteLength >= range[1] + 1) {
+        // Источник не умеет Range и отдал файл целиком — режем сами.
         whole = buf;
         chunk = whole.slice(range[0], range[1] + 1);
+      } else {
+        // 206 неверной длины или усечённый 200: резать такое по абсолютным смещениям —
+        // отправить TikTok не те байты и получить невнятный отказ после init.
+        return { ok: false, error: `источник видео отдал ${buf.byteLength} байт вместо диапазона ${range[0]}–${range[1]} (HTTP ${r.status})` };
       }
     }
     const put = await fetch(uploadUrl, {

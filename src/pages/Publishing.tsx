@@ -1,4 +1,4 @@
-import { cloneElement, isValidElement, useEffect, useMemo, useState, type ReactElement } from "react";
+import { cloneElement, isValidElement, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { AlertCircle, ChevronDown, ExternalLink, Instagram, KeyRound, Loader2, PauseCircle, Plus, RefreshCw, Search, Send, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
@@ -21,6 +21,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -34,6 +37,11 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { AccountsTable, PLATFORM_DOT } from "@/components/publishing/AccountsTable";
 import { JobsTab } from "@/components/publishing/JobsTab";
 import { NetworkTab } from "@/components/publishing/NetworkTab";
+import { NotificationsPanel } from "@/components/publishing/NotificationsPanel";
+import { CampaignsTab } from "@/components/publishing/CampaignsTab";
+import { WebhooksSection } from "@/components/publishing/WebhooksSection";
+import { RoutinesSection } from "@/components/publishing/RoutinesSection";
+import { ProjectRolesSection } from "@/components/publishing/ProjectRolesSection";
 import { UploadPublishDialog } from "@/components/publishing/UploadPublishDialog";
 import { VideosTab } from "@/components/publishing/VideosTab";
 import { usePublishing, type UsePublishing } from "@/hooks/usePublishing";
@@ -59,6 +67,7 @@ import {
   type PublishStrategy,
   type PublishVideo,
   type ReviewMode,
+  roleAllows,
 } from "@/lib/publishingClient";
 import { fmtRelative } from "@/lib/publishingFormat";
 import { cn } from "@/lib/utils";
@@ -134,11 +143,12 @@ export default function Publishing() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params]);
 
-  const connectOAuth = async (platform: OAuthPlatform) => {
+  // groupId — в какую группу положить аккаунт после возврата с площадки (publish-oauth хранит его в state).
+  const connectOAuth = async (platform: OAuthPlatform, groupId: string | null = null) => {
     if (!projectId) return;
     setOauthBusy(platform);
     try {
-      const url = await startPublishOAuth(projectId, platform);
+      const url = await startPublishOAuth(projectId, platform, groupId);
       window.location.assign(url);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Не удалось начать подключение");
@@ -159,8 +169,9 @@ export default function Publishing() {
               <Button variant="ghost" size="sm" onClick={() => void pub.refetch()} disabled={disabled || pub.loading} aria-label="Обновить">
                 <RefreshCw className={cn("h-4 w-4", pub.loading && "animate-spin")} />
               </Button>
-              {/* Пять одинаковых кнопок в шапке кричали наперебой — площадки под одним меню. */}
-              <DropdownMenu>
+              {/* Пять одинаковых кнопок в шапке кричали наперебой — площадки под одним меню.
+                  Подключение — уровень manage, заливка — publish (RBAC): не по роли — прячем. */}
+              {roleAllows(pub.role, "manage") && <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" disabled={disabled || !projectId || oauthBusy != null}>
                     {oauthBusy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Plus className="mr-1.5 h-4 w-4" />}
@@ -170,18 +181,35 @@ export default function Publishing() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuItem onSelect={() => setDialog("instagram")}>Instagram</DropdownMenuItem>
-                  {(["threads", "tiktok", "youtube"] as OAuthPlatform[]).map((pl) => (
-                    <DropdownMenuItem key={pl} onSelect={() => void connectOAuth(pl)}>{OAUTH_LABELS[pl]}</DropdownMenuItem>
-                  ))}
+                  {(["threads", "tiktok", "youtube"] as OAuthPlatform[]).map((pl) => {
+                    // Есть группы — даём выбрать, куда положить новый аккаунт (без группы всё равно можно).
+                    const groups = pub.groups.filter((g) => !g.platform || g.platform === pl);
+                    if (!groups.length) {
+                      return <DropdownMenuItem key={pl} onSelect={() => void connectOAuth(pl)}>{OAUTH_LABELS[pl]}</DropdownMenuItem>;
+                    }
+                    return (
+                      <DropdownMenuSub key={pl}>
+                        <DropdownMenuSubTrigger>{OAUTH_LABELS[pl]}</DropdownMenuSubTrigger>
+                        <DropdownMenuSubContent className="w-56">
+                          <DropdownMenuItem onSelect={() => void connectOAuth(pl)}>Без группы</DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          {groups.map((g) => (
+                            <DropdownMenuItem key={g.id} onSelect={() => void connectOAuth(pl, g.id)}>В группу «{g.name}»</DropdownMenuItem>
+                          ))}
+                        </DropdownMenuSubContent>
+                      </DropdownMenuSub>
+                    );
+                  })}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onSelect={() => setDialog("threads")}>
                     <KeyRound className="mr-2 h-3.5 w-3.5" /> Threads по токену
                   </DropdownMenuItem>
                 </DropdownMenuContent>
-              </DropdownMenu>
-              <Button size="sm" onClick={() => setDialog("video")} disabled={disabled || !projectId}>
+              </DropdownMenu>}
+              {/* Пока аккаунты грузятся, композер открылся бы с пустым выбором. */}
+              {roleAllows(pub.role, "publish") && <Button size="sm" onClick={() => setDialog("video")} disabled={disabled || pub.loading || !projectId}>
                 <Upload className="mr-1.5 h-4 w-4" /> Залить видео
-              </Button>
+              </Button>}
             </>
           }
         />
@@ -221,6 +249,7 @@ export default function Publishing() {
             }}
           />
         )}
+        <NotificationsPanel projectId={projectId} refreshKey={pub.jobs.length + pub.accounts.length} />
 
         {/* Шесть вкладок: статистика по аккаунтам живёт видом внутри «Аккаунтов»,
             сводка по группам — над их настройками, «Видео» — библиотека роликов с
@@ -231,6 +260,7 @@ export default function Publishing() {
             <TabsTrigger value="accounts">Аккаунты</TabsTrigger>
             <TabsTrigger value="groups">Группы</TabsTrigger>
             <TabsTrigger value="personas">Персоны</TabsTrigger>
+            <TabsTrigger value="campaigns">Кампании</TabsTrigger>
             <TabsTrigger value="videos">Видео</TabsTrigger>
             <TabsTrigger value="jobs">Задания</TabsTrigger>
             <TabsTrigger value="settings">Настройки</TabsTrigger>
@@ -273,6 +303,7 @@ export default function Publishing() {
               onShowJobs={(v) => { pub.setJobsVideo(v.id); setTab("jobs"); }}
             />
           </TabsContent>
+          <TabsContent value="campaigns" className="mt-3"><CampaignsTab pub={pub} /></TabsContent>
           <TabsContent value="jobs" className="mt-3 space-y-4">
             <TabIntro title="Задания — очередь публикаций.">
               Одно задание = один ролик в один аккаунт. «В очереди» ждёт слота, «Публикуется» сейчас в работе,
@@ -282,6 +313,9 @@ export default function Publishing() {
           </TabsContent>
           <TabsContent value="settings" className="mt-3 space-y-4">
             <SettingsTab pub={pub} />
+            <RoutinesSection pub={pub} />
+            <ProjectRolesSection projectId={pub.projectId} role={pub.role} />
+            <WebhooksSection projectId={pub.projectId} />
             <div className="max-w-4xl rounded-2xl border border-dashed border-border/60 p-4 text-sm text-muted-foreground">
               Ключи API и подключение Claude через MCP — в{" "}
               <Link to="/settings?tab=api" className="font-medium text-primary hover:underline">Настройках → API и MCP</Link>.
@@ -940,14 +974,19 @@ function SettingsTab({ pub }: { pub: UsePublishing }) {
   const [monthly, setMonthly] = useState("");
   const [paused, setPaused] = useState(false);
 
+  // Форму заполняем с сервера один раз на проект: любое действие на странице
+  // перечитывает settings, и правка бюджета, ещё не сохранённая, пропадала бы.
+  const seededFor = useRef<string | null>(null);
   useEffect(() => {
-    if (!s) return;
+    if (!s) { seededFor.current = null; return; }
+    if (seededFor.current === pub.projectId) return;
+    seededFor.current = pub.projectId;
     setNotify(s.settings.notify_mode);
     setChat(s.settings.digest_chat_id ?? "");
     setDaily(String(s.budget.daily_usd));
     setMonthly(String(s.budget.monthly_usd));
     setPaused(Boolean(s.settings.paused));
-  }, [s]);
+  }, [s, pub.projectId]);
 
   if (!s) return <EmptyState text="Настройки не загружены — выберите проект или обновите страницу." />;
 
