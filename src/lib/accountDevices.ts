@@ -154,6 +154,32 @@ export async function deviceStatus(projectId: string, accountId: string): Promis
   return await call<DeviceStatus>("warmup_status", projectId, { account_id: accountId });
 }
 
+/** Снимок экрана телефона: ссылка на картинку в хранилище PhoneGrid (кадр готовится ~5 секунд). */
+export async function phoneScreen(projectId: string, phoneId: string): Promise<string> {
+  const r = await call<{ url: string }>("screen", projectId, { phone_id: phoneId });
+  return r.url;
+}
+
+export type PhoneKey = "home" | "back" | "enter" | "tab" | "delete" | "recent";
+
+/** Ввод на телефоне: палец по экрану и клавиатура. Координаты — в пикселях экрана устройства. */
+export async function phoneInput(
+  projectId: string,
+  phoneId: string,
+  input:
+    | { kind: "tap"; x: number; y: number }
+    | { kind: "swipe"; x: number; y: number; x2: number; y2: number; ms?: number }
+    | { kind: "text"; text: string }
+    | { kind: "key"; key: PhoneKey },
+): Promise<void> {
+  await call("input", projectId, { phone_id: phoneId, ...input });
+}
+
+/** Открыть ссылку в браузере телефона — так авторизация идёт с его IP. */
+export async function phoneOpenUrl(projectId: string, phoneId: string, url: string): Promise<void> {
+  await call("open_url", projectId, { phone_id: phoneId, url });
+}
+
 /** Прогрев на сегодня: телефон должен быть выключен — RPA включает его сам. */
 export async function runWarmup(projectId: string, accountId: string): Promise<{ plan: WarmupPlan }> {
   return await call<{ plan: WarmupPlan }>("warmup", projectId, { account_id: accountId });

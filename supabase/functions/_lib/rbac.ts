@@ -106,6 +106,8 @@ export const ACTION_LEVELS: Record<string, PermissionLevel> = {
   // привязка телефона, питание и запуск прогрева — уровень управления аккаунтами
   attach: "manage", detach: "manage", power: "manage", warmup: "manage",
   create_phone: "manage", proxy_add: "manage",
+  // экран и ввод — работа с устройством, тот же уровень, что и питание
+  screen: "manage", input: "manage", open_url: "manage",
   // роли участников — только администратор и владелец
   member_role_set: "admin",
 };

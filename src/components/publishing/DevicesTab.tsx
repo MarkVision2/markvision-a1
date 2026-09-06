@@ -16,7 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2, Plus, RefreshCw, Smartphone } from "lucide-react";
+import { Loader2, MonitorSmartphone, Plus, RefreshCw, Smartphone } from "lucide-react";
 import { toast } from "sonner";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import {
@@ -24,6 +24,7 @@ import {
   type DeviceAccountRef, type DevicePhone,
 } from "@/lib/accountDevices";
 import { CreateDeviceDialog } from "@/components/publishing/CreateDeviceDialog";
+import { PhoneScreenDialog } from "@/components/publishing/PhoneScreenDialog";
 
 const NONE = "__none";
 
@@ -50,6 +51,7 @@ export function DevicesTab() {
   const [busy, setBusy] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
+  const [screenPhone, setScreenPhone] = useState<DevicePhone | null>(null);
 
   const reload = useCallback(async () => {
     if (!projectId) return;
@@ -208,6 +210,13 @@ export function DevicesTab() {
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1.5">
                             <Button
+                              size="sm" variant="outline" disabled={rowBusy}
+                              title={p.status === 4 ? "Открыть экран телефона" : "Сначала включите телефон"}
+                              onClick={() => setScreenPhone(p)}
+                            >
+                              <MonitorSmartphone className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
                               size="sm" variant="outline" disabled={rowBusy || p.status === 3}
                               title={p.proxyIp ? undefined : "Без прокси телефон не включится — привяжите прокси в PhoneGrid"}
                               onClick={() => void act(p.id, p.status === 4 ? "Выключен" : "Включён",
@@ -251,6 +260,9 @@ export function DevicesTab() {
         )}
       </CardContent>
 
+      {screenPhone && (
+        <PhoneScreenDialog open phone={screenPhone} onClose={() => { setScreenPhone(null); void reload(); }} />
+      )}
       {createOpen && projectId && (
         <CreateDeviceDialog
           open projectId={projectId}

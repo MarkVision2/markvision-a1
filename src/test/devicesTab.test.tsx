@@ -18,6 +18,8 @@ const setPhonePower = vi.fn();
 const runWarmup = vi.fn();
 const deviceOptions = vi.fn();
 const createPhones = vi.fn();
+const phoneScreen = vi.fn();
+const phoneInput = vi.fn();
 vi.mock("@/lib/accountDevices", () => ({
   listPhones: (...a: unknown[]) => listPhones(...a),
   listFreeAccounts: (...a: unknown[]) => listFreeAccounts(...a),
@@ -28,6 +30,9 @@ vi.mock("@/lib/accountDevices", () => ({
   deviceOptions: (...a: unknown[]) => deviceOptions(...a),
   createPhones: (...a: unknown[]) => createPhones(...a),
   addProxy: vi.fn(),
+  phoneScreen: (...a: unknown[]) => phoneScreen(...a),
+  phoneInput: (...a: unknown[]) => phoneInput(...a),
+  phoneOpenUrl: vi.fn(),
 }));
 
 const withAccount: DevicePhone = {
@@ -53,6 +58,8 @@ beforeEach(() => {
     groups: [{ id: "g1", name: "MarkVision" }],
   });
   createPhones.mockReset().mockResolvedValue({ created: ["1003"] });
+  phoneScreen.mockReset().mockResolvedValue("https://get.phonegrid.com/shot.png");
+  phoneInput.mockReset().mockResolvedValue(undefined);
 });
 
 describe("раздел «Устройства»", () => {
@@ -133,5 +140,34 @@ describe("раздел «Устройства»", () => {
     listPhones.mockRejectedValue(new Error("PhoneGrid не подключён: добавьте секреты"));
     render(<DevicesTab />);
     expect(await screen.findByText(/PhoneGrid не подключён/)).toBeInTheDocument();
+  });
+});
+
+describe("окно телефона", () => {
+  it("открывается из списка и снимает экран включённого телефона", async () => {
+    render(<DevicesTab />);
+    await screen.findByText("CP-1");
+    // Первая кнопка в строке — «Экран»: у неё нет подписи, ищем по подсказке.
+    fireEvent.click(screen.getByTitle("Открыть экран телефона"));
+    expect(await screen.findByText(/Экран устройства/)).toBeInTheDocument();
+    await waitFor(() => expect(phoneScreen).toHaveBeenCalledWith("p1", "1001"));
+  });
+
+  it("клик по экрану превращается в тап с координатами устройства", async () => {
+    render(<DevicesTab />);
+    await screen.findByText("CP-1");
+    fireEvent.click(screen.getByTitle("Открыть экран телефона"));
+    const img = await screen.findByAltText("Экран CP-1");
+    // jsdom не считает размеры, поэтому проверяем сам факт тапа с числовыми координатами.
+    fireEvent.click(img, { clientX: 100, clientY: 200 });
+    await waitFor(() => expect(phoneInput).toHaveBeenCalledWith("p1", "1001", expect.objectContaining({ kind: "tap" })));
+  });
+
+  it("у выключенного телефона экран не снимается, а объясняет почему", async () => {
+    render(<DevicesTab />);
+    await screen.findByText("CP-2");
+    fireEvent.click(screen.getAllByTitle("Сначала включите телефон")[0]);
+    expect(await screen.findByText(/Телефон выключен/)).toBeInTheDocument();
+    expect(phoneScreen).not.toHaveBeenCalled();
   });
 });

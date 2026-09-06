@@ -17,6 +17,9 @@
  *   options       — что предложить в форме создания: модели, прокси, группы PhoneGrid
  *   create_phone  — создать устройство (ПЛАТНО, до 10 за раз)
  *   proxy_add     — добавить прокси строкой socks5://логин:пароль@хост:порт
+ *   screen        — снимок экрана телефона (ссылка на картинку)
+ *   input         — тап, свайп, текст, клавиша — как палец по экрану
+ *   open_url      — открыть ссылку в браузере телефона (например, подключение аккаунта)
  *   attach        — привязать телефон к аккаунту (одно устройство = один аккаунт)
  *   detach        — отвязать
  *   power         — включить / выключить телефон (по phone_id или по аккаунту)
@@ -196,6 +199,66 @@ Deno.serve(async (req) => {
         ...(Array.isArray(body.tags) && body.tags.length ? { tags: body.tags } : {}),
       });
       return json({ ok: true, created: created ?? [], quantity });
+    }
+
+    if (action === "screen" || action === "input" || action === "open_url") {
+      // Экран и ввод идут по телефону: аккаунт для этого не нужен — на свежем устройстве
+      // аккаунта ещё нет, а именно с него всё и начинается.
+      let phoneId = String(body.phone_id ?? "");
+      if (!phoneId) {
+        const account = await loadAccount(String(body.account_id ?? ""), projectId);
+        if (!account?.device_phone_id) return json({ error: "Не указан телефон" }, 400);
+        phoneId = account.device_phone_id;
+      }
+      const id = Number(phoneId);
+
+      if (action === "open_url") {
+        const url = String(body.url ?? "").trim();
+        // Только http(s): через intent можно дотянуться до системных экранов, нам это не нужно.
+        if (!/^https?:\/\//i.test(url)) return json({ error: "Ссылка должна начинаться с http:// или https://" }, 400);
+        await phonegridCall(cfg, "/cloudphone/exeCommand", {
+          id,
+          command: `am start -a android.intent.action.VIEW -d ${JSON.stringify(url)}`,
+        });
+        return json({ ok: true });
+      }
+
+      if (action === "input") {
+        const kind = String(body.kind ?? "tap");
+        const n = (v: unknown) => Math.max(0, Math.round(Number(v) || 0));
+        let command: string;
+        if (kind === "tap") command = `input tap ${n(body.x)} ${n(body.y)}`;
+        else if (kind === "swipe") command = `input swipe ${n(body.x)} ${n(body.y)} ${n(body.x2)} ${n(body.y2)} ${Math.min(n(body.ms) || 300, 3000)}`;
+        else if (kind === "text") {
+          // input text не умеет пробелы и кавычки — экранируем, ввод идёт как с клавиатуры.
+          const raw = String(body.text ?? "").slice(0, 500);
+          command = `input text ${JSON.stringify(raw.replace(/ /g, "%s"))}`;
+        } else if (kind === "key") {
+          const allowed: Record<string, number> = { home: 3, back: 4, enter: 66, tab: 61, delete: 67, recent: 187, power: 26 };
+          const code = allowed[String(body.key ?? "")];
+          if (!code) return json({ error: "Неизвестная клавиша" }, 400);
+          command = `input keyevent ${code}`;
+        } else return json({ error: "Неизвестное действие ввода" }, 400);
+        await phonegridCall(cfg, "/cloudphone/exeCommand", { id, command });
+        return json({ ok: true });
+      }
+
+      // Снимок экрана: делаем png на телефоне, забираем ссылку из хранилища PhoneGrid.
+      // Через сервер картинку не гоняем — она под мегабайт, браузер заберёт её сам.
+      const shot = `/sdcard/mv_screen.png`;
+      await phonegridCall(cfg, "/cloudphone/exeCommand", { id, command: `screencap -p ${shot}` });
+      const started = await phonegridCall<{ downId: string }>(cfg, "/cloudphone/download", { id, filePath: shot });
+      const downId = Number(started?.downId ?? 0);
+      if (!downId) return json({ error: "Телефон не отдал снимок экрана" }, 502);
+      // Готовность файла — короткий опрос: обычно укладывается в несколько секунд.
+      for (let i = 0; i < 8; i++) {
+        await new Promise((r) => setTimeout(r, 1200));
+        const res = await phonegridCall<{ status: number; downUrl?: string }>(
+          cfg, "/cloudphone/download/result", { id, downId },
+        );
+        if (res?.downUrl) return json({ ok: true, url: res.downUrl });
+      }
+      return json({ error: "Снимок готовится дольше обычного — повторите" }, 504);
     }
 
     if (action === "attach" || action === "detach") {
