@@ -1,7 +1,7 @@
 {
-  "git_sha": "c84bff9",
-  "git_sha_full": "c84bff90c7c6f42d29ec7c32a91c494ee4166522",
-  "updated_at": "2026-09-06T15:40:54+04:00",
-  "label": "[vercel-deploy] Merge: Social Content Factory OS — Phase 5: автопилот победителей, метаданные контента, глобальный лимит API (#284)",
+  "git_sha": "9c6e119",
+  "git_sha_full": "9c6e119dce79979e7dd894c5f19f5dfec1654c26",
+  "updated_at": "2026-09-06T15:45:24+04:00",
+  "label": "feat(radar): сводка-«пульс» вместо девяти плиток — воронка, X-фактор, «что дальше» (#285)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
