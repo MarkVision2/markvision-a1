@@ -1,7 +1,7 @@
 {
-  "git_sha": "ab402c3",
-  "git_sha_full": "ab402c3707798e294e0325b1bf17f077ecc5ab96",
-  "updated_at": "2026-09-06T13:14:36+04:00",
-  "label": "feat(publishing): показать адреса возврата площадок в окне ссылок",
+  "git_sha": "d7e8314",
+  "git_sha_full": "d7e83143a83f1f95b26c09b3393069f60e13aa18",
+  "updated_at": "2026-09-06T13:44:13+04:00",
+  "label": "chore: деплой подключения Instagram [vercel-deploy]",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
