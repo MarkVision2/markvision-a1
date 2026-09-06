@@ -128,6 +128,17 @@ export async function addProxy(projectId: string, url: string, name?: string, re
   await call("proxy_add", projectId, { url, name, refresh_url: refreshUrl });
 }
 
+/**
+ * Завести карточку аккаунта, который вы подняли на этом телефоне.
+ * Статистики и автопубликации у него пока нет — они появятся после подключения по API.
+ */
+export async function createDeviceAccount(
+  projectId: string,
+  input: { phone_id: string; platform: string; account_name: string; handle?: string },
+): Promise<{ account: DeviceAccountRef }> {
+  return await call<{ account: DeviceAccountRef }>("create_account", projectId, input);
+}
+
 /** Аккаунты проекта без телефона — для привязки прямо из списка устройств. */
 export async function listFreeAccounts(projectId: string): Promise<DeviceAccountRef[]> {
   const r = await call<{ accounts: DeviceAccountRef[] }>("accounts_free", projectId);

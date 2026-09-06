@@ -22,6 +22,7 @@ const runWarmup = vi.fn();
 const deviceOptions = vi.fn();
 const createPhones = vi.fn();
 const phoneScreen = vi.fn();
+const createDeviceAccount = vi.fn();
 const phoneInput = vi.fn();
 const phoneNet = vi.fn();
 const phoneAppStart = vi.fn();
@@ -42,6 +43,7 @@ vi.mock("@/lib/accountDevices", () => ({
     installed: [{ appName: "Instagram", packageName: "com.instagram.android", version: "412.0.0.35.87" }],
     catalog: [],
   }),
+  createDeviceAccount: (...a: unknown[]) => createDeviceAccount(...a),
   installApp: vi.fn(),
   phoneInput: (...a: unknown[]) => phoneInput(...a),
   phoneOpenUrl: vi.fn(),
@@ -91,6 +93,7 @@ beforeEach(() => {
   phoneAppStart.mockReset().mockResolvedValue(undefined);
   phoneLogin.mockReset().mockResolvedValue({ state: "success", message: "Вход выполнен" });
   phoneProfile.mockReset().mockResolvedValue({ handle: "aiva", followers: "1 240", posts: "37" });
+  createDeviceAccount.mockReset().mockResolvedValue({ account: { id: "acc9" } });
 });
 
 describe("раздел «Устройства»", () => {
@@ -301,5 +304,33 @@ describe("общий IP у нескольких устройств", () => {
     render(<DevicesTab />);
     await screen.findByText("CP-1");
     expect(screen.queryByText(/на одном IP/)).not.toBeInTheDocument();
+  });
+});
+
+describe("аккаунт, поднятый на телефоне", () => {
+  it("свободный телефон предлагает завести аккаунт", async () => {
+    render(<DevicesTab />);
+    await screen.findByText("CP-2");
+    // У телефона с аккаунтом такой ссылки нет — заводить нечего.
+    expect(screen.getAllByRole("button", { name: "Завести аккаунт" })).toHaveLength(1);
+  });
+
+  it("карточка заводится с площадкой и хэндлом", async () => {
+    render(<DevicesTab />);
+    await screen.findByText("CP-2");
+    fireEvent.click(screen.getByRole("button", { name: "Завести аккаунт" }));
+    expect(await screen.findByText(/Аккаунт на телефоне CP-2/)).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText(/markvision\.kz/), { target: { value: "novyi_akk" } });
+    fireEvent.click(screen.getByRole("button", { name: "Завести аккаунт" }));
+    await waitFor(() => expect(createDeviceAccount).toHaveBeenCalledWith("p1", expect.objectContaining({
+      phone_id: "1002", platform: "instagram", handle: "novyi_akk",
+    })));
+  });
+
+  it("окно честно говорит, что статистика придёт после подключения по API", async () => {
+    render(<DevicesTab />);
+    await screen.findByText("CP-2");
+    fireEvent.click(screen.getByRole("button", { name: "Завести аккаунт" }));
+    expect(await screen.findByText(/Статистика и автопубликация включатся после подключения/)).toBeInTheDocument();
   });
 });

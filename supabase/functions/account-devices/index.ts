@@ -29,6 +29,7 @@
  *   apps          — что стоит на телефоне и что можно поставить
  *   install_app   — поставить приложение нужной версии
  *   uninstall_app — снести (нужно, когда стоит версия, несовместимая с прогревом)
+ *   create_account — завести карточку аккаунта, который вы подняли на этом телефоне
  *   attach        — привязать телефон к аккаунту (одно устройство = один аккаунт)
  *   detach        — отвязать
  *   power         — включить / выключить телефон (по phone_id или по аккаунту)
@@ -495,6 +496,51 @@ Deno.serve(async (req) => {
         })),
         catalog: apps,
       });
+    }
+
+    if (action === "create_account") {
+      // Аккаунт, поднятый на телефоне, платформе ещё неизвестен: токена площадки у него нет,
+      // а значит нет ни статистики, ни автопубликации. Заводим карточку «на устройстве» —
+      // он виден в сетке, показывает телефон и прогрев, а метрики появятся после OAuth
+      // (его удобно проходить из браузера самого телефона — тогда вход идёт с его IP).
+      const phoneId = String(body.phone_id ?? "");
+      const platform = String(body.platform ?? "");
+      const handle = String(body.handle ?? "").replace(/^@/, "").trim();
+      const name = String(body.account_name ?? "").trim() || (handle ? `@${handle}` : "");
+      if (!phoneId) return json({ error: "Не указан телефон" }, 400);
+      if (!["instagram", "tiktok", "youtube", "threads"].includes(platform)) {
+        return json({ error: "Выберите площадку" }, 400);
+      }
+      if (!name) return json({ error: "Укажите имя аккаунта или @хэндл" }, 400);
+
+      const info = await phoneInfo(cfg, phoneId);
+      const { data, error } = await admin.from("publish_accounts").insert({
+        project_id: projectId,
+        platform,
+        account_name: name,
+        handle: handle || null,
+        // Идентификатора площадки у нас нет, пока не пройден OAuth: держимся за устройство.
+        external_account_id: `device:${phoneId}`,
+        status: "active",
+        // Публиковать нечем: токена нет. Включится само при подключении по API.
+        publish_enabled: false,
+        connection_type: "device",
+        connected_via: "device",
+        auth_status: "reconnect_required",
+        device_provider: "phonegrid",
+        device_phone_id: phoneId,
+        device_phone_name: String(info.envName ?? ""),
+        warmup_started_at: new Date().toISOString(),
+      }).select("id, account_name, handle, platform").single();
+
+      if (error) {
+        return json({
+          error: error.code === "23505"
+            ? "К этому телефону уже привязан аккаунт: одно устройство — один аккаунт"
+            : error.message,
+        }, 400);
+      }
+      return json({ ok: true, account: data });
     }
 
     if (action === "attach" || action === "detach") {

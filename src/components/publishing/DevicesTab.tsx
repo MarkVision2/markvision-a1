@@ -24,6 +24,7 @@ import {
   type DeviceAccountRef, type DevicePhone,
 } from "@/lib/accountDevices";
 import { CreateDeviceDialog } from "@/components/publishing/CreateDeviceDialog";
+import { CreateDeviceAccountDialog } from "@/components/publishing/CreateDeviceAccountDialog";
 import { PhoneScreenDialog } from "@/components/publishing/PhoneScreenDialog";
 
 const NONE = "__none";
@@ -63,6 +64,7 @@ export function DevicesTab() {
   const [q, setQ] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [screenPhone, setScreenPhone] = useState<DevicePhone | null>(null);
+  const [accountPhone, setAccountPhone] = useState<DevicePhone | null>(null);
 
   const reload = useCallback(async () => {
     if (!projectId) return;
@@ -244,6 +246,14 @@ export function DevicesTab() {
                               ))}
                             </SelectContent>
                           </Select>
+                          {!p.account && (
+                            <Button
+                              variant="link" size="sm" className="mt-1 h-auto p-0 text-xs"
+                              onClick={() => setAccountPhone(p)}
+                            >
+                              Завести аккаунт
+                            </Button>
+                          )}
                         </TableCell>
                         <TableCell>
                           {p.warmup?.day
@@ -310,6 +320,13 @@ export function DevicesTab() {
         )}
       </CardContent>
 
+      {accountPhone && projectId && (
+        <CreateDeviceAccountDialog
+          open phone={accountPhone} projectId={projectId}
+          onClose={() => setAccountPhone(null)}
+          onCreated={() => void reload()}
+        />
+      )}
       {screenPhone && (
         <PhoneScreenDialog open phone={screenPhone} onClose={() => { setScreenPhone(null); void reload(); }} />
       )}
