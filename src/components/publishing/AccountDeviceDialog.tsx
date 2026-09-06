@@ -133,7 +133,8 @@ export function AccountDeviceDialog({
               <Button
                 size="sm" variant="outline" disabled={busy}
                 onClick={() => void act(phone.status === 4 ? "Выключен" : "Включён",
-                  () => setPhonePower(projectId, account.id, phone.status !== 4))}
+                  // Питание зовётся по id телефона: аккаунт для него не нужен.
+                  () => setPhonePower(projectId, phone.id, phone.status !== 4))}
               >
                 {phone.status === 4 ? "Выключить" : "Включить"}
               </Button>

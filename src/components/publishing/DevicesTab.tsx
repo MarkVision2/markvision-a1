@@ -212,9 +212,13 @@ export function DevicesTab() {
                             onValueChange={(v) => void act(
                               p.id,
                               v === NONE ? "Телефон отвязан" : "Телефон привязан",
-                              () => (v === NONE
-                                ? detachPhone(projectId!, p.account!.id)
-                                : attachPhone(projectId!, v, p.id)),
+                              async () => {
+                                if (v === NONE) return detachPhone(projectId!, p.account!.id);
+                                // Телефон уже занят другим аккаунтом: сначала освобождаем его,
+                                // иначе привязка упрётся в «одно устройство — один аккаунт».
+                                if (p.account && p.account.id !== v) await detachPhone(projectId!, p.account.id);
+                                return attachPhone(projectId!, v, p.id);
+                              },
                             )}
                           >
                             <SelectTrigger className="h-8 w-[13rem]"><SelectValue placeholder="Свободен" /></SelectTrigger>
