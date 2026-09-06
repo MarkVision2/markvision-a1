@@ -1,7 +1,7 @@
 {
-  "git_sha": "5f5ccf0",
-  "git_sha_full": "5f5ccf0852698a59c9204912d5eea17704453e95",
-  "updated_at": "2026-09-06T10:39:37+04:00",
-  "label": "fix(publish): перечитать схему PostgREST — воркер падал на publish_jobs.poll_count",
+  "git_sha": "c795c95",
+  "git_sha_full": "c795c95e9ed4d7fcf496df117452e3a7d233dc68",
+  "updated_at": "2026-09-06T10:56:49+04:00",
+  "label": "[vercel-deploy] Merge: Social Content Factory OS — Phase 2 остаток: пагинация, календарь, массовый онбординг (#281)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
