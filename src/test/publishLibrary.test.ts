@@ -7,7 +7,7 @@ import { addToPublishLibrary } from "../../supabase/functions/_lib/publishLibrar
 
 /** Минимальный двойник PostgREST: цепочка select→eq→maybeSingle и insert→select→maybeSingle. */
 function fakeDb(existing: { id: string } | null, inserted: { id: string } | null = { id: "new" }) {
-  const insert = vi.fn(() => chain(inserted));
+  const insert = vi.fn((_row: Record<string, unknown>) => chain(inserted));
   const chain = (result: unknown) => ({
     select: () => chain(result),
     eq: () => chain(result),
@@ -52,7 +52,7 @@ describe("рендер попадает в библиотеку публикац
   it("описание и обложка переносятся, длинный заголовок обрезается", async () => {
     const { db, insert } = fakeDb(null);
     await addToPublishLibrary(db, { ...INPUT, title: "я".repeat(300), thumbnailUrl: "https://cdn/t.jpg", durationSec: 42 });
-    const row = insert.mock.calls[0][0] as Record<string, unknown>;
+    const row = insert.mock.calls[0]![0];
     expect((row.title as string).length).toBe(200);
     expect(row.base_caption).toBe("описание");
     expect(row.thumbnail_url).toBe("https://cdn/t.jpg");

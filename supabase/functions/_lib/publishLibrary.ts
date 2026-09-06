@@ -10,9 +10,14 @@
  * аккаунтам человек запускает сам (или контент-завод по своей ветке). Автоматически
  * публиковать всё подряд, что отрендерилось, — не то, чего от системы ждут.
  */
-// Версия клиента та же, что у вызывающих функций (montage-worker, reels-tts): типы
-// supabase-js между версиями несовместимы, и общий модуль обязан совпадать с ними.
-import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+/**
+ * Клиент описан структурно, без импорта типов supabase-js. Причины две: функции проекта
+ * тянут разные версии клиента (2.49.4 и 2.95.0), а их типы между собой несовместимы; и этот
+ * модуль покрыт тестом из src/, который типизируется tsconfig приложения — а туда импорт по
+ * URL с esm.sh не разрешается.
+ */
+// deno-lint-ignore no-explicit-any
+export type DbLike = { from(table: string): any };
 
 export interface LibraryInput {
   projectId: string;
@@ -34,7 +39,7 @@ export interface LibraryInput {
  * по аккаунтам дважды.
  */
 export async function addToPublishLibrary(
-  db: SupabaseClient,
+  db: DbLike,
   input: LibraryInput,
 ): Promise<{ videoId: string | null; warning?: string }> {
   const { data: existing } = await db.from("publish_videos")
