@@ -1,7 +1,7 @@
 {
-  "git_sha": "e2cb193",
-  "git_sha_full": "e2cb1939d472bbaceeabdf82044bdbd4bb031b55",
-  "updated_at": "2026-09-06T19:37:24+04:00",
-  "label": "docs: ТЗ на подключение 100 Instagram-аккаунтов через браузерные профили",
+  "git_sha": "cc539aa",
+  "git_sha_full": "cc539aa5e97ac4c3f44233d456689c9c6cdc04bb",
+  "updated_at": "2026-09-06T20:39:49+04:00",
+  "label": "feat(publishing): конвейер подключения сети Instagram-аккаунтов по ТЗ (#289)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }

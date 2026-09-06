@@ -68,6 +68,32 @@ curl -X POST "https://szfgdruhlebfvcmlvxdk.supabase.co/functions/v1/content-fact
 
 `main` is the release branch. After push, open the Lovable project → **Share → Publish** (or confirm GitHub auto-sync is enabled).
 
+### Как фронт попадает на Vercel — два пути
+
+1. **Git-интеграция Vercel.** Собирает только коммиты в `main`, в сообщении которых есть метка
+   `[vercel-deploy]` (`ignoreCommand` в `vercel.json` — защита квоты Hobby, 100 сборок в сутки;
+   превью веток не собираются вовсе, даже с меткой — раньше каждый push ветки с меткой съедал
+   сборку из той же квоты). Поэтому PR в `main` мержим **merge-коммитом** с меткой в заголовке:
+   `[vercel-deploy] Merge: … (#N)`. Squash без метки → Vercel сборку пропустит.
+2. **Workflow `deploy-frontend-vercel.yml`** — Vercel CLI по секретам `VERCEL_TOKEN`,
+   `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`. Если CLI не отработал, а метка в коммите есть,
+   шаг завершается успехом (сборку сделает путь 1); если нет ни того, ни другого — падает.
+
+### Если фронт не выкатился
+
+- Лог workflow: `The token provided via --token argument is not valid` → перевыпустить токен
+  (Vercel → Account Settings → Tokens) и обновить `VERCEL_TOKEN` в GitHub → Settings →
+  Secrets → Actions.
+- Ошибка «Фронт не выкатился ни одним путём» → в `main` попал коммит без метки. Быстрый
+  повтор: `bash scripts/retry-vercel-deploy.sh` (пинг `public/.vercel-deploy-ping` с меткой)
+  либо PR с таким пингом и merge-коммитом `[vercel-deploy] Merge: …`.
+- Статус Vercel «Deployment rate limited — retry in 24 hours» / `api-deployments-free-per-day` →
+  исчерпаны 100 сборок в сутки на Hobby. Прод остаётся на последней удачной сборке; следующий
+  merge с меткой после сброса лимита выкатит всё накопившееся (или запустить
+  `scripts/retry-vercel-deploy.sh`, он ждёт сброса сам). Радикально — тариф Pro.
+- Проверка: у коммита `main` статус «Vercel — Deployment has completed» (превью веток больше
+  не собираются, комментарий `vercel[bot]` в PR будет «Ignored»).
+
 ## Supabase (migrations + edge functions)
 
 GitHub Actions workflow: `.github/workflows/supabase-deploy.yml` (runs on `main` when `supabase/**` changes, or **workflow_dispatch**).

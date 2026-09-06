@@ -7,7 +7,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { AlertTriangle, Loader2, Plus, Radar as RadarIcon, RefreshCw } from "lucide-react";
+import { AlertTriangle, Loader2, Plus, Radar as RadarIcon, RefreshCw, Search } from "lucide-react";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { AddSourceDialog, type AddSourceInput } from "@/components/radar/AddSourceDialog";
@@ -21,13 +21,17 @@ import { RunsTab } from "@/components/radar/RunsTab";
 import { SourcesTab, sourceTitle } from "@/components/radar/SourcesTab";
 import { TrendsTab, type TrendFilterRequest } from "@/components/radar/TrendsTab";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { useRadar } from "@/hooks/useRadar";
 import { IDEA_STATUS_META, type Idea, type IdeaStatus, type RadarPlatform, type RadarPost, type RadarSource } from "@/lib/radarClient";
+import { DEFAULT_IDEA_FILTER, filterIdeas, ideaNiches } from "@/lib/radarStats";
 import { cn } from "@/lib/utils";
 
 const IDEA_FILTERS = ["all", "new", "approved", "used", "rejected"] as const;
+const ALL_NICHES = "__all__";
 
 export default function Radar() {
   const navigate = useNavigate();
@@ -38,6 +42,8 @@ export default function Radar() {
   const [addOpen, setAddOpen] = useState(false);
   const [addPreset, setAddPreset] = useState<{ platform: RadarPlatform; handle: string } | null>(null);
   const [ideaFilter, setIdeaFilter] = useState<IdeaStatus | "all">("all");
+  const [ideaNiche, setIdeaNiche] = useState<string | null>(null);
+  const [ideaQuery, setIdeaQuery] = useState("");
   const [openPost, setOpenPost] = useState<RadarPost | null>(null);
   const [version, setVersion] = useState(0);
   const [tab, setTab] = useState("trends");
@@ -72,9 +78,11 @@ export default function Radar() {
   const crawlerMissing = crawler != null && !crawler.direct && !crawler.n8n;
   const aiMissing = crawler != null && !crawler.ai;
   const visibleIdeas = useMemo(
-    () => ideas.filter((i) => ideaFilter === "all" || i.status === ideaFilter).sort((a, b) => Number(b.score) - Number(a.score)),
-    [ideas, ideaFilter],
+    () => filterIdeas(ideas, { ...DEFAULT_IDEA_FILTER, status: ideaFilter, niche: ideaNiche, query: ideaQuery }),
+    [ideas, ideaFilter, ideaNiche, ideaQuery],
   );
+  const ideaNicheOptions = useMemo(() => ideaNiches(ideas), [ideas]);
+  const ideaFiltersActive = ideaNiche != null || ideaQuery.trim() !== "";
   const ideaCounts = useMemo(() => {
     const m: Record<string, number> = { all: ideas.length };
     for (const i of ideas) m[i.status] = (m[i.status] ?? 0) + 1;
@@ -264,15 +272,41 @@ export default function Radar() {
         </TabsContent>
 
         <TabsContent value="ideas" className="mt-4">
-          <div className="mb-3 flex flex-wrap items-center gap-1.5">
-            {IDEA_FILTERS.map((s) => (
-              <Button key={s} size="sm" variant={ideaFilter === s ? "default" : "outline"} className="h-8 rounded-full" onClick={() => setIdeaFilter(s)}>
-                {s === "all" ? "Все" : IDEA_STATUS_META[s].label}{ideaCounts[s] ? ` ${ideaCounts[s]}` : ""}
-              </Button>
-            ))}
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {IDEA_FILTERS.map((s) => (
+                <Button key={s} size="sm" variant={ideaFilter === s ? "default" : "outline"} className={cn("h-8 rounded-full", ideaFilter !== s && "text-muted-foreground")} onClick={() => setIdeaFilter(s)}>
+                  {s === "all" ? "Все" : IDEA_STATUS_META[s].label}{ideaCounts[s] ? ` ${ideaCounts[s]}` : ""}
+                </Button>
+              ))}
+            </div>
+            {ideas.length > 0 && (
+              <div className="ml-auto flex flex-wrap items-center gap-2">
+                {ideaNicheOptions.length > 0 && (
+                  <Select value={ideaNiche ?? ALL_NICHES} onValueChange={(v) => setIdeaNiche(v === ALL_NICHES ? null : v)}>
+                    <SelectTrigger className="h-8 w-[190px]" aria-label="Ниша идей"><SelectValue placeholder="Все ниши" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL_NICHES}>Все ниши</SelectItem>
+                      {ideaNicheOptions.map((n) => <SelectItem key={n.niche} value={n.niche}>{n.niche} ({n.count})</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                )}
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <Input aria-label="Поиск по идеям" placeholder="Название, хук, угол…" value={ideaQuery} onChange={(e) => setIdeaQuery(e.target.value)} className="h-8 w-[200px] pl-8" />
+                </div>
+                <span className="text-xs text-muted-foreground">{visibleIdeas.length} из {ideas.length}</span>
+              </div>
+            )}
           </div>
           {visibleIdeas.length === 0 ? (
-            <Empty>Идей пока нет — добавьте источники или вставьте ссылку сверху; разбор постов с оценкой ≥ 55 кладёт идеи сюда.</Empty>
+            ideas.length === 0 ? (
+              <Empty>Идей пока нет — добавьте источники или вставьте ссылку сверху; разбор постов с оценкой ≥ 55 кладёт идеи сюда.</Empty>
+            ) : (
+              <Empty action={ideaFiltersActive ? <Button size="sm" variant="outline" onClick={() => { setIdeaNiche(null); setIdeaQuery(""); }}>Сбросить нишу и поиск</Button> : undefined}>
+                {ideaFilter === "all" ? "Под эти фильтры идей нет." : `Идей со статусом «${IDEA_STATUS_META[ideaFilter].label}» пока нет.`}
+              </Empty>
+            )
           ) : (
             <div className="grid gap-3 lg:grid-cols-2">
               {visibleIdeas.map((idea) => (
