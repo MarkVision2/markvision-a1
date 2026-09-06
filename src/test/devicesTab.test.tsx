@@ -84,7 +84,7 @@ beforeEach(() => {
   });
   createPhones.mockReset().mockResolvedValue({ created: ["1003"] });
   phoneScreen.mockReset().mockResolvedValue({
-    url: "https://get.phonegrid.com/shot.png", width: 1080, height: 2340,
+    url: "https://get.phonegrid.com/shot.png", width: 1080, height: 2340, format: "png",
   });
   phoneInput.mockReset().mockResolvedValue(undefined);
   phoneNet.mockReset().mockResolvedValue({
@@ -208,7 +208,7 @@ describe("окно телефона", () => {
     // Первая кнопка в строке — «Экран»: у неё нет подписи, ищем по подсказке.
     fireEvent.click(screen.getByTitle("Открыть экран телефона"));
     expect(await screen.findByText(/Экран устройства/)).toBeInTheDocument();
-    await waitFor(() => expect(phoneScreen).toHaveBeenCalledWith("p1", "1001"));
+    await waitFor(() => expect(phoneScreen).toHaveBeenCalledWith("p1", "1001", "png"));
   });
 
   it("клик по экрану превращается в тап с координатами устройства", async () => {
@@ -253,6 +253,31 @@ describe("окно телефона", () => {
     expect(await screen.findByText("Аккаунт подключён")).toBeInTheDocument();
     expect(await screen.findByText("1 240 подписчиков")).toBeInTheDocument();
     expect(screen.getByText("37 постов")).toBeInTheDocument();
+  });
+
+  it("кадры заказываются внахлёст, но показывается только самый свежий", async () => {
+    let resolveFirst: (v: unknown) => void = () => {};
+    phoneScreen
+      .mockImplementationOnce(() => new Promise((r) => { resolveFirst = r; }))
+      .mockResolvedValue({ url: "второй.png", width: 1080, height: 2340, format: "png" });
+    render(<DevicesTab />);
+    await screen.findByText("CP-1");
+    fireEvent.click(screen.getByTitle("Открыть экран телефона"));
+    // Пока первый кадр в пути, заказываем второй — очередь не блокируется.
+    fireEvent.click(await screen.findByRole("button", { name: /Обновить/ }));
+    const img = await screen.findByAltText("Экран CP-1");
+    expect(img).toHaveAttribute("src", "второй.png");
+    // Первый кадр приходит позже второго — и не должен откатить картинку назад.
+    resolveFirst({ url: "первый.png", width: 1080, height: 2340, format: "png" });
+    await waitFor(() => expect(screen.getByAltText("Экран CP-1")).toHaveAttribute("src", "второй.png"));
+  });
+
+  it("режим движения просит mp4 — он в 25 раз легче кадра", async () => {
+    render(<DevicesTab />);
+    await screen.findByText("CP-1");
+    fireEvent.click(screen.getByTitle("Открыть экран телефона"));
+    fireEvent.click(await screen.findByRole("button", { name: /Кадр/ }));
+    await waitFor(() => expect(phoneScreen).toHaveBeenCalledWith("p1", "1001", "mp4"));
   });
 
   it("выключенный телефон предлагает включить прямо в окне", async () => {

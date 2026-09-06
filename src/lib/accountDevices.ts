@@ -189,23 +189,36 @@ export async function installApp(projectId: string, phoneId: string, appVersionI
   await call("install_app", projectId, { phone_id: phoneId, app_version_id: appVersionId });
 }
 
+export type ShotFormat = "png" | "mp4";
+
 export interface PhoneShot {
   url: string;
   /** Реальное разрешение экрана — по нему пересчитывается клик в тап. */
   width: number;
   height: number;
+  /** png — застывший кадр, mp4 — секунда живого движения и в 25 раз меньше веса. */
+  format: ShotFormat;
 }
 
 /**
- * Снимок экрана телефона: ссылка на картинку в хранилище PhoneGrid.
+ * Кадр с экрана телефона: ссылка на файл в хранилище PhoneGrid.
  *
- * Кадр готовится 3–9 секунд: PhoneGrid снимает png на телефоне, кладёт в своё хранилище
- * и только потом отдаёт ссылку. Видеопотока в Open API нет вовсе — он есть лишь в
- * собственном клиенте PhoneGrid (WebRTC через их приватный шлюз), поэтому здесь снимок,
- * а вход в приложение делает не палец по картинке, а сценарий `phoneLogin`.
+ * Быстрее ~9 секунд кадр не собрать, и это не наша медлительность: у PhoneGrid любой вызов
+ * API идёт около трёх секунд (пустая команда `true` возвращается за 2952 мс), плюс ~5,7 с
+ * уходит на подготовку файла в хранилище — одинаково для 17 КБ и для 1,2 МБ. Видеопотока
+ * в Open API нет вовсе, он есть лишь в собственном клиенте PhoneGrid (WebRTC через их
+ * приватный шлюз).
+ *
+ * Отсюда два обхода: кадры снимаются внахлёст (у каждого запроса свой файл на телефоне),
+ * а формат mp4 весит ~46 КБ против 1,2 МБ у png — браузер тянет его вдвое быстрее, и вместо
+ * застывшей картинки видно секунду живого движения.
  */
-export async function phoneScreen(projectId: string, phoneId: string): Promise<PhoneShot> {
-  return await call<PhoneShot>("screen", projectId, { phone_id: phoneId });
+export async function phoneScreen(
+  projectId: string,
+  phoneId: string,
+  format: ShotFormat = "png",
+): Promise<PhoneShot> {
+  return await call<PhoneShot>("screen", projectId, { phone_id: phoneId, format });
 }
 
 /** Куда телефон реально выходит в сеть: этот адрес и видит площадка при входе. */

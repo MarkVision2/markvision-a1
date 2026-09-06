@@ -127,30 +127,55 @@ async function tapNode(cfg: Cfg, phoneId: number, node: UiNode): Promise<void> {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * Снимок экрана: png на телефоне → ссылка в хранилище PhoneGrid. Заодно снимаем реальное
- * разрешение — оно у моделей разное (1080×2340 и 1080×2400), а тап считается по нему,
- * и при ошибке в размере палец уезжает на десятки пикселей.
+ * Кадр с телефона: снимаем на устройстве → PhoneGrid кладёт файл в своё хранилище → отдаём
+ * ссылку. Заодно берём реальное разрешение: оно у моделей разное (1080×2340 и 1080×2400),
+ * а тап считается по нему, и при ошибке в размере палец уезжает на десятки пикселей.
+ *
+ * Сколько это стоит (замеры 06.09.2026): у PhoneGrid **любой** вызов API идёт ~3 секунды —
+ * пустая команда `true` вернулась за 2952 мс. Плюс подготовка файла в хранилище ~5,7 с,
+ * причём одинаково для 17 КБ и для 1,2 МБ. Отсюда потолок: кадр быстрее ~9 секунд не
+ * собрать, сколько ни оптимизируй. Поэтому ускоряемся с двух других сторон:
+ *   • имя файла у каждого запроса своё — кадры можно снимать внахлёст, не затирая друг друга,
+ *     и картинка обновляется втрое чаще, чем готовится один кадр;
+ *   • формат mp4 (`screenrecord --size`) весит ~46 КБ против 1,2 МБ у png — браузер тянет
+ *     его 2,6 с вместо 5,1 с, и вдобавок видно секунду живого движения, а не застывший кадр.
  */
-async function grabScreen(cfg: Cfg, phoneId: number): Promise<{ url: string; width: number; height: number } | null> {
-  const path = "/sdcard/mv_screen.png";
-  const size = await shell(cfg, phoneId, `screencap -p ${path} && wm size`);
+async function grabScreen(
+  cfg: Cfg,
+  phoneId: number,
+  format: "png" | "mp4",
+): Promise<{ url: string; width: number; height: number; format: string } | null> {
+  // Уникальное имя: параллельные запросы иначе пишут в один файл и портят кадры друг другу.
+  const tag = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
+  const path = `/sdcard/mv_${tag}.${format}`;
+  const capture = format === "mp4"
+    // Три секунды лимита дают полторы секунды реального движения (19 кадров) и ~90 КБ против
+    // 1,2 МБ у png. Меньше лимит — Android успевает записать один кадр, и движения не выходит.
+    ? `screenrecord --size 540x1200 --bit-rate 1000000 --time-limit 3 ${path}`
+    : `screencap -p ${path}`;
+  const size = await shell(cfg, phoneId, `${capture}; wm size`);
   const m = /(\d+)x(\d+)/.exec(size);
   const started = await phonegridCall<{ downId: string }>(cfg, "/cloudphone/download", { id: phoneId, filePath: path });
   const downId = Number(started?.downId ?? 0);
   if (!downId) return null;
-  // Опрос частый: файл бывает готов за полсекунды, а бывает — за три.
-  for (let i = 0; i < 40; i++) {
-    await sleep(300);
-    const res = await phonegridCall<{ status: number; downUrl?: string }>(
-      cfg,
-      "/cloudphone/download/result",
-      { id: phoneId, downId },
-    );
-    if (res?.downUrl) {
-      return { url: res.downUrl, width: Number(m?.[1] ?? 1080), height: Number(m?.[2] ?? 2400) };
+  try {
+    // Опрос частый: сама проверка идёт ~300 мс, а готовность наступает за пять-шесть проверок.
+    for (let i = 0; i < 40; i++) {
+      await sleep(250);
+      const res = await phonegridCall<{ status: number; downUrl?: string }>(
+        cfg,
+        "/cloudphone/download/result",
+        { id: phoneId, downId },
+      );
+      if (res?.downUrl) {
+        return { url: res.downUrl, width: Number(m?.[1] ?? 1080), height: Number(m?.[2] ?? 2400), format };
+      }
     }
+    return null;
+  } finally {
+    // Файлы уникальны, поэтому за собой убираем — иначе /sdcard забьётся кадрами.
+    void shell(cfg, phoneId, `rm -f ${path}`).catch(() => {});
   }
-  return null;
 }
 
 Deno.serve(async (req) => {
@@ -425,9 +450,9 @@ Deno.serve(async (req) => {
         return json({ error: `Неизвестный шаг входа «${stage}»` }, 400);
       }
 
-      // Снимок экрана: делаем png на телефоне, забираем ссылку из хранилища PhoneGrid.
-      // Через сервер картинку не гоняем — она под мегабайт, браузер заберёт её сам.
-      const shot = await grabScreen(cfg, id);
+      // Снимок экрана: делаем кадр на телефоне, забираем ссылку из хранилища PhoneGrid.
+      // Через сервер картинку не гоняем — браузер заберёт её сам.
+      const shot = await grabScreen(cfg, id, body.format === "mp4" ? "mp4" : "png");
       if (!shot) return json({ error: "Снимок готовится дольше обычного — повторите" }, 504);
       return json({ ok: true, ...shot });
     }

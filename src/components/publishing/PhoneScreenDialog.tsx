@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Circle, Globe, Loader2, RefreshCw, Square, Wifi } from "lucide-react";
+import { ArrowLeft, Circle, Globe, Loader2, RefreshCw, Square, Video, Wifi } from "lucide-react";
 import { toast } from "sonner";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { PhoneLoginPanel } from "@/components/publishing/PhoneLoginPanel";
@@ -26,6 +26,7 @@ import {
   installApp, listPhones, phoneAppStart, phoneAppStop, phoneApps, phoneInput, phoneNet,
   phoneOpenUrl, phoneScreen, setPhonePower, uninstallApp, PHONE_APPS,
   type DevicePhone, type LoginPlatform, type PhoneApps, type PhoneKey, type PhoneNet, type PhoneShot,
+  type ShotFormat,
 } from "@/lib/accountDevices";
 
 /** Пока кадра нет, считаем экран обычным 1080×2400; после первого снимка берём настоящий. */
@@ -41,6 +42,9 @@ export function PhoneScreenDialog({
   const { activeId: projectId } = useProjectsStore();
   const [shot, setShot] = useState<PhoneShot | null>(null);
   const [loading, setLoading] = useState(false);
+  /** Сколько кадров сейчас в пути: их снимают внахлёст, иначе картинка обновлялась бы раз в 13 с. */
+  const [pending, setPending] = useState(0);
+  const [format, setFormat] = useState<ShotFormat>("png");
   const [error, setError] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
@@ -57,18 +61,38 @@ export function PhoneScreenDialog({
   // это показывать, а не замирать на «выключен».
   const [status, setStatus] = useState(phone.status);
   const [statusText, setStatusText] = useState(phone.statusText);
-  const imgRef = useRef<HTMLImageElement>(null);
+  const mediaRef = useRef<HTMLDivElement>(null);
+  // Номера запросов: кадр, обогнавший более свежий, показывать нельзя — картинка прыгнет назад.
+  const seqRef = useRef(0);
+  const appliedRef = useRef(0);
+  const inFlightRef = useRef(0);
+  // Формат держим и в ref: `refresh` зовут сразу из обработчика, до перерисовки.
+  const formatRef = useRef<ShotFormat>("png");
 
+  /**
+   * Заказать кадр. Один кадр у PhoneGrid готовится ~12 секунд и ускорить это нельзя — но
+   * снимки можно заказывать внахлёст, и тогда картинка меняется раз в ~4 секунды.
+   * Записи движения внахлёст не идут: два `screenrecord` разом Android не тянет, оба
+   * возвращаются пустыми, поэтому в этом режиме заказ ровно один.
+   */
   const refresh = useCallback(async () => {
-    if (!projectId) return;
-    setLoading(true);
-    setError(null);
+    const limit = formatRef.current === "mp4" ? 1 : 3;
+    if (!projectId || inFlightRef.current >= limit) return;
+    const seq = ++seqRef.current;
+    inFlightRef.current += 1;
+    setPending(inFlightRef.current);
     try {
-      setShot(await phoneScreen(projectId, phone.id));
+      const next = await phoneScreen(projectId, phone.id, formatRef.current);
+      if (seq > appliedRef.current) {
+        appliedRef.current = seq;
+        setShot(next);
+        setError(null);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setLoading(false);
+      inFlightRef.current -= 1;
+      setPending(inFlightRef.current);
     }
   }, [projectId, phone.id]);
 
@@ -129,8 +153,7 @@ export function PhoneScreenDialog({
     setLoading(true);
     try {
       await fn();
-      setShot(await phoneScreen(projectId, phone.id));
-      setError(null);
+      await refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
     } finally {
@@ -143,11 +166,11 @@ export function PhoneScreenDialog({
    * разрешению кадра: у моделей оно разное (1080×2340 и 1080×2400), и на фиксированном
    * числе палец уезжал бы вниз на десятки пикселей.
    */
-  const onScreenClick = (e: React.MouseEvent<HTMLImageElement>) => {
-    const img = imgRef.current;
-    if (!img) return;
+  const onScreenClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const box = mediaRef.current;
+    if (!box) return;
     const size = shot ?? DEFAULT_SCREEN;
-    const rect = img.getBoundingClientRect();
+    const rect = box.getBoundingClientRect();
     const x = Math.round(((e.clientX - rect.left) / rect.width) * size.width);
     const y = Math.round(((e.clientY - rect.top) / rect.height) * size.height);
     void send(() => phoneInput(projectId!, phone.id, { kind: "tap", x, y }));
@@ -157,10 +180,11 @@ export function PhoneScreenDialog({
 
   useEffect(() => {
     if (!open || !auto || status !== 4) return;
-    // Кадр готовится до девяти секунд — чаще опрашивать бессмысленно, запросы встанут в очередь.
-    const t = setInterval(() => { if (!loading) void refresh(); }, 10_000);
+    // Заказываем чаще, чем готовится кадр: очередь из трёх заказов даёт картинку раз в ~3,5 с
+    // вместо раза в 13. Лишние заказы `refresh` отсечёт сам.
+    const t = setInterval(() => void refresh(), 3500);
     return () => clearInterval(t);
-  }, [open, auto, status, loading, refresh]);
+  }, [open, auto, status, refresh]);
 
   const off = status !== 4;
   const booting = status === 3;
@@ -230,34 +254,61 @@ export function PhoneScreenDialog({
         ) : (
           <div className="flex gap-5">
             <div className="w-[340px] shrink-0 space-y-2">
-              <div className="relative overflow-hidden rounded-xl border bg-muted">
-                {shot ? (
-                  <img
-                    ref={imgRef} src={shot.url} alt={`Экран ${phone.name}`}
-                    className="w-full cursor-crosshair select-none" draggable={false}
-                    onClick={onScreenClick}
-                  />
-                ) : (
-                  <div className="flex h-[680px] items-center justify-center text-sm text-muted-foreground">
-                    {loading ? "Снимаем экран…" : "Нет кадра"}
-                  </div>
-                )}
-                {loading && shot && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-background/50">
-                    <Loader2 className="h-6 w-6 animate-spin" />
+              <div
+                ref={mediaRef}
+                onClick={shot ? onScreenClick : undefined}
+                className="relative overflow-hidden rounded-xl border bg-muted"
+                style={shot ? { aspectRatio: `${shot.width} / ${shot.height}` } : undefined}
+              >
+                {shot
+                  ? shot.format === "mp4"
+                    ? (
+                      // Секунда движения вместо застывшего кадра — и весит в 25 раз меньше.
+                      <video
+                        key={shot.url} src={shot.url}
+                        className="w-full cursor-crosshair select-none"
+                        autoPlay muted loop playsInline
+                      />
+                    )
+                    : (
+                      <img
+                        src={shot.url} alt={`Экран ${phone.name}`}
+                        className="w-full cursor-crosshair select-none" draggable={false}
+                      />
+                    )
+                  : (
+                    <div className="flex h-[680px] items-center justify-center text-sm text-muted-foreground">
+                      {pending > 0 ? "Снимаем экран…" : "Нет кадра"}
+                    </div>
+                  )}
+                {pending > 0 && shot && (
+                  <div className="absolute right-2 top-2 rounded-full bg-background/80 p-1.5">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   </div>
                 )}
               </div>
               <div className="flex flex-wrap gap-1.5">
-                <Button size="sm" variant="outline" disabled={loading} onClick={() => void refresh()}>
+                <Button size="sm" variant="outline" onClick={() => void refresh()}>
                   <RefreshCw className="mr-1.5 h-3.5 w-3.5" /> Обновить
                 </Button>
                 <Button
                   size="sm" variant={auto ? "default" : "outline"}
                   onClick={() => setAuto((v) => !v)}
-                  title="Обновлять экран каждые 10 секунд — примерно столько и готовится кадр"
+                  title="Заказывать кадры непрерывно, по нескольку сразу: картинка меняется примерно раз в 3,5 секунды"
                 >
                   {auto ? "Авто: вкл" : "Авто"}
+                </Button>
+                <Button
+                  size="sm" variant={format === "mp4" ? "default" : "outline"}
+                  onClick={() => {
+                    const next: ShotFormat = format === "mp4" ? "png" : "mp4";
+                    formatRef.current = next;
+                    setFormat(next);
+                    void refresh();
+                  }}
+                  title="Полторы секунды реального движения вместо застывшего кадра — и всего 90 КБ против 1,2 МБ. Приходит реже (записи нельзя вести внахлёст) и мельче по чёткости: для мелкого текста вернитесь в «Кадр»."
+                >
+                  <Video className="mr-1.5 h-3.5 w-3.5" /> {format === "mp4" ? "Движение" : "Кадр"}
                 </Button>
                 <Button size="sm" variant="outline" disabled={loading} onClick={() => key("back")} title="Назад">
                   <ArrowLeft className="h-3.5 w-3.5" />
